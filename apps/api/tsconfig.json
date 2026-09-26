@@ -1,0 +1,7 @@
+{
+  "extends": "@rrhh/tsconfig/node.json",
+  "compilerOptions": {
+    "paths": { "@/*": ["./src/*"] }
+  },
+  "include": ["src", "tests", "prisma", "*.config.ts"]
+}
