@@ -1,0 +1,71 @@
+# Servicios de infraestructura para DESARROLLO LOCAL.
+# Las apps (api/web/mobile) corren en el host con `pnpm dev` para tener hot reload rápido.
+#
+#   pnpm db:up     → levanta todo
+#   pnpm db:down   → detiene (los datos se conservan en los volúmenes)
+#
+# ⚠️  `docker compose down -v` BORRA los datos. No usarlo sin intención explícita.
+name: rrhh
+
+services:
+  postgres:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-rrhh}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-rrhh}
+      POSTGRES_DB: ${POSTGRES_DB:-rrhh}
+      TZ: UTC
+    ports:
+      - '${POSTGRES_PORT:-5432}:5432'
+    volumes:
+      - postgres-data:/var/lib/postgresql
+      - ./postgres/01-create-test-db.sql:/docker-entrypoint-initdb.d/01-create-test-db.sql:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # Colas (BullMQ) y caché. Valkey es el fork open source de Redis, 100% compatible.
+  redis:
+    image: valkey/valkey:8-alpine
+    restart: unless-stopped
+    command: ['valkey-server', '--appendonly', 'yes']
+    ports:
+      - '${REDIS_PORT:-6379}:6379'
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ['CMD', 'valkey-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # Almacenamiento de archivos compatible con S3 (contratos, liquidaciones, licencias médicas).
+  # En producción se reemplaza por S3/R2/GCS sin tocar código: está detrás del puerto FileStorage.
+  storage:
+    image: rustfs/rustfs:latest
+    restart: unless-stopped
+    environment:
+      RUSTFS_ACCESS_KEY: ${S3_ACCESS_KEY:-rrhh}
+      RUSTFS_SECRET_KEY: ${S3_SECRET_KEY:-rrhh-secret}
+      RUSTFS_CONSOLE_ENABLE: 'true'
+    ports:
+      - '${S3_PORT:-9000}:9000' # API S3
+      - '${S3_CONSOLE_PORT:-9001}:9001' # consola web
+    volumes:
+      - storage-data:/data
+
+  # Captura todos los correos salientes en desarrollo. UI: http://localhost:8025
+  mailpit:
+    image: axllent/mailpit:latest
+    restart: unless-stopped
+    ports:
+      - '${SMTP_PORT:-1025}:1025'
+      - '${MAILPIT_UI_PORT:-8025}:8025'
+
+volumes:
+  postgres-data:
+  redis-data:
+  storage-data:
