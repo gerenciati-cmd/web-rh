@@ -1,0 +1,65 @@
+{
+  "$comment": "Module registry. Source of truth for plan frontmatter `module:` (validated by `pnpm plans:lint`). status: reference = canonical pattern to imitate; active = exists, follows the pattern; planned = does not exist yet (a plan may create it). `cross-cutting` covers work that spans apps/packages without belonging to one business module.",
+  "modules": [
+    {
+      "name": "employees",
+      "status": "reference",
+      "path": "apps/api/src/modules/employees",
+      "summary": "Colaboradores: alta, desvinculación, directorio. Full reference: aggregate with rules, command, query, port to another module."
+    },
+    {
+      "name": "organization",
+      "status": "active",
+      "path": "apps/api/src/modules/organization",
+      "summary": "Empresas del holding. Exposes OrganizationApi to other modules."
+    },
+    {
+      "name": "identity",
+      "status": "planned",
+      "path": "apps/api/src/modules/identity",
+      "summary": "Auth (access + refresh tokens), users, RBAC, request context."
+    },
+    {
+      "name": "attendance",
+      "status": "planned",
+      "path": "apps/api/src/modules/attendance",
+      "summary": "Marcaciones, turnos, jornadas, horas extra. Legal requirements apply."
+    },
+    {
+      "name": "leave",
+      "status": "planned",
+      "path": "apps/api/src/modules/leave",
+      "summary": "Vacaciones, permisos, licencias médicas."
+    },
+    {
+      "name": "payroll",
+      "status": "planned",
+      "path": "apps/api/src/modules/payroll",
+      "summary": "Remuneraciones / liquidaciones. Money math: always min_implementer mid+."
+    },
+    {
+      "name": "documents",
+      "status": "planned",
+      "path": "apps/api/src/modules/documents",
+      "summary": "Contratos, anexos, firma, almacenamiento S3."
+    },
+    {
+      "name": "web",
+      "status": "active",
+      "path": "apps/web",
+      "summary": "Next.js UI. No business logic."
+    },
+    {
+      "name": "mobile",
+      "status": "active",
+      "path": "apps/mobile",
+      "summary": "Expo UI. No business logic."
+    },
+    {
+      "name": "platform",
+      "status": "active",
+      "path": ".",
+      "summary": "Cross-cutting: shared packages, API shared kernel/infrastructure, tooling, infra, harness."
+    }
+  ]
+}

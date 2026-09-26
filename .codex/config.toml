@@ -1,0 +1,4 @@
+# Codex: límites de subagentes. Los perfiles de .codex/agents/ los genera `pnpm harness:sync`.
+[agents]
+max_threads = 6
+max_depth = 1
