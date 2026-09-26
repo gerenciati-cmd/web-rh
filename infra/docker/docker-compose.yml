@@ -9,7 +9,8 @@ name: rrhh
 
 services:
   postgres:
-    image: postgres:18-alpine
+    # Origen verificado el 2026-09-26: postgres:18-alpine
+    image: postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-rrhh}
@@ -17,7 +18,7 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-rrhh}
       TZ: UTC
     ports:
-      - '${POSTGRES_PORT:-5432}:5432'
+      - '127.0.0.1:${POSTGRES_PORT:-5432}:5432'
     volumes:
       - postgres-data:/var/lib/postgresql
       - ./postgres/01-create-test-db.sql:/docker-entrypoint-initdb.d/01-create-test-db.sql:ro
@@ -29,11 +30,12 @@ services:
 
   # Colas (BullMQ) y caché. Valkey es el fork open source de Redis, 100% compatible.
   redis:
-    image: valkey/valkey:8-alpine
+    # Origen verificado el 2026-09-26: valkey/valkey:8-alpine
+    image: valkey/valkey@sha256:081c2f5cb575efc901aa80ff9cdbd1ec6a301682fd35e1ebb4b0990a4a4a8507
     restart: unless-stopped
     command: ['valkey-server', '--appendonly', 'yes']
     ports:
-      - '${REDIS_PORT:-6379}:6379'
+      - '127.0.0.1:${REDIS_PORT:-6379}:6379'
     volumes:
       - redis-data:/data
     healthcheck:
@@ -45,25 +47,27 @@ services:
   # Almacenamiento de archivos compatible con S3 (contratos, liquidaciones, licencias médicas).
   # En producción se reemplaza por S3/R2/GCS sin tocar código: está detrás del puerto FileStorage.
   storage:
-    image: rustfs/rustfs:latest
+    # Origen verificado el 2026-09-26: rustfs/rustfs:latest
+    image: rustfs/rustfs@sha256:8cc9801755448b71a786705ce76692c77e14936cccd87cf2fc31842e58f4d1ff
     restart: unless-stopped
     environment:
       RUSTFS_ACCESS_KEY: ${S3_ACCESS_KEY:-rrhh}
       RUSTFS_SECRET_KEY: ${S3_SECRET_KEY:-rrhh-secret}
       RUSTFS_CONSOLE_ENABLE: 'true'
     ports:
-      - '${S3_PORT:-9000}:9000' # API S3
-      - '${S3_CONSOLE_PORT:-9001}:9001' # consola web
+      - '127.0.0.1:${S3_PORT:-9000}:9000' # API S3
+      - '127.0.0.1:${S3_CONSOLE_PORT:-9001}:9001' # consola web
     volumes:
       - storage-data:/data
 
   # Captura todos los correos salientes en desarrollo. UI: http://localhost:8025
   mailpit:
-    image: axllent/mailpit:latest
+    # Origen verificado el 2026-09-26: axllent/mailpit:latest
+    image: axllent/mailpit@sha256:74d609a42ec279aa63c6b4622a6fa9b5408d1ad5b1d76a1c4be40a265ce0863d
     restart: unless-stopped
     ports:
-      - '${SMTP_PORT:-1025}:1025'
-      - '${MAILPIT_UI_PORT:-8025}:8025'
+      - '127.0.0.1:${SMTP_PORT:-1025}:1025'
+      - '127.0.0.1:${MAILPIT_UI_PORT:-8025}:8025'
 
 volumes:
   postgres-data:

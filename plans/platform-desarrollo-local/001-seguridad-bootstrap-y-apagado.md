@@ -1,5 +1,5 @@
 ---
-status: draft
+status: testing
 module: platform
 min_implementer: mid
 depends_on: []
@@ -116,6 +116,11 @@ None.
 | tooling     | yes     | Node test runner with injected command execution for bootstrap.                        |
 
 ## Deviations
+
+- 2026-09-26: User explicitly approved implementation. Transitioned draft → approved → implementing.
+
+- Implementation baseline: `pnpm check` PASS (43 application/package tests and 117 harness tests). Registry metadata and Action inputs verified against official Docker Hub/GitHub APIs on 2026-09-26. All four selected images support linux/amd64 and linux/arm64; PostgreSQL also supports 386, arm, ppc64le, s390x, riscv64; Valkey arm/ppc64le; Mailpit 386. Digests are recorded in Compose and action release/SHAs in ci.yml. Prisma 7.10.0 CLI confirms all migrate diff flags used by CI.
+- Sandbox pnpm commands stalled; escalated execution works. Docker access works outside sandbox, but Buildx is absent locally. No pre-existing containers were running when the isolated `rrhh-plan001-qa` project was created. Existing-volume compatibility remains NOT VERIFIED.
 
 ## Test coverage
 
