@@ -1,0 +1,19 @@
+{
+  "name": "@rrhh/eslint-config",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./base": "./base.mjs",
+    "./node": "./node.mjs"
+  },
+  "peerDependencies": {
+    "eslint": "catalog:"
+  },
+  "dependencies": {
+    "@eslint/js": "catalog:",
+    "eslint-plugin-import-x": "catalog:",
+    "globals": "catalog:",
+    "typescript-eslint": "catalog:"
+  }
+}
