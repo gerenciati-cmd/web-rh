@@ -19,7 +19,7 @@
     "test": "turbo run test",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "check": "pnpm format:check && turbo run typecheck lint test && pnpm arch:check && pnpm plans:lint && pnpm harness:check && pnpm test:harness",
+    "check": "pnpm format:check && turbo run typecheck lint test && pnpm arch:check && pnpm plans:lint && pnpm harness:check && pnpm test:harness && pnpm test:bootstrap",
     "arch:check": "pnpm --filter @rrhh/api arch:check",
     "db:up": "docker compose -f infra/docker/docker-compose.yml up -d",
     "db:down": "docker compose -f infra/docker/docker-compose.yml down",
@@ -36,7 +36,8 @@
     "harness:sync": "node scripts/harness/sync.mjs",
     "harness:check": "node scripts/harness/sync.mjs --check",
     "test:harness": "node --test .claude/hooks/hooks.test.mjs scripts/plans/plans.test.mjs",
-    "test:integration": "pnpm --filter @rrhh/api test:integration"
+    "test:integration": "pnpm --filter @rrhh/api test:integration",
+    "test:bootstrap": "node --test scripts/bootstrap-database.test.mjs"
   },
   "devDependencies": {
     "@commitlint/cli": "catalog:",

@@ -1,5 +1,5 @@
 ---
-status: testing
+status: review
 module: platform
 min_implementer: mid
 depends_on: []
@@ -123,6 +123,16 @@ None.
 - Sandbox pnpm commands stalled; escalated execution works. Docker access works outside sandbox, but Buildx is absent locally. No pre-existing containers were running when the isolated `rrhh-plan001-qa` project was created. Existing-volume compatibility remains NOT VERIFIED.
 
 ## Test coverage
+
+Baseline and closing `pnpm check`: PASS. Existing 43 application/package tests plus 7 shutdown tests, 117 harness tests and 6 bootstrap tests pass. PostgreSQL integration: 14 tests pass.
+
+| Behavior                                                  | Source                                | Layer     | Tests                                                             | State     |
+| --------------------------------------------------------- | ------------------------------------- | --------- | ----------------------------------------------------------------- | --------- |
+| Existing/absent test database and error redaction         | scripts/bootstrap-database.mjs:6      | tooling   | scripts/bootstrap-database.test.mjs (4)                           | CONFIRMED |
+| Container-side role/database expansion stays literal      | scripts/bootstrap-database.mjs:6      | tooling   | scripts/bootstrap-database.test.mjs (2, actual shell + fake psql) | CONFIRMED |
+| Drain before disposal, await cleanup, repeated calls      | apps/api/src/main/http-shutdown.ts:14 | lifecycle | apps/api/src/main/http-shutdown.test.ts (2)                       | CONFIRMED |
+| Deadline during drain/disposal, late resolution/rejection | apps/api/src/main/http-shutdown.ts:14 | lifecycle | apps/api/src/main/http-shutdown.test.ts (3)                       | CONFIRMED |
+| Close/disposal errors produce failure exit                | apps/api/src/main/http-shutdown.ts:14 | lifecycle | apps/api/src/main/http-shutdown.test.ts (2)                       | CONFIRMED |
 
 ## Review findings
 
