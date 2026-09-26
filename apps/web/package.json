@@ -1,0 +1,29 @@
+{
+  "name": "@rrhh/web",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev --port 3000",
+    "build": "next build",
+    "start": "next start --port 3000",
+    "lint": "eslint .",
+    "typecheck": "next typegen && tsc --noEmit"
+  },
+  "dependencies": {
+    "@rrhh/api-client": "workspace:*",
+    "@rrhh/contracts": "workspace:*",
+    "next": "16.3.6",
+    "react": "19.2.8",
+    "react-dom": "19.2.8"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "catalog:",
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.7",
+    "eslint": "catalog:",
+    "eslint-config-next": "16.3.6",
+    "tailwindcss": "^4",
+    "typescript": "catalog:"
+  }
+}
