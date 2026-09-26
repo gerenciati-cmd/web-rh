@@ -1,0 +1,20 @@
+pnpm-lock.yaml
+**/generated/**
+**/migrations/**
+.next
+.expo
+.turbo
+dist
+coverage
+apps/mobile/ios
+apps/mobile/android
+# Adaptadores generados por scripts/harness/sync.mjs (su formato lo define el generador)
+.claude/agents
+.claude/skills/planear
+.claude/skills/implementar
+.claude/skills/escribir-tests
+.claude/skills/revisar
+.claude/skills/verificar
+.claude/skills/fix
+.codex/agents
+.agents

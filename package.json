@@ -1,0 +1,51 @@
+{
+  "name": "apsholding-rrhh",
+  "private": true,
+  "description": "Plataforma de RRHH de APS Holding (web, móvil y API)",
+  "packageManager": "pnpm@12.6.0",
+  "engines": {
+    "node": ">=24",
+    "pnpm": ">=12"
+  },
+  "scripts": {
+    "dev": "turbo run dev",
+    "dev:api": "turbo run dev --filter=@rrhh/api",
+    "dev:web": "turbo run dev --filter=@rrhh/web",
+    "dev:mobile": "pnpm --filter @rrhh/mobile start",
+    "build": "turbo run build",
+    "typecheck": "turbo run typecheck",
+    "lint": "turbo run lint",
+    "lint:fix": "turbo run lint -- --fix",
+    "test": "turbo run test",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "check": "pnpm format:check && turbo run typecheck lint test && pnpm arch:check && pnpm plans:lint && pnpm harness:check && pnpm test:harness",
+    "arch:check": "pnpm --filter @rrhh/api arch:check",
+    "db:up": "docker compose -f infra/docker/docker-compose.yml up -d",
+    "db:down": "docker compose -f infra/docker/docker-compose.yml down",
+    "db:logs": "docker compose -f infra/docker/docker-compose.yml logs -f",
+    "db:migrate": "pnpm --filter @rrhh/api db:migrate",
+    "db:generate": "pnpm --filter @rrhh/api db:generate",
+    "db:studio": "pnpm --filter @rrhh/api db:studio",
+    "db:seed": "pnpm --filter @rrhh/api db:seed",
+    "bootstrap": "node scripts/bootstrap.mjs",
+    "prepare": "husky",
+    "plans:status": "node scripts/plans/status.mjs",
+    "plans:lint": "node scripts/plans/lint.mjs",
+    "plans:scope": "node scripts/plans/scope.mjs",
+    "harness:sync": "node scripts/harness/sync.mjs",
+    "harness:check": "node scripts/harness/sync.mjs --check",
+    "test:harness": "node --test .claude/hooks/hooks.test.mjs scripts/plans/plans.test.mjs",
+    "test:integration": "pnpm --filter @rrhh/api test:integration"
+  },
+  "devDependencies": {
+    "@commitlint/cli": "catalog:",
+    "@commitlint/config-conventional": "catalog:",
+    "husky": "catalog:",
+    "lint-staged": "catalog:",
+    "prettier": "catalog:",
+    "turbo": "catalog:",
+    "typescript": "catalog:",
+    "yaml": "catalog:"
+  }
+}

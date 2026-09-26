@@ -1,0 +1,55 @@
+packages:
+  - apps/*
+  - packages/*
+
+# Versiones compartidas: se declaran UNA vez aquí y los package.json usan "catalog:".
+# Para subir una versión en todo el monorepo se cambia solo esta línea.
+catalog:
+  '@commitlint/cli': 21.2.3
+  '@commitlint/config-conventional': 21.2.3
+  '@eslint/js': 9.39.5
+  '@types/node': 26.6.3
+  eslint: 9.39.5 # 10 aún no lo soportan los plugins de Next/Expo
+  eslint-plugin-import-x: 4.17.1
+  globals: 17.12.0
+  husky: 9.1.7
+  lint-staged: 17.5.1
+  prettier: 3.9.9
+  tsup: 8.5.1
+  tsx: 4.23.15
+  turbo: 2.11.4
+  typescript: 6.0.3
+  typescript-eslint: 8.70.1
+  vitest: 5.0.2
+  yaml: 2.9.1
+  zod: 4.6.5
+
+# Solo estos paquetes pueden ejecutar scripts de instalación (supply-chain hardening).
+allowBuilds:
+  '@prisma/engines': true
+  prisma: true
+  argon2: true
+  esbuild: true
+  sharp: false
+  unrs-resolver: false
+  msgpackr-extract: false # opcional de bullmq; tiene fallback JS
+
+# pnpm bloquea versiones publicadas hace muy poco (anti supply-chain). Excepciones explícitas:
+minimumReleaseAgeExclude:
+  - '@types/node@26.6.3'
+  - '@vitest/mocker@5.0.2'
+  - '@vitest/spy@5.0.2'
+  - bullmq@6.3.9
+  - vitest@5.0.2
+
+overrides:
+  # react-native 0.86.3 exige esta versión exacta como peer; sin override pnpm toma la más nueva.
+  '@react-native/metro-config': 0.86.3
+
+peerDependencyRules:
+  allowedVersions:
+    # Solo tipos: radix (dentro de expo-router) pide @types/react ^19.3 y usamos 19.2.
+    '@types/react-dom>@types/react': '19'
+
+# Versiones exactas al agregar dependencias (reproducibilidad).
+saveExact: true

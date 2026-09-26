@@ -1,0 +1,59 @@
+# ── Dependencias ─────────────────────────────
+node_modules/
+.pnpm-store/
+
+# ── Builds y caches ──────────────────────────
+dist/
+build/
+out/
+.next/
+.turbo/
+.expo/
+web-build/
+coverage/
+*.tsbuildinfo
+next-env.d.ts
+expo-env.d.ts
+.metro-health-check*
+
+# Cliente Prisma generado (se regenera con `pnpm db:generate`)
+**/src/infrastructure/database/generated/
+
+# Carpetas nativas de Expo (Continuous Native Generation)
+apps/mobile/ios/
+apps/mobile/android/
+.kotlin/
+
+# ── Secretos y entorno ───────────────────────
+# Solo se versionan los *.example
+.env
+.env.*
+!.env.example
+!**/.env.example
+*.pem
+*.key
+*.jks
+*.p8
+*.p12
+*.mobileprovision
+
+# ── Logs ─────────────────────────────────────
+*.log
+npm-debug.log*
+.pnpm-debug.log*
+
+# ── SO / editores ────────────────────────────
+.DS_Store
+Thumbs.db
+.idea/
+*.swp
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+
+# ── Claude Code (config local personal) ──────
+.claude/settings.local.json
+CLAUDE.local.md
+
+# Vercel
+.vercel

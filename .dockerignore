@@ -1,0 +1,15 @@
+**/node_modules
+**/.turbo
+**/dist
+**/.next
+**/.expo
+**/coverage
+**/*.log
+**/.env
+**/.env.*
+!**/.env.example
+**/src/infrastructure/database/generated
+apps/mobile
+.git
+.claude
+.vscode
