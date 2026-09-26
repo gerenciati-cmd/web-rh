@@ -1,5 +1,5 @@
 ---
-status: review
+status: verify
 module: platform
 min_implementer: mid
 depends_on: []
@@ -136,4 +136,38 @@ Baseline and closing `pnpm check`: PASS. Existing 43 application/package tests p
 
 ## Review findings
 
+- Mechanical checklist: scope PASS, full check PASS, integration 14/14 PASS; no business, contracts, schema or DI changes. Official action inputs and immutable references verified.
+- R1 (medium), `apps/api/src/main/http.ts`: process.once removes the listener after the first signal. A second same signal during draining can terminate the process before active requests complete. Return to implementer: use persistent signal handlers with the idempotent coordinator.
+- R2 (low), `package.json`: preserve original literal Spanish text instead of an unrelated Unicode escape introduced by JSON serialization.
+
+- R1 resolved: persistent handlers installed; real HTTP process received repeated SIGTERM while draining, returned its complete response and exited 0. Stuck request closed at deadline with exit 1.
+- R2 resolved: original package description preserved.
+- Re-review: all mechanical checks passed; `pnpm check` after corrections PASS. Workflow YAML parsed and action references, matrix sizes, permissions, PostgreSQL digest and loopback bindings checked. No remaining in-scope correctness findings. No independent subagent review was requested.
+
 ## Verification
+
+Verification performed on 2026-09-26, branch `fix/platform-desarrollo-local`:
+
+| Check                                            | Result       | Evidence                                                                                                                                                                                                                                                 |
+| ------------------------------------------------ | ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Full local checks                                | PASS         | `pnpm check`: 50 application/package tests, 117 harness tests, 6 bootstrap tests; format, lint, types, architecture, plans and harness checks passed.                                                                                                    |
+| Persistence                                      | PASS         | `pnpm test:integration`: 2 files, 14 tests passed, against rrhh-plan001-qa PostgreSQL database rrhh_test.                                                                                                                                                |
+| Migration drift                                  | PASS         | Prisma migrate diff with CI flags: `No difference detected`, exit 0.                                                                                                                                                                                     |
+| Compose runtime                                  | PASS         | All four pinned images pulled and started in project rrhh-plan001-qa. Docker inspect confirms six ports bound to 127.0.0.1. PostgreSQL/Valkey healthy, Mailpit HTTP 200, RustFS 9000/health HTTP 200.                                                    |
+| Storage console                                  | PASS (HTTP)  | Follow-up 2026-09-26: correct route /rustfs/console/ returns HTML 200; /rustfs/console/health returns ok; CSS and three referenced scripts return 200. Initial root-path 403 was a probe error; finding discarded. Login and file operations not tested. |
+| Bootstrap existing database                      | PASS         | Extracted helper called twice against the default isolated container: no creation or error.                                                                                                                                                              |
+| Bootstrap custom role/database                   | PASS         | Separate rrhh-plan001-custom project, qa_user/qa_custom, port 15432 and new volume without init SQL; first helper call created rrhh_test, second was a no-op.                                                                                            |
+| HTTP drain and deadline                          | PASS         | Scratch child process used the real Node HTTP server and production coordinator. Repeated SIGTERM during a delayed request: complete response, disposal at active=0, exit 0. Stuck request: connection closed, exit 1 at configured deadline.            |
+| API entrypoint                                   | PASS         | Actual src/main/http.ts with local test DB: /health/ready HTTP 200, SIGTERM and SIGINT each produced exit 0.                                                                                                                                             |
+| Docker API runner                                | PASS         | Buildx build --target runner completed; local image rrhh-plan001-api.                                                                                                                                                                                    |
+| Docker migrator                                  | PASS         | Buildx build --target migrator completed; local image rrhh-plan001-migrator. No deployment executed.                                                                                                                                                     |
+| Docker web runner                                | PASS         | Buildx build --target runner completed including Next compilation; local image rrhh-plan001-web.                                                                                                                                                         |
+| Workflow configuration                           | PASS         | Parsed YAML, validated triggers, read-only permissions, full action SHAs, two quality variants, three Docker targets and PostgreSQL digest matching Compose. Action inputs checked upstream.                                                             |
+| Remote GitHub Actions / Node 24 full quality run | NOT VERIFIED | Branch push now authorized; this workflow runs on PRs/main, not feature-branch pushes. Full local suite ran on Node 26; Docker builds used Node 24.                                                                                                      |
+| Existing user data compatibility                 | NOT VERIFIED | QA used new isolated volumes only; did not inspect or modify existing user volumes.                                                                                                                                                                      |
+
+Local Buildx was missing. Downloaded official Buildx v0.37.1 to /tmp and verified its published
+SHA256 (9447199cdb435f25880548343c128a4b6650e8891ee598905d8d29d39a8e359b). No user plugin
+installation or registry publishing. QA containers are stopped after verification; their isolated
+volumes and locally built images are retained. No .env files, applied migrations or lockfile changed.
+User authorized commits and branch push on 2026-09-26. Changes are committed by phase; no PR or merge requested. Plan remains verify with remote execution pending.
