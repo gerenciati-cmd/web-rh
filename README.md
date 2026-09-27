@@ -24,12 +24,13 @@ pnpm dev:mobile  # Expo: escanea el QR con Expo Go
 ```
 
 Servicios locales (`pnpm db:up` / `pnpm db:down`): Postgres `:5432`, Valkey `:6379`,
-S3 (RustFS) `:9000` con consola en `:9001`, Mailpit en `:8025`.
+S3 (RustFS) `:9000`, consola en [localhost:9001/rustfs/console/](http://localhost:9001/rustfs/console/)
+y Mailpit en `:8025`.
 
 ## Comandos habituales
 
 ```bash
-pnpm check                            # TODO: formato, tipos, lint, tests, arquitectura, hooks
+pnpm check                            # formato, tipos, lint, tests, arquitectura, hooks
 pnpm --filter @rrhh/api test          # tests de un paquete
 pnpm db:migrate --name add_positions  # nueva migración tras editar schema.prisma
 pnpm db:studio                        # explorar la BD
@@ -39,7 +40,7 @@ docker build -f apps/api/Dockerfile .  # imagen del API (web: apps/web/Dockerfil
 ## Arquitectura en una frase
 
 **Monolito modular** con **arquitectura hexagonal** y **CQRS ligero** en el API, contratos Zod
-compartidos con web y mobile, y reglas de arquitectura verificadas en CI.
+compartidos con web y mobile, y reglas de arquitectura verificadas localmente y en CI.
 Detalle en [docs/architecture.md](docs/architecture.md), principios (SOLID, DRY…) con ejemplos
 del código en [docs/conventions.md](docs/conventions.md), y decisiones en [docs/adr/](docs/adr/).
 
@@ -62,3 +63,34 @@ El repo trae un **harness** para Claude Code y Codex (y cualquier agente que lea
 
 Ramas `feat/<modulo>-<tema>` · Conventional Commits en español (validados por commitlint) ·
 PR con la plantilla de `.github/`. `pre-commit` formatea lo staged y `commit-msg` valida el mensaje.
+
+## Desarrollo local seguro y reproducible
+
+Los puertos de PostgreSQL, Valkey, RustFS y Mailpit se publican solo en `127.0.0.1`.
+Las apps siguen ejecutándose en el host. El API mantiene su acceso por LAN para probar Expo
+con un dispositivo físico; este cambio no agrega autenticación ni habilita uso con datos reales.
+
+Bootstrap usa `POSTGRES_USER` y `POSTGRES_DB` del contenedor al preparar `rrhh_test`. Si
+personalizas esas variables o `POSTGRES_PORT`, configura también las conexiones de la app:
+`DATABASE_URL` para desarrollo y `DATABASE_URL_TEST` apuntando explícitamente a `rrhh_test`.
+Cambiar variables de Compose no cambia roles ni contraseñas de un volumen ya inicializado.
+Bootstrap no sobrescribe archivos de entorno existentes ni elimina datos.
+
+Las cuatro imágenes de infraestructura están fijadas por digest. Para actualizarlas, consulta
+el manifiesto del repositorio oficial con `docker buildx imagetools inspect <referencia>`,
+verifica plataformas y compatibilidad con los datos existentes, reemplaza el digest y prueba
+el servicio. Actualiza también PostgreSQL en CI. No borres volúmenes para resolver incompatibilidades.
+
+Al recibir SIGTERM/SIGINT, el API deja de aceptar conexiones y espera las peticiones activas
+antes de cerrar la BD y las colas. El cierre completo tiene un máximo de 8 segundos; un error o
+plazo agotado termina con código 1, y un cierre normal con código 0.
+
+## Verificación local y CI
+
+`pnpm check` ejecuta formato, tipos, lint, tests (incluido bootstrap), arquitectura y harness.
+`pnpm test:integration` comprueba persistencia contra PostgreSQL local y exige una base `_test`.
+No necesitas esperar a CI para ejecutar estos mismos controles durante desarrollo.
+
+GitHub Actions ejecuta calidad con Node de `.nvmrc` y Node 24, integración y migraciones con
+PostgreSQL efímero, y builds Docker de web, API y migrador. No publica imágenes ni despliega.
+Consulta [el detalle de los checks](.github/workflows/README.md).

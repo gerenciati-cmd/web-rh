@@ -6,6 +6,8 @@
 import { execSync } from 'node:child_process';
 import { copyFileSync, existsSync } from 'node:fs';
 
+import { ensureTestDatabase } from './bootstrap-database.mjs';
+
 const step = (msg) => console.log(`\n▸ ${msg}`);
 const run = (cmd) => execSync(cmd, { stdio: 'inherit' });
 const has = (cmd) => {
@@ -46,13 +48,7 @@ run('docker compose -f infra/docker/docker-compose.yml up -d --wait postgres red
 run('docker compose -f infra/docker/docker-compose.yml up -d storage');
 
 step('Base de test para integración (rrhh_test)');
-const compose =
-  'docker compose -f infra/docker/docker-compose.yml exec -T postgres psql -U rrhh -d rrhh';
-const exists = execSync(`${compose} -tAc "SELECT 1 FROM pg_database WHERE datname='rrhh_test'"`)
-  .toString()
-  .trim();
-if (exists === '1') console.log('  = rrhh_test ya existe');
-else run(`${compose} -c "CREATE DATABASE rrhh_test"`);
+console.log(ensureTestDatabase() ? '  + rrhh_test creada' : '  = rrhh_test ya existe');
 
 step('Base de datos: cliente, migraciones y datos de ejemplo');
 run('pnpm db:generate');
