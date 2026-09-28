@@ -1,4 +1,4 @@
-import { err, ok, type NationalId, type Result } from '@rrhh/domain';
+import { err, ok, type Result, type TaxId } from '@rrhh/domain';
 
 import type { PrismaDatabase } from '@/infrastructure/database/prisma-database';
 import { isUniqueViolation } from '@/infrastructure/database/prisma-errors';
@@ -17,7 +17,7 @@ export class PrismaCompanyRepository implements CompanyRepository {
     return row ? CompanyMapper.toDomain(row) : null;
   }
 
-  async existsByTaxId(taxId: NationalId): Promise<boolean> {
+  async existsByTaxId(taxId: TaxId): Promise<boolean> {
     const count = await this.deps.database.client.company.count({
       where: { country: taxId.country, taxId: taxId.value },
     });

@@ -1,5 +1,5 @@
 import type { CompanyDto } from '@rrhh/contracts';
-import { NationalId, type CountryCode } from '@rrhh/domain';
+import { TaxId, type CountryCode } from '@rrhh/domain';
 
 import type { Company as CompanyRow } from '@/infrastructure/database/generated/client';
 
@@ -11,7 +11,7 @@ import { Company, type CompanyId } from '../domain/company';
  */
 export const CompanyMapper = {
   toDomain(row: CompanyRow): Company {
-    const taxId = NationalId.create(row.country as CountryCode, row.taxId);
+    const taxId = TaxId.create(row.country as CountryCode, row.taxId);
     // Si la BD tiene un dato inválido es corrupción, no un caso de negocio: fallar fuerte.
     if (!taxId.ok) throw taxId.error;
 
@@ -37,7 +37,7 @@ export const CompanyMapper = {
   toDto(
     row: Pick<CompanyRow, 'id' | 'legalName' | 'taxId' | 'country' | 'active' | 'createdAt'>,
   ): CompanyDto {
-    const taxId = NationalId.create(row.country as CountryCode, row.taxId);
+    const taxId = TaxId.create(row.country as CountryCode, row.taxId);
     return {
       id: row.id,
       legalName: row.legalName,

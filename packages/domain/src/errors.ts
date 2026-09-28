@@ -14,7 +14,7 @@ export abstract class DomainError extends Error {
   }
 }
 
-/** Un valor no cumple una invariante (RUT inválido, email mal formado, monto negativo...). */
+/** Un valor no cumple una invariante (CURP inválida, email mal formado, monto negativo...). */
 export class InvalidValueError extends DomainError {
   readonly code: string = 'INVALID_VALUE';
 }

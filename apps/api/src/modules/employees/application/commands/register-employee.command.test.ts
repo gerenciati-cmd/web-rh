@@ -33,8 +33,8 @@ describe('RegisterEmployee', () => {
     registerEmployee = new RegisterEmployee({
       employeeRepository: repository,
       employerDirectory: new StubEmployerDirectory([
-        { id: ACTIVE, country: 'CL', active: true },
-        { id: INACTIVE, country: 'CL', active: false },
+        { id: ACTIVE, country: 'MX', active: true },
+        { id: INACTIVE, country: 'MX', active: false },
       ]),
       idGenerator: new SequentialIdGenerator(),
       clock: new FixedClock(),
@@ -44,7 +44,7 @@ describe('RegisterEmployee', () => {
 
   const input: RegisterEmployeeInput = {
     companyId: ACTIVE,
-    nationalId: { country: 'CL', number: '12.345.678-5' },
+    nationalId: { country: 'MX', number: 'GOMA850101HQRRRN04' },
     firstName: 'Ana',
     lastName: 'Rojas',
     email: 'Ana@APS.cl',
@@ -78,7 +78,7 @@ describe('RegisterEmployee', () => {
 
   it('propaga conflicto de save sin publicar evento', async () => {
     vi.spyOn(repository, 'save').mockResolvedValue(
-      err(new EmployeeAlreadyExistsError('123456785')),
+      err(new EmployeeAlreadyExistsError('GOMA850101HQRRRN04')),
     );
     const result = await registerEmployee.execute(input);
     expect(!result.ok && result.error.code).toBe('EMPLOYEE_ALREADY_EXISTS');

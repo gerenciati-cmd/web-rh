@@ -3,36 +3,22 @@ import { describe, expect, it } from 'vitest';
 import { NationalId } from './national-id';
 
 describe('NationalId', () => {
-  describe('Chile (RUT)', () => {
-    it.each(['12.345.678-5', '12345678-5', '123456785', '7.654.321-6'])(
-      'acepta el RUT válido %s',
-      (raw) => {
-        expect(NationalId.create('CL', raw).ok).toBe(true);
-      },
-    );
-
-    it('acepta dígito verificador K en minúscula', () => {
-      const result = NationalId.create('CL', '10.000.013-k');
-      expect(result.ok && result.value.value).toBe('10000013K');
-    });
-
-    it.each(['12.345.678-9', 'abc', '', '1-9'])('rechaza %s', (raw) => {
-      expect(NationalId.create('CL', raw).ok).toBe(false);
-    });
-
-    it('normaliza y formatea', () => {
-      const result = NationalId.create('CL', '123456785');
-      expect(result.ok && result.value.format()).toBe('12.345.678-5');
-    });
+  it('México: acepta y normaliza una CURP válida', () => {
+    const result = NationalId.create('MX', 'goma850101hqrrrn04');
+    expect(result.ok && result.value.value).toBe('GOMA850101HQRRRN04');
   });
 
-  describe('Perú (DNI)', () => {
-    it('acepta 8 dígitos', () => {
-      expect(NationalId.isValid('PE', '12345678')).toBe(true);
-    });
+  it('México: rechaza una CURP con dígito verificador incorrecto', () => {
+    expect(NationalId.create('MX', 'GOMA850101HQRRRN05').ok).toBe(false);
+  });
 
-    it('rechaza largo distinto de 8', () => {
-      expect(NationalId.isValid('PE', '1234567')).toBe(false);
-    });
+  it('República Dominicana: acepta y formatea una cédula de 11 dígitos', () => {
+    const result = NationalId.create('DO', '00113918205');
+    expect(result.ok && result.value.format()).toBe('001-1391820-5');
+  });
+
+  it('Colombia: acepta y formatea una cédula de ciudadanía', () => {
+    const result = NationalId.create('CO', '1020304050');
+    expect(result.ok && result.value.format()).toBe('1.020.304.050');
   });
 });

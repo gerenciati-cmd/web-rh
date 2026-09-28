@@ -1,10 +1,11 @@
+import type { CountryCode } from '../country';
 import { InvalidValueError } from '../errors';
 import { err, ok, type Result } from '../result';
 
-import { NATIONAL_ID_VALIDATORS, type CountryCode } from './validators';
+import { NATIONAL_ID_VALIDATORS } from './validators';
 
 /**
- * Documento de identidad nacional (RUT, DNI, ...).
+ * Documento de identidad de una persona (CURP, cédula…). El de una empresa es `TaxId`.
  * Delega la regla específica de cada país en su validador (patrón Strategy).
  */
 export class NationalId {

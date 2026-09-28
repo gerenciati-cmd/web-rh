@@ -1,3 +1,4 @@
+export * from './country';
 export * from './date-range';
 export * from './domain-event';
 export * from './email';
@@ -7,4 +8,6 @@ export * from './errors';
 export * from './money';
 export * from './national-id/national-id';
 export * from './national-id/validators';
+export * from './tax-id/tax-id';
+export * from './tax-id/validators';
 export * from './result';

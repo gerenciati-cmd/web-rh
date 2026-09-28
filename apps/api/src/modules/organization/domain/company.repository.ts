@@ -1,4 +1,4 @@
-import type { NationalId, Result } from '@rrhh/domain';
+import type { Result, TaxId } from '@rrhh/domain';
 
 import type { Company, CompanyId } from './company';
 import type { CompanyAlreadyExistsError } from './errors';
@@ -9,7 +9,7 @@ import type { CompanyAlreadyExistsError } from './errors';
  */
 export interface CompanyRepository {
   findById(id: CompanyId): Promise<Company | null>;
-  existsByTaxId(taxId: NationalId): Promise<boolean>;
+  existsByTaxId(taxId: TaxId): Promise<boolean>;
   /** Conflictos esperados retornan err; fallas de IO inesperadas rechazan la promesa. */
   save(company: Company): Promise<Result<void, CompanyAlreadyExistsError>>;
 }

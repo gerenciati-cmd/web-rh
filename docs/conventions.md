@@ -98,7 +98,7 @@ tercera repetición real antes de abstraer.
 
 ## Tests
 
-- Nombres de test en español describiendo comportamiento: `'rechaza duplicados aunque el RUT venga con otro formato'`.
+- Nombres de test en español describiendo comportamiento: `'rechaza duplicados aunque la CURP venga en minúsculas'`.
 - Arrange-Act-Assert, un comportamiento por test, sin lógica condicional en los tests.
 - Deterministas: `FixedClock`, `SequentialIdGenerator`, nada de `Date.now()`/red/BD en unit tests.
 

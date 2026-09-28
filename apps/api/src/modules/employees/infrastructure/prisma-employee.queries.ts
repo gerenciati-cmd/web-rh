@@ -27,7 +27,9 @@ export class PrismaEmployeeQueries implements EmployeeQueries {
               { firstName: { contains: search, mode: 'insensitive' } },
               { lastName: { contains: search, mode: 'insensitive' } },
               { email: { contains: search, mode: 'insensitive' } },
-              { nationalIdNumber: { contains: search.replace(/[.\-\s]/g, '') } },
+              // El documento se guarda normalizado (sin separadores, en mayúsculas): una CURP
+              // escrita en minúsculas debe coincidir.
+              { nationalIdNumber: { contains: search.replace(/[.\-\s]/g, '').toUpperCase() } },
             ],
           }
         : {}),

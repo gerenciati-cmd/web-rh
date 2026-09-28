@@ -130,7 +130,7 @@ plan: payroll-liquidacion-mensual/004 # when planned/resolved: the plan that han
 ## Language
 
 Plan and README bodies are written in English (agent-read, token economy). File/directory slugs
-and Spanish domain terms (colaborador, liquidación, finiquito, marcación, feriado, AFP, Isapre)
+and Spanish domain terms (colaborador, liquidación, finiquito, marcación, feriado, IMSS, INFONAVIT, PTU)
 stay in Spanish — translating them breaks traceability with code, contracts and UI. Findings may
 be written in Spanish (they are often read by the business).
 

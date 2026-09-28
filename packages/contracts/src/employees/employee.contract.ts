@@ -10,7 +10,7 @@ export const EmployeeStatusSchema = z.enum(EMPLOYEE_STATUSES);
 export const EmployeeListItemSchema = z.object({
   id: z.uuid(),
   fullName: z.string(),
-  nationalId: z.string().describe('Formateado para mostrar, p. ej. 12.345.678-5'),
+  nationalId: z.string().describe('Formateado para mostrar, p. ej. GOMA850101HQRRRN04'),
   email: z.email(),
   positionTitle: z.string().nullable(),
   hireDate: z.iso.date(),

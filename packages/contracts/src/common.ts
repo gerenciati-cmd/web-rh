@@ -1,4 +1,4 @@
-import { SUPPORTED_COUNTRIES, type CountryCode } from '@rrhh/domain';
+import { SUPPORTED_COUNTRIES } from '@rrhh/domain';
 import { z } from 'zod';
 
 /** Forma única de error en toda la API. `code` es estable (sirve para i18n en clientes). */
@@ -33,4 +33,4 @@ export interface Page<T> {
 export const CreatedSchema = z.object({ id: z.uuid() });
 export type Created = z.infer<typeof CreatedSchema>;
 
-export const CountrySchema = z.enum(SUPPORTED_COUNTRIES as [CountryCode, ...CountryCode[]]);
+export const CountrySchema = z.enum(SUPPORTED_COUNTRIES);

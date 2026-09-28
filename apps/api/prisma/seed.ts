@@ -13,9 +13,11 @@ const logger = createLogger(env);
 const container = buildContainer(env, logger);
 const { createCompany, registerEmployee, listCompanies } = container.cradle;
 
+// Identificadores sintéticos válidos (uno por país soportado, ADR 0009).
 const companies = [
-  { legalName: 'APS Holding SpA', taxId: '76.086.428-5', country: 'CL' as const },
-  { legalName: 'APS Servicios Ltda.', taxId: '77.777.777-7', country: 'CL' as const },
+  { legalName: 'APS Holding S.A. de C.V.', taxId: 'EKU9003173C9', country: 'MX' as const },
+  { legalName: 'APS Servicios RD S.R.L.', taxId: '131246796', country: 'DO' as const },
+  { legalName: 'APS Servicios Colombia S.A.S.', taxId: '900123456-8', country: 'CO' as const },
 ];
 
 for (const company of companies) {
@@ -25,22 +27,22 @@ for (const company of companies) {
 }
 
 const { items } = await listCompanies.execute({ page: 1, pageSize: 10 });
-const holding = items.find((company) => company.legalName === 'APS Holding SpA');
+const holding = items.find((company) => company.legalName === 'APS Holding S.A. de C.V.');
 
 if (holding) {
   const employees = [
     {
-      nationalId: '12.345.678-5',
+      nationalId: 'GOMA850101HQRRRN04',
       firstName: 'Ana',
       lastName: 'Rojas',
-      email: 'ana.rojas@aps.cl',
+      email: 'ana.rojas@example.com',
       positionTitle: 'Analista de RRHH',
     },
     {
-      nationalId: '7.654.321-6',
+      nationalId: 'PEXL900215MDFRPR07',
       firstName: 'Pedro',
       lastName: 'Soto',
-      email: 'pedro.soto@aps.cl',
+      email: 'pedro.soto@example.com',
       positionTitle: 'Jefe de Operaciones',
     },
   ];
@@ -48,7 +50,7 @@ if (holding) {
     const result = await registerEmployee.execute({
       ...employee,
       companyId: holding.id,
-      nationalId: { country: 'CL', number: employee.nationalId },
+      nationalId: { country: 'MX', number: employee.nationalId },
       hireDate: '2026-01-05',
     });
     if (result.ok) logger.info({ employee: employee.email }, 'colaborador registrado');
