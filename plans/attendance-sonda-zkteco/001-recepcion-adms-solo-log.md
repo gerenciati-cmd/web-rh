@@ -679,3 +679,53 @@ Checklist now 13/13, with 0 open findings above Info. Plan to `verify`. I1 goes 
 verifier: confirm on the real device that the `options` line logs as an `entry`.
 
 ## Verification
+
+Verified 2026-09-28, inline in the main session with the user driving the device. Code at
+`e6124c2`.
+
+**Suites.** `pnpm check` green at `e6124c2`: api `Tests 95 passed (95)`, `✔ no dependency
+violations found (102 modules, 287 dependencies cruised)`, plans:lint, harness:check,
+test:harness 156/156, bootstrap and quality. `test:integration`: N/A (no infrastructure/schema).
+
+**Running app.** `pnpm dev:api` on port 3001 (`API escuchando en http://localhost:3001/api/v1`).
+The user set `ZKTECO_ALLOWED_SERIALS` (the real device SN only) and `LOG_LEVEL=debug` in
+`apps/api/.env`. The synthetic `curl` calls used the device SN with synthetic data, because
+`TESTSN001` was not in the allowlist.
+
+| Criterion                        | Request                                                                         | Observed                                                                                                             |
+| -------------------------------- | ------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| Handshake                        | `GET /iclock/cdata?SN=…&options=all`                                            | 200 `text/plain; charset=utf-8`, first line `GET OPTION FROM: NYU7253300918`, log `zkteco: contacto del dispositivo` |
+| ATTLOG                           | POST 2 lines, observed shape                                                    | `OK: 2`, `total: 2`, debug `attendance` pin `1` and `2`                                                              |
+| BIODATA                          | POST synthetic `Tmp` (96 chars)                                                 | `OK: 1`, `"Tmp": "[redactado:96]"`, `Pin/No/Type/Valid` in clear                                                     |
+| USER + OPLOG                     | POST 2 lines, `table=OPERLOG`                                                   | `OK: 2`, `Name/Passwd/Card` `[redactado:…]`, `operation` `code: "7"`                                                 |
+| options, comma in value          | POST synthetic line                                                             | `OK: 1`, `DeviceName`/`FWVersion` in clear, `Vendor` one key (redacted), no spurious key                             |
+| BIOPHOTO                         | POST synthetic `Content` (200 chars)                                            | `OK: 1`, `Content` `[redactado:200]`, `FileName` redacted, `PIN/Type/Size` in clear                                  |
+| Unauthorized SN                  | `TESTSN001`, `OTROSN999`                                                        | 403 `ERROR: dispositivo no autorizado`, WARN `zkteco: dispositivo no autorizado`                                     |
+| Missing SN                       | `GET /iclock/cdata`                                                             | 400 `ERROR: SN requerido`                                                                                            |
+| getrequest / devicecmd / unknown | `getrequest`, `POST devicecmd`, `GET /iclock/registry`                          | `OK` each; registry logged `kind: "unknown"`                                                                         |
+| L2: JSON Content-Type            | ATTLOG body with `application/json`                                             | `OK: 2` (parsed as text)                                                                                             |
+| Existing routes                  | `/health/live`, `/api/v1/nada`                                                  | `{"status":"ok"}` 200; 404 JSON                                                                                      |
+| No leak                          | grep of the whole log for the synthetic template, photo, name, password and MAC | **0 matches**                                                                                                        |
+
+**Real device** (SenseFace 2A `NYU7253300918`, `ZAM70-NF24HA-Ver3.3.12`, driven by the user):
+
+- It reconnected by itself once the API was up: handshake 200, `getrequest` polls about every
+  10 s (debug level). After a user power-cycle, a new handshake and 3 `OPLOG` lines followed,
+  logged as `operation` (codes 4, 3, 0).
+- **I1 confirmed.** The real `table=options` line logged as `kind: "entry"`, `prefix: "options"`,
+  with 47 keys, all identifier-shaped. `DeviceName`, `FWVersion` and `PushVersion` are in clear.
+  Everything else is redacted, including `MAC`, `IPAddress` and `OEMVendor`. Useful counters
+  (`UserCount`, `FPCount`, `FaceCount`) are also redacted. That is fail-closed by design; widening
+  the allowlist is a future decision.
+- Fingerprint marcación: `ATTLOG` `pin: "2"`, `deviceTime: "2026-09-28 12:17:29"`,
+  `verifyMode: "1"`, answered `OK: 1`.
+- Face marcaciones (2): `ATTLOG` `verifyMode: "15"` at `12:21:34` and `12:24:52`.
+- Device time is UTC−5 (Cancún), logged raw.
+
+**NOT VERIFIED:** a real enrolment (fingerprint/face) sent through the API. No new user was
+enrolled during this session. `BIODATA`/`BIOPHOTO`/`USERPIC` redaction is verified against the
+running app with synthetic lines that have the exact shapes captured from this device earlier
+(Context). The earlier real enrolment went through the throwaway probe, not the API.
+
+**Result: PASS**, with the one NOT VERIFIED item above. Status stays `verify` until the user
+sets `done`.
