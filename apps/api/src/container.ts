@@ -16,6 +16,7 @@ import { InMemoryEventBus } from './infrastructure/events/in-memory-event-bus';
 import { BullMqJobQueue } from './infrastructure/queue/bullmq-job-queue';
 import { SystemClock } from './infrastructure/system/system-clock';
 import { UuidV7Generator } from './infrastructure/system/uuid-v7-generator';
+import { attendanceModule, type AttendanceCradle } from './modules/attendance';
 import { employeesModule, type EmployeesCradle } from './modules/employees';
 import { organizationModule, type OrganizationCradle } from './modules/organization';
 import type { JobQueue } from './shared/application/jobs';
@@ -33,7 +34,7 @@ import type {
  */
 
 /** Módulos de negocio activos. Agregar un módulo = agregarlo aquí y en `Cradle`. */
-export const modules = [organizationModule, employeesModule] as const;
+export const modules = [organizationModule, employeesModule, attendanceModule] as const;
 
 export interface SharedCradle {
   env: Env;
@@ -49,7 +50,7 @@ export interface SharedCradle {
   healthChecks: HealthCheck[];
 }
 
-export type Cradle = SharedCradle & OrganizationCradle & EmployeesCradle;
+export type Cradle = SharedCradle & OrganizationCradle & EmployeesCradle & AttendanceCradle;
 export type AppContainer = AwilixContainer<Cradle>;
 
 export function buildContainer(env: Env, logger: PinoLogger): AppContainer {

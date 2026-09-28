@@ -110,6 +110,8 @@ Verificadas automáticamente por `pnpm arch:check` (dependency-cruiser). Si una 
    Los tipos de Prisma nunca salen de ahí (usar mappers).
 5. **Contratos primero**: todo endpoint se define en `packages/contracts` con Zod y se enlaza en
    el API con `bindRoute(...)`. El cliente web/mobile se deriva solo. No duplicar tipos a mano.
+   Única excepción: equipos físicos con protocolo propio (ZKTeco ADMS en `/iclock/*`) usan
+   `AppModule.deviceRouter`, fuera de `/api/v1` y de los contratos (ADR 0008).
 6. **Web y mobile no tienen lógica de negocio** ni acceso a BD. Todo pasa por el API.
 7. **DI**: cada clase declara sus dependencias como interfaz `deps` (solo lo que usa) y se registra
    en el `*.module.ts` de su módulo. Solo `container.ts` y `main/` hacen `new` de adaptadores.

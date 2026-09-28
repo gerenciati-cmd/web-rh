@@ -15,6 +15,11 @@ export interface AppModule<TCradle extends object> {
   readonly registrations: { [K in keyof TCradle]: Resolver<TCradle[K]> };
   /** Router HTTP del módulo, montado bajo `/api/v1`. */
   readonly router?: (cradle: TCradle) => Router;
+  /**
+   * Router para equipos físicos que hablan su propio protocolo (p. ej. ZKTeco ADMS).
+   * Se monta en la raíz, fuera de `/api/v1` y de los contratos (ADR 0008).
+   */
+  readonly deviceRouter?: (cradle: TCradle) => Router;
   /** Suscripciones a eventos de otros módulos (comunicación desacoplada). */
   readonly subscribe?: (cradle: TCradle & { eventBus: EventBus }) => void;
   /** Handlers de jobs asíncronos que ejecuta el worker. */

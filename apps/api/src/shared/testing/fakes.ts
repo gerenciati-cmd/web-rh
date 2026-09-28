@@ -1,6 +1,6 @@
 import type { DomainEvent } from '@rrhh/domain';
 
-import type { Clock, EventBus, EventHandler, IdGenerator } from '../application/ports';
+import type { Clock, EventBus, EventHandler, IdGenerator, Logger } from '../application/ports';
 
 /**
  * Dobles de prueba deterministas para los puertos transversales.
@@ -41,5 +41,31 @@ export class RecordingEventBus implements EventBus {
 
   names(): string[] {
     return this.published.map((event) => event.name);
+  }
+}
+
+export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
+
+export class RecordingLogger implements Logger {
+  readonly entries: { level: LogLevel; obj: object; msg?: string }[] = [];
+
+  debug(obj: object, msg?: string): void {
+    this.record('debug', obj, msg);
+  }
+
+  info(obj: object, msg?: string): void {
+    this.record('info', obj, msg);
+  }
+
+  warn(obj: object, msg?: string): void {
+    this.record('warn', obj, msg);
+  }
+
+  error(obj: object, msg?: string): void {
+    this.record('error', obj, msg);
+  }
+
+  private record(level: LogLevel, obj: object, msg?: string): void {
+    this.entries.push(msg === undefined ? { level, obj } : { level, obj, msg });
   }
 }

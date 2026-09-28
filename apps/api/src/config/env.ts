@@ -21,6 +21,16 @@ const EnvSchema = z.object({
     ),
   DATABASE_URL: z.url(),
   REDIS_URL: z.url().default('redis://localhost:6379'),
+  // Números de serie de los equipos ZKTeco autorizados a empujar datos por ADMS. Vacío = ninguno.
+  ZKTECO_ALLOWED_SERIALS: z
+    .string()
+    .default('')
+    .transform((value) =>
+      value
+        .split(',')
+        .map((serial) => serial.trim())
+        .filter(Boolean),
+    ),
 });
 
 export type Env = z.output<typeof EnvSchema>;
