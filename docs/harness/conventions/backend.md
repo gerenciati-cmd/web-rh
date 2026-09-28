@@ -22,7 +22,9 @@ Reference implementation: `apps/api/src/modules/employees/`. Imitate it by name.
 - ⚙ No test doubles (`in-memory/`, `testing/`) imported by production code. No cycles.
 - CQRS-lite: commands → aggregate + `XxxRepository` → `Result`; queries → `XxxQueries` → DTO.
 - Contracts first: every endpoint in `packages/contracts` via `defineRoute`, bound with
-  `bindRoute`; clients derive from it. No hand-written request/response types.
+  `bindRoute`; clients derive from it. No hand-written request/response types. Only exception:
+  physical devices with their own protocol (ZKTeco ADMS `/iclock/*`) use `AppModule.deviceRouter`,
+  outside `/api/v1` and the contracts (ADR 0008) — not a violation.
 - Expected errors: `Result` + domain error subclass (`NotFoundError`, `ConflictError`,
   `InvalidValueError`, `BusinessRuleViolationError`) with a stable SCREAMING_SNAKE `code`.
 - DI: each class declares `deps` with only what it uses; registered in its `*.module.ts`.

@@ -1,5 +1,5 @@
 ---
-status: review
+status: verify
 module: attendance
 min_implementer: mid
 depends_on: []
@@ -280,7 +280,7 @@ None
    - Observable result: `pnpm plans:lint` and `pnpm check` pass.
 
 10. **Review repair (added 2026-09-28, deviations 6–7, approved by the user)**
-    - Files: `apps/api/src/config/env.test.ts` (create), `apps/api/src/modules/attendance/application/commands/record-device-contact.command.test.ts` (create), `apps/api/src/modules/attendance/application/commands/record-device-push.command.test.ts` (create), `apps/api/src/modules/attendance/domain/device-record.test.ts` (create), `apps/api/src/modules/attendance/http/zkteco-adms.parser.test.ts` (create), `apps/api/tests/zkteco-adms.test.ts` (create), `AGENTS.md` (modify), `docs/conventions.md` (modify), `docs/architecture.md` (modify)
+    - Files: `apps/api/src/config/env.test.ts` (create), `apps/api/src/modules/attendance/application/commands/record-device-contact.command.test.ts` (create), `apps/api/src/modules/attendance/application/commands/record-device-push.command.test.ts` (create), `apps/api/src/modules/attendance/domain/device-record.test.ts` (create), `apps/api/src/modules/attendance/http/zkteco-adms.parser.test.ts` (create), `apps/api/tests/zkteco-adms.test.ts` (create), `AGENTS.md` (modify), `docs/conventions.md` (modify), `docs/architecture.md` (modify), `docs/harness/conventions/backend.md` (modify)
     - Do:
       - M1: the test files above, written in the tester phase, are declared here.
       - M2: point `AGENTS.md` rule 5, `docs/conventions.md` (DRY → Contratos) and
@@ -382,8 +382,13 @@ for the repaired code.
    `Content-Type` is no longer lost. The L3 getter keeps the `RecordDevicePush` input type
    unchanged (`readonly records`), so the existing tests stay valid.
 
-`pnpm --filter @rrhh/api` typecheck, lint and test (85) are green after the repair. Full
-`pnpm check` is below, in the closing run.
+8. **Second scope extension, L4 (approved by the user).** `docs/harness/conventions/backend.md`
+   was added to step 10 so it points to ADR 0008 (review round 2, finding L4). The change is
+   doc-only.
+
+`pnpm --filter @rrhh/api` typecheck, lint and test (85) were green after the L1–L3 repair, and
+`pnpm check` was green in the tester's closing run (95 tests). The closing `pnpm check` for L4 is
+recorded in the commit of this edit.
 
 ## Test coverage
 
@@ -467,6 +472,8 @@ Notas:
   `companyRepository`/`employeeRepository`.
 
 ## Review findings
+
+**Round 1 (history).** Superseded for the repaired code by round 2, below.
 
 Reviewed 2026-09-28 (reviewer subagent). Diff `main...HEAD` (commits `6745fee`, `8912401`), working
 tree clean.
@@ -564,5 +571,111 @@ tree clean.
 
 Status stays `review`. The checklist has 2 failed items (M1, M2). M1 is plan-only. M2 needs a
 scope decision. L1–L3 are for the main session and the user to accept or schedule.
+
+### Round 2 (2026-09-28, reviewer subagent)
+
+Diff `main...HEAD` (commits `6745fee`, `8912401`, `5f13aa5`, `125477e`), with focus on the repair
+`8912401..HEAD`. Working tree clean.
+
+#### Round 1 findings: resolution
+
+- **M1: resolved.** Step 10 declares the 6 test files. `pnpm plans:scope`: 27 declared, 29
+  changed, all in scope. Hot files `container.ts` and `modules.json` are unchanged since round 1
+  and still append-only.
+- **M2: resolved for the 3 files named in round 1.** `AGENTS.md:113-114`,
+  `docs/conventions.md:54-56` and `docs/architecture.md:12,17,25` now point to ADR 0008. One file
+  was missed, by round 1 as well. See L4.
+- **L1: resolved.** `isDeviceIdentifier` is at `device-record.ts:53-58`. The parser applies it to
+  the prefix (`zkteco-adms.parser.ts:51`) and to every key (`:80`, via `splitKeyValue`). That
+  includes `options` lines (`:28-36`). A rejected line becomes `unparsed` and keeps only its
+  length. Traced cases:
+  - A line with no prefix, such as `PIN=1\tName=Juan Pérez`: its "prefix" contains `=`/tab, so
+    the line is `unparsed`.
+  - A binary blob with no space: the line is `unparsed`.
+  - The `byKind` info summary now only sees identifier prefixes.
+- **L2: resolved.** `app.ts:35-39`: device routers are mounted before `express.json`. So every
+  `/iclock` body goes through `express.text({ type: () => true })`. `express.text` is scoped to
+  `/iclock`, so `/api/v1` and `/health` bodies are unaffected (`tests/http.test.ts` is green).
+  The regression test sends `Content-Type: application/json`. Under the old order it would have
+  failed with a JSON parse error, so it is a real guard.
+- **L3: resolved.** `record-device-push.command.ts:39-44`: `records` is only read after the
+  allowlist check. The router passes a getter (`zkteco-adms.router.ts:66`), which is read once
+  (`:44`), so the body is not parsed twice. The application test uses a getter that throws, so
+  it is a real guard. The body itself is still read (≤ 5 MB) before authorization. That is
+  inherent to a body parser and was not part of L3.
+
+#### Pass 1: checklist (12/13)
+
+- [x] `pnpm plans:scope`: green (see M1).
+- [x] `pnpm check`: green. Format, typecheck, lint, api **95 tests**, arch:check with 0
+      violations, plans:lint, harness:check, test:harness 156/156, bootstrap 6/6, quality 9/9.
+- [x] `pnpm test:integration`: N/A (no `infrastructure/` or Prisma).
+- [x] Business rules: `isDeviceIdentifier` lives in `domain/`. The parser only applies it.
+- [x] CQRS-lite: unchanged since round 1.
+- [x] Contracts: N/A (ADR 0008).
+- [x] Expected errors: unchanged (`DEVICE_NOT_ALLOWED`, 403 text, no internals).
+- [x] Money, dates, ids: N/A.
+- [x] Schema and migration: N/A.
+- [x] DI: `tests/container.test.ts` is green.
+- [x] No secrets or real personal data. The new tests use synthetic values.
+- [x] `## Deviations` is honest. Spot-checked deviation 7: the L3 input type is still
+      `readonly records: readonly DevicePushRecord[]` (`record-device-push.command.ts:16`), and
+      the pre-repair tests pass unchanged.
+- [ ] **FAIL**: stale docs. See L4.
+
+#### Pass 2: findings by severity
+
+**High**: none. **Medium**: none.
+
+**Low**
+
+- **L4: `docs/harness/conventions/backend.md:24-25` still states the rule without the exception.**
+  It reads "Contracts first: every endpoint in `packages/contracts` via `defineRoute`, bound with
+  `bindRoute`". It has no pointer to ADR 0008. This is the same staleness as M2. Round 1 missed
+  it. Failure scenario: this is the convention file that the implementer and reviewer roles load
+  as governing. A later reviewer applying it flags `/iclock/*` as a violation, or an implementer
+  moves the routes into `bindRoute`. Fix: add a one-line pointer, as in `AGENTS.md`. The file is
+  not in the plan's list, so fixing it needs a deviation plus a `Files:` entry (the main session
+  or the user decides). The alternative is a finding in `plans/hallazgos/`, if the user prefers
+  to accept it and move on.
+
+**Info** (no change required)
+
+- **I1: stricter `options` parsing (uncertain).** `zkteco-adms.parser.ts:31-33`. Before the
+  repair, a bad pair was dropped. Now any key that fails `isDeviceIdentifier` (for example, one
+  longer than 32 characters) turns the **whole** `table=options` line into `unparsed`. This
+  follows deviation 7 and fails closed. The full key list of the real device was not captured,
+  so the verifier should confirm that the SenseFace 2A options line still logs as an
+  `entry`/`options` record.
+- **I2: positional values are still unbounded.** `zkteco-adms.parser.ts:42-44` (ATTLOG `pin`,
+  `deviceTime`, `status`, `verifyMode`) and `:60` (OPLOG `code`, `adminPin`, `deviceTime`,
+  `objects`) are logged verbatim with no length cap. The plan sanctions this (steps 3 and 5), and
+  L1 covered only keys and prefixes. It becomes relevant if a future firmware puts blobs in
+  OPLOG objects.
+- **I3: body-parser errors on `/iclock` still get JSON replies.** Examples: 413 over 5 MB, and
+  415 for an unsupported charset. They go to the JSON `errorHandler`, not a text reply. This is
+  the residual of round 1's L2 secondary note. The risk is low for the observed device
+  (`text/plain`, bodies of about 33 KB).
+- Round 1's Info note still holds: no HTTP test exercises `env` → `allowedDeviceSerials` →
+  command end to end. That is left to the verifier.
+
+Status stays `review`. Checklist 12/13: the failed item is L4, a one-line doc pointer outside
+the file list. The main session decides whether to extend scope and repair, or record a
+hallazgo and advance to `verify`. Every round 1 finding (M1, M2, L1–L3) is resolved.
+
+### L4 repair (2026-09-28, main session, inline review)
+
+On the user's decision ("arreglarlo ahora"), `docs/harness/conventions/backend.md` was added to
+step 10 (deviation 8). The "Contracts first" bullet now names the `deviceRouter` exception and
+points to ADR 0008. The change is doc-only, so no product code or tests changed and no test
+round is needed. Reviewed inline:
+
+- The text matches ADR 0008 (physical devices, `/iclock/*`, outside `/api/v1` and contracts).
+- The file is a hand-written harness source, not a generated adapter (`scripts/harness/adapters.mjs`
+  references it by path). `harness:check` stays green.
+- `pnpm plans:scope` is green with the file declared.
+
+Checklist now 13/13, with 0 open findings above Info. Plan to `verify`. I1 goes to the
+verifier: confirm on the real device that the `options` line logs as an `entry`.
 
 ## Verification
