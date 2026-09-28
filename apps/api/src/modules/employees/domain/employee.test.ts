@@ -1,7 +1,7 @@
 import { Email, NationalId } from '@rrhh/domain';
 import { describe, expect, it } from 'vitest';
 
-import { Employee, EmployeeHired, EmployeeTerminated, type EmployeeId } from './employee';
+import { Employee, EMPLOYEE_HIRED, EMPLOYEE_TERMINATED, type EmployeeId } from './employee';
 
 const now = new Date('2026-01-15T12:00:00Z');
 
@@ -24,10 +24,10 @@ function hire(overrides: Partial<Parameters<typeof Employee.hire>[0]> = {}) {
 }
 
 describe('Employee', () => {
-  it('se contrata en estado ACTIVE y registra EmployeeHired', () => {
+  it('se contrata en estado ACTIVE y registra EMPLOYEE_HIRED', () => {
     const result = hire();
     expect(result.ok && result.value.snapshot.status).toBe('ACTIVE');
-    expect(result.ok && result.value.pullEvents().map((e) => e.name)).toEqual([EmployeeHired]);
+    expect(result.ok && result.value.pullEvents().map((e) => e.name)).toEqual([EMPLOYEE_HIRED]);
   });
 
   it('no permite contratar con más de 90 días de anticipación', () => {
@@ -48,7 +48,7 @@ describe('Employee', () => {
 
       expect(employee.terminate(new Date('2026-02-01'), now).ok).toBe(true);
       expect(employee.snapshot.status).toBe('TERMINATED');
-      expect(employee.pullEvents().map((e) => e.name)).toEqual([EmployeeTerminated]);
+      expect(employee.pullEvents().map((e) => e.name)).toEqual([EMPLOYEE_TERMINATED]);
     });
 
     it('no desvincula antes de la fecha de contratación', () => {

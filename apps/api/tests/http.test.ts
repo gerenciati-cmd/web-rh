@@ -1,9 +1,12 @@
+import { err } from '@rrhh/domain';
 import request from 'supertest';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { API_PREFIX } from '@/http/app';
+import { API_PREFIX, createApp } from '@/http/app';
+import { EmployeeAlreadyExistsError } from '@/modules/employees/domain/errors';
+import { CompanyAlreadyExistsError } from '@/modules/organization/domain/errors';
 
-import { buildTestApp } from './test-app';
+import { buildTestApp, buildTestContainer } from './test-app';
 
 /**
  * Tests de integración del adaptador HTTP: contrato → validación → caso de uso →
@@ -67,5 +70,41 @@ describe('API HTTP', () => {
 
     const list = await request(app).get(`${API_PREFIX}/companies/${body.id}/employees`).expect(200);
     expect(list.body.items[0]).toMatchObject({ fullName: 'Ana Rojas', nationalId: '12.345.678-5' });
+  });
+
+  it('mapea el conflicto durante save de empresa a 409', async () => {
+    const container = buildTestContainer();
+    vi.spyOn(container.cradle.companyRepository, 'save').mockResolvedValue(
+      err(new CompanyAlreadyExistsError('760864285')),
+    );
+    const response = await request(createApp(container))
+      .post(`${API_PREFIX}/companies`)
+      .send(validCompany)
+      .expect(409);
+    expect(response.body.code).toBe('COMPANY_ALREADY_EXISTS');
+    await container.dispose();
+  });
+  it('mapea el conflicto durante save de colaborador a 409', async () => {
+    const container = buildTestContainer();
+    const localApp = createApp(container);
+    const company = await request(localApp)
+      .post(`${API_PREFIX}/companies`)
+      .send(validCompany)
+      .expect(201);
+    vi.spyOn(container.cradle.employeeRepository, 'save').mockResolvedValue(
+      err(new EmployeeAlreadyExistsError('123456785')),
+    );
+    const response = await request(localApp)
+      .post(`${API_PREFIX}/companies/${company.body.id}/employees`)
+      .send({
+        nationalId: { country: 'CL', number: '12.345.678-5' },
+        firstName: 'Fixture',
+        lastName: 'Persona',
+        email: 'fixture@example.invalid',
+        hireDate: '2026-01-10',
+      })
+      .expect(409);
+    expect(response.body.code).toBe('EMPLOYEE_ALREADY_EXISTS');
+    await container.dispose();
   });
 });

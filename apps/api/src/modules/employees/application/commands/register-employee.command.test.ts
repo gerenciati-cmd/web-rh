@@ -1,8 +1,10 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { err } from '@rrhh/domain';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { FixedClock, RecordingEventBus, SequentialIdGenerator } from '@/shared/testing/fakes';
 
-import { EmployeeHired } from '../../domain/employee';
+import { EMPLOYEE_HIRED } from '../../domain/employee';
+import { EmployeeAlreadyExistsError } from '../../domain/errors';
 import { InMemoryEmployeeRepository } from '../../infrastructure/in-memory/in-memory-employee.repository';
 import type { Employer, EmployerDirectory } from '../ports/employer-directory';
 
@@ -49,13 +51,13 @@ describe('RegisterEmployee', () => {
     hireDate: '2026-01-10',
   };
 
-  it('registra al colaborador y publica EmployeeHired', async () => {
+  it('registra al colaborador y publica EMPLOYEE_HIRED', async () => {
     const result = await registerEmployee.execute(input);
 
     expect(result.ok).toBe(true);
     expect(repository.employees.size).toBe(1);
     expect([...repository.employees.values()][0]?.snapshot.email.value).toBe('ana@aps.cl');
-    expect(eventBus.names()).toEqual([EmployeeHired]);
+    expect(eventBus.names()).toEqual([EMPLOYEE_HIRED]);
   });
 
   it.each([
@@ -72,5 +74,31 @@ describe('RegisterEmployee', () => {
     await registerEmployee.execute(input);
     const result = await registerEmployee.execute(input);
     expect(!result.ok && result.error.code).toBe('EMPLOYEE_ALREADY_EXISTS');
+  });
+
+  it('propaga conflicto de save sin publicar evento', async () => {
+    vi.spyOn(repository, 'save').mockResolvedValue(
+      err(new EmployeeAlreadyExistsError('123456785')),
+    );
+    const result = await registerEmployee.execute(input);
+    expect(!result.ok && result.error.code).toBe('EMPLOYEE_ALREADY_EXISTS');
+    expect(eventBus.names()).toEqual([]);
+  });
+  it('no convierte fallos inesperados en conflicto', async () => {
+    const failure = new Error('persistencia no disponible');
+    vi.spyOn(repository, 'save').mockRejectedValue(failure);
+    await expect(registerEmployee.execute(input)).rejects.toBe(failure);
+    expect(eventBus.names()).toEqual([]);
+  });
+  it('dos comandos concurrentes persisten uno y publican un evento', async () => {
+    const results = await Promise.all([
+      registerEmployee.execute(input),
+      registerEmployee.execute(input),
+    ]);
+    expect(results.filter((result) => result.ok)).toHaveLength(1);
+    expect(
+      results.filter((result) => !result.ok && result.error.code === 'EMPLOYEE_ALREADY_EXISTS'),
+    ).toHaveLength(1);
+    expect(eventBus.names()).toHaveLength(1);
   });
 });
