@@ -1,5 +1,5 @@
 ---
-status: review
+status: verify
 module: platform
 min_implementer: mid
 depends_on: []
@@ -452,6 +452,8 @@ Runs on 2026-09-28 (M2 repair):
 
 ## Review findings
 
+### Round 1 (superseded by round 2 below; kept as history)
+
 Reviewed 2026-09-28 (reviewer subagent), diff `main...HEAD` (9188161, 00260b2), working tree clean.
 
 **Checklist: 12/13 — FAIL** (item 13, stale docs).
@@ -526,4 +528,98 @@ None.
 Status stays `review`. M1 goes back to the implementer (after the main session adds `README.md` to
 step 8), and M2 goes to the tester.
 
+### Round 2 (2026-09-28, reviewer subagent)
+
+Scope: only the repair diffs, 58b2cdc (M1, docs) and 3003f90 (M2, test fixtures). The working
+tree was clean. No product code changed in either commit.
+
+**Checklist: 13/13, PASS.**
+
+- [x] `pnpm plans:scope`: 45 declared, 47 changed, all in scope. `README.md` is now in step 8.
+- [x] `pnpm check` is green: domain 49, contracts 15, api 102, web 2, mobile 5 and api-client 3
+      tests; arch `no dependency violations found (105 modules, 297 dependencies cruised)`;
+      plans:lint, harness:check and the hook, bootstrap and quality tests pass.
+- [x] `pnpm test:integration` not re-run: neither repair commit touches `infrastructure/` or the
+      schema. The round 1 result still applies.
+- [x] Items 4 to 11 (layers, CQRS, contracts, errors, Money/dates, schema, DI, secrets) do not
+      apply to a docs-and-fixtures diff. Nothing regressed.
+- [x] `## Deviations` is honest. Spot check: repair round M2 says both DVs were recomputed with
+      the `curpCheckDigit` formula. I recomputed them by hand with the same alphabet and weights:
+      `GOMA850230HQRRRN0` sums to 2258, so the DV is 2. `GOMA850101HXXRRN0` sums to 2311, so the
+      DV is 9. Both match.
+- [x] Existing docs are updated (this was M1):
+  - `docs/conventions.md:20-23` names `SUPPORTED_COUNTRIES`, `TAX_ID_VALIDATORS` and
+    `NATIONAL_ID_VALIDATORS`. That matches `packages/domain/src/country.ts:1-5`.
+  - `docs/conventions.md:59-60` says `CreateCompanySchema` uses `TaxId.isValid`
+    (`company.contract.ts:26`) and `RegisterEmployeeSchema` uses `NationalId.isValid`
+    (`employee.contract.ts:31`). Both are true.
+  - `README.md:13` lists `CountryCode, TaxId/NationalId`.
+  - `git grep` outside `plans/` finds no leftover `NationalId/RUT`, `GOMA850230HQRRRN01` or
+    `HXXRRN04`.
+
+**M1: resolved.** All three stale locations from round 1 are fixed, and the new text is accurate.
+
+**M2: resolved.** Each reject test now fails for only one reason:
+
+- `GOMA850230HQRRRN02` has a valid format, a valid state (`QR`) and the correct DV. Only the date
+  rule rejects it (30 February). The same fixture is used at
+  `packages/domain/src/national-id/national-id.test.ts:37`, `apps/api/tests/http.test.ts:165` and
+  `packages/contracts/src/employees/employee.contract.test.ts:34`.
+- `GOMA850101HXXRRN09` has a valid format, a real date and the correct DV. Only the state check
+  rejects it (`XX` is not in `CURP_STATES`), at `national-id.test.ts:43`.
+- So if a refactor deleted `isValidCurpDate` or the `CURP_STATES` check, the matching test would
+  now go red.
+
+**Bug hunt on the repair diffs: no findings.** The comments added to the fixtures are accurate.
+The contract and HTTP tests still check rejection at the same field.
+
+L1 and L2 from round 1 stay informational and unchanged.
+
+### High / Medium / Low (round 2)
+
+None.
+
+All passed. Status goes to `verify`.
+
 ## Verification
+
+Verified 2026-09-28, inline in the main session, code at `3003f90`.
+
+**Suites.** `pnpm check` is green:
+
+- tests: api `Tests 102 passed (102)`, domain 49, contracts 15, web 2, mobile 5, api-client 3;
+- `✔ no dependency violations found (105 modules, 297 dependencies cruised)`;
+- plans:lint, harness:check and the hook, bootstrap and quality tests pass.
+
+`pnpm test:integration`: `Test Files 2 passed (2)`, `Tests 16 passed (16)`.
+
+**Migrations and seed.** The dev DB was fresh (see deviation 5).
+`pnpm --filter @rrhh/api db:deploy` gave `Applying migration 20260926030736_init … All migrations
+have been successfully applied`. There is no new migration, as the plan predicted.
+`pnpm db:seed` logged `empresa creada` ×3 (MX, DO, CO), `colaborador registrado` ×2 and
+`seed completado`.
+
+**Running app** (`pnpm dev:api`, port 3001):
+
+| Criterion                      | Request                                        | Observed                                                                                                                   |
+| ------------------------------ | ---------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| MX company                     | `POST /companies` `aaa010101aaa`, MX           | 201; listing shows `AAA010101AAA` (the seed already holds `EKU9003173C9`; posting it again → 409 `COMPANY_ALREADY_EXISTS`) |
+| CO company                     | `213.123.432-1`, CO                            | 201; listing `213.123.432-1` (the seed's `900123456-8` is listed as `900.123.456-8`)                                       |
+| CO wrong DV                    | `900123456-9`, CO                              | 400 `VALIDATION_ERROR`, path `["taxId"]`, `Identificador tributario inválido`                                              |
+| DO company                     | `101850043`, DO                                | 201; listing `1-01-85004-3` (the seed's `131246796` is listed as `1-31-24679-6`)                                           |
+| CL / PE                        | `country: 'CL'`, `country: 'PE'`               | 400 and 400                                                                                                                |
+| MX colaborador, lowercase CURP | `rosa010305hqrdnla3`                           | 201; directory shows `ROSA010305HQRDNLA3`                                                                                  |
+| Duplicate CURP                 | `GOMA850101HQRRRN04`, same company as the seed | 409 `EMPLOYEE_ALREADY_EXISTS`                                                                                              |
+| Wrong DV                       | `GOMA850101HQRRRN05`                           | 400 `VALIDATION_ERROR`                                                                                                     |
+| Invalid date, correct DV       | `GOMA850230HQRRRN02`                           | 400, path `["nationalId","number"]`                                                                                        |
+| Lowercase search               | `?search=goma850101`                           | `[{"fullName":"Ana Rojas","nationalId":"GOMA850101HQRRRN04"}]`                                                             |
+
+Some criteria reused IDs that the seed had already created (`EKU9003173C9`, `900.123.456-8`,
+`131246796`, `goma850101hqrrrn04`). The same shapes were checked with other valid synthetic IDs,
+and the seed rows confirmed the display formats. Rows created during verification are left in
+the dev DB: 3 `Verif …` companies and colaborador Rosa Díaz. Destructive SQL is blocked for
+agents, and these rows are synthetic dev data.
+
+**Not exercised:** web and mobile UI (no UI change; their fixture tests pass in `pnpm check`).
+
+**Result: PASS.** Status stays `verify` until the user sets `done`.
