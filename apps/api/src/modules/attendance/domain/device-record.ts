@@ -48,6 +48,15 @@ export const LOGGABLE_DEVICE_FIELDS: ReadonlySet<string> = new Set([
   'PushVersion',
 ]);
 
+// Claves y prefijos se registran tal cual: solo se aceptan con forma de identificador corto, para
+// que un formato desconocido (p. ej. una foto binaria) no cuele contenido crudo en el log.
+const DEVICE_IDENTIFIER = /^[A-Za-z][A-Za-z0-9_]{0,31}$/;
+
+/** `true` si el texto puede usarse como clave o prefijo de registro sin redactarlo. */
+export function isDeviceIdentifier(text: string): boolean {
+  return DEVICE_IDENTIFIER.test(text);
+}
+
 /** Un valor largo en un campo permitido sigue siendo sospechoso (p. ej. un blob mal etiquetado). */
 const MAX_LOGGABLE_VALUE_LENGTH = 64;
 

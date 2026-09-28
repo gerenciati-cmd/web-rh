@@ -57,10 +57,15 @@ export function createZktecoAdmsRouter(deps: {
     const query = parseQuery(req, res);
     if (!query) return;
     const table = query.table ?? '';
+    const body = bodyText(req);
     const result = await deps.recordDevicePush.execute({
       serialNumber: query.SN,
       table,
-      records: parseAdmsBody(table, bodyText(req)),
+      // Getter: el caso de uso lo lee después de autorizar, así no se parsea el body de un
+      // equipo no autorizado (hasta 5 MB).
+      get records() {
+        return parseAdmsBody(table, body);
+      },
     });
     if (!result.ok) {
       sendNotAllowed(res);

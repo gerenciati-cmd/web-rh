@@ -51,7 +51,9 @@ Lo de alto nivel depende de abstracciones; los detalles se inyectan.
 ## DRY (sin exagerar)
 
 - **Contratos**: un endpoint se define una vez en `@rrhh/contracts`; API (validación), web y mobile
-  (tipos + cliente) lo derivan. Nunca redeclarar tipos de request/response.
+  (tipos + cliente) lo derivan. Nunca redeclarar tipos de request/response. Excepción: rutas
+  de equipos físicos con protocolo propio (`deviceRouter`,
+  [ADR 0008](adr/0008-endpoints-de-dispositivos-fuera-de-contratos.md)).
 - **Validación compartida**: `CreateCompanySchema` usa `NationalId.isValid` del dominio: el
   formulario y el backend fallan con la misma regla.
 - **`bindRoute`**: validación de entrada, status y verificación de respuesta en un solo lugar.

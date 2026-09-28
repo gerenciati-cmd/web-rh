@@ -9,12 +9,12 @@
              └──────┬───────┘        └──────┬───────┘
                     │  @rrhh/api-client (tipado desde @rrhh/contracts)
                     └───────────┬───────────┘
-                                ▼  HTTP /api/v1
+                                ▼  HTTP /api/v1   ◀── reloj ZKTeco: HTTP /iclock/* (ADR 0008)
 ┌───────────────────────────────────────────────────────────────────────┐
 │ apps/api  (un proceso HTTP + un proceso worker, MISMA imagen/código)  │
 │                                                                       │
 │  ┌────────────── modules/ (monolito modular) ───────────────────┐     │
-│  │ organization │ employees │ attendance* │ leave* │ payroll* … │     │
+│  │ organization │ employees │ attendance† │ leave* │ payroll* … │     │
 │  └──────────────────────────────────────────────────────────────┘     │
 │  shared/application (puertos) · infrastructure (adaptadores comunes)  │
 └──────────────┬─────────────────────┬──────────────────────┬───────────┘
@@ -22,6 +22,7 @@
         PostgreSQL 18          Valkey (BullMQ)        S3 (RustFS en dev)
    un schema por módulo       jobs asíncronos          documentos
                                                         * = por construir
+                                               † = solo sonda ZKTeco (log)
 ```
 
 ## Monolito modular

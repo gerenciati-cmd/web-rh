@@ -1,5 +1,5 @@
 ---
-status: review
+status: testing
 module: attendance
 min_implementer: mid
 depends_on: []
@@ -279,6 +279,22 @@ None
        per-record lines); and the reminder that templates are never logged.
    - Observable result: `pnpm plans:lint` and `pnpm check` pass.
 
+10. **Review repair (added 2026-09-28, deviations 6–7, approved by the user)**
+    - Files: `apps/api/src/config/env.test.ts` (create), `apps/api/src/modules/attendance/application/commands/record-device-contact.command.test.ts` (create), `apps/api/src/modules/attendance/application/commands/record-device-push.command.test.ts` (create), `apps/api/src/modules/attendance/domain/device-record.test.ts` (create), `apps/api/src/modules/attendance/http/zkteco-adms.parser.test.ts` (create), `apps/api/tests/zkteco-adms.test.ts` (create), `AGENTS.md` (modify), `docs/conventions.md` (modify), `docs/architecture.md` (modify)
+    - Do:
+      - M1: the test files above, written in the tester phase, are declared here.
+      - M2: point `AGENTS.md` rule 5, `docs/conventions.md` (DRY → Contratos) and
+        `docs/architecture.md` (overview diagram) to the ADR 0008 exception. Also mark `attendance`
+        as a probe in the diagram.
+      - L1: in `device-record.ts`, `isDeviceIdentifier` (`^[A-Za-z][A-Za-z0-9_]{0,31}$`). In
+        `zkteco-adms.parser.ts`, a line whose prefix or any key fails it becomes `unparsed`,
+        and that includes `options` lines.
+      - L2: in `app.ts`, device routers are mounted before `express.json`, so `/iclock` bodies
+        are always read as text.
+      - L3: `RecordDevicePush` reads `input.records` only after the allowlist check. The router
+        passes `records` as a getter, so an unauthorized body is never parsed.
+    - Observable result: `pnpm check` and `pnpm plans:scope` green.
+
 ## Acceptance criteria
 
 - [ ] With `ZKTECO_ALLOWED_SERIALS=TESTSN001`, `curl 'http://localhost:3001/iclock/cdata?SN=TESTSN001&options=all'`
@@ -350,6 +366,25 @@ Implemented 2026-09-28, inline in the main session, on branch `feat/attendance-s
 `pnpm check` green on 2026-09-28: api 39 tests, arch:check with no violations (97 modules),
 plans:lint, harness:check, and test:harness 156/156.
 
+**Repair after review (2026-09-28).** The review (see `## Review findings`) left the plan in
+`review` with M1, M2, L1, L2 and L3. On the user's decision, the main session moved it
+review → implementing and applied every one of them inline. It returns to `testing`: the tester
+must add regression tests for L1–L3. The previous review stays below as history. It is superseded
+for the repaired code.
+
+6. **Scope extension (approved by the user).** Step 10 declares the tester's 6 files (M1) and 3
+   docs outside the original list (M2): `AGENTS.md`, `docs/conventions.md` and
+   `docs/architecture.md`. Deviation 2's "0 out of scope" was valid only before the test commit.
+7. **Hardening beyond the original design (L1–L3).** The plan said redaction "keeps every key",
+   and step 5 did not bound prefixes. Both are now restricted to identifiers. The user chose L2
+   as "warn when the body is not text". Instead, the device routers were mounted before
+   `express.json`, which removes the cause: every `/iclock` body is parsed as text, and a JSON
+   `Content-Type` is no longer lost. The L3 getter keeps the `RecordDevicePush` input type
+   unchanged (`readonly records`), so the existing tests stay valid.
+
+`pnpm --filter @rrhh/api` typecheck, lint and test (85) are green after the repair. Full
+`pnpm check` is below, in the closing run.
+
 ## Test coverage
 
 Baseline (`pnpm check`, 2026-09-28, before writing tests): green, api 39 tests — matches the
@@ -411,5 +446,102 @@ Notas:
   `companyRepository`/`employeeRepository`.
 
 ## Review findings
+
+Reviewed 2026-09-28 (reviewer subagent). Diff `main...HEAD` (commits `6745fee`, `8912401`), working
+tree clean.
+
+### Pass 1: checklist (11/13)
+
+- [ ] **FAIL**: `pnpm plans:scope`. Exit 1: 18 declared, 26 changed, 6 out of scope. These are
+      the tester's files, and no `Files:` line declares them:
+      `apps/api/src/config/env.test.ts`,
+      `apps/api/src/modules/attendance/application/commands/record-device-contact.command.test.ts`,
+      `.../record-device-push.command.test.ts`, `.../domain/device-record.test.ts`,
+      `.../http/zkteco-adms.parser.test.ts`, `apps/api/tests/zkteco-adms.test.ts`. The hot-file
+      changes are acceptable. `container.ts` only gains an import, an array element and a `Cradle`
+      member. The `modules.json` entry edit is declared in step 9.
+- [x] `pnpm check` green: api 85 tests, arch:check with 0 violations (102 modules), plans:lint,
+      harness:check, test:harness 156/156, bootstrap and quality.
+- [x] `pnpm test:integration`: N/A, since `infrastructure/` and Prisma were not touched.
+- [x] Business rules: the redaction allowlist is in `domain/device-record.ts`, and authorization is
+      in the commands. The parser only translates wire format. The router has no rules.
+- [x] CQRS-lite: two commands return `Result`. There is no aggregate or repository, by design
+      (decision 2).
+- [x] Contracts: not applicable. The exception is recorded in ADR 0008, and no hand-written DTO
+      duplicates a contract.
+- [x] Expected errors: `DeviceNotAllowedError` has the stable code `DEVICE_NOT_ALLOWED`. The HTTP
+      403 response has no internals.
+- [x] Money, dates, ids: not used. The device time is logged raw, as the plan requires.
+- [x] Schema and migration: N/A.
+- [x] DI: `tests/container.test.ts` is green, and `attendanceModule` is registered once.
+- [x] No secrets, `.env` contents or real personal data. SNs, PINs, MACs and names in tests and the
+      runbook are synthetic.
+- [x] `## Deviations` is honest. Spot-checked: `DeviceContactKind` is exported
+      (`record-device-contact.command.ts:8`), and `override` matches
+      `employees/domain/errors.ts:20`. The scope claim in Deviation 2 ("0 out of scope") was true
+      before the tester's commit, not now.
+- [ ] **FAIL**: stale docs. See finding M2.
+
+### Pass 2: findings by severity
+
+**High**: none.
+
+**Medium**
+
+- **M1 — Scope check red (process).** Location: the plan's `Files:` lines (steps 1–9). `pnpm plans:scope` exits 1
+  because the 6 test files above are undeclared. Failure scenario: the pipeline's scope gate
+  cannot be green for this plan, and the commit of the test phase is not traceable to the plan's
+  file list. No product code change is needed. The main session or the user decides how to
+  declare the files, for example with a `## Deviations` entry plus a `Files:` line that lists
+  them, as the `platform-*` plans do. Scope must then be re-run.
+- **M2 — Docs contradict ADR 0008 (stale docs).** Nothing in the plan's file list covers these:
+  - `docs/conventions.md:53`: "un endpoint se define una vez en `@rrhh/contracts`".
+  - `AGENTS.md` rule 5: "todo endpoint se define en `packages/contracts` … `bindRoute`".
+  - `docs/architecture.md:12-17`: the diagram shows HTTP only under `/api/v1` and marks
+    `attendance*` as "por construir".
+
+  None of them mention the `deviceRouter` exception. Failure scenario: a later agent follows
+  AGENTS.md rule 5 and "fixes" `/iclock/*` into contracts or `bindRoute`. Or a reviewer flags
+  ADR 0008 routes as violations. Fix: add a one-line pointer to ADR 0008 in each file. This needs
+  those files added to the plan (a deviation plus the user's OK), or a finding in
+  `plans/hallazgos/`.
+
+**Low**
+
+- **L1 — Keys and prefixes are never redacted or bounded (uncertain).** Locations:
+  `apps/api/src/modules/attendance/domain/device-record.ts:55-64`, `zkteco-adms.parser.ts:42-63`
+  and `record-device-push.command.ts:54-61`. `redactDeviceFields` keeps every key verbatim, and
+  `entry.prefix` (all text before the first space) is logged verbatim. The prefix is also used as a
+  `byKind` key in the **info** summary. Both can be of any length. Failure scenario: a line that
+  isn't one of the observed formats but has the shape `<data> <k>=<v>`, or `<data>=<v>`. Two
+  examples are a binary `ATTPHOTO` upload (the options block sends `ATTPHOTOStamp=None`) and an
+  older firmware sending `PIN=1\tName=Juan …` lines with no prefix. Either case puts raw content
+  into the log as a key or prefix, which defeats the "fails closed" intent of decision 3. This
+  matches the plan as written ("keeps every key"), so it is a design gap, not an implementation
+  error. Uncertain, because no such line was captured. A possible hardening step: accept only
+  prefixes and keys that match `^[A-Za-z][A-Za-z0-9_]{0,31}$`, and treat anything else as
+  `unparsed`.
+- **L2 — Non-text bodies on `/iclock` bypass the text parser (uncertain).** `app.ts:23`
+  (`express.json`) runs before the device router. If a device sends a POST with
+  `Content-Type: application/json`, the body is parsed there. `express.text` then skips it, and
+  `bodyText` returns `''`. The response is `OK: 0`, and the device may then discard data it
+  believes we accepted. Malformed JSON, or an oversize body (413 from the 5 MB limit), goes to
+  the JSON `errorHandler`/`notFoundHandler` instead of a text reply. Only `text/plain` was
+  observed, so this is low risk for the SenseFace 2A.
+- **L3 — Parsing happens before authorization.** In `zkteco-adms.router.ts:52-60`,
+  `parseAdmsBody` runs on bodies of up to 5 MB before the allowlist check inside
+  `RecordDevicePush`. Nothing is logged for unauthorized devices, so there is no data leak. The
+  cost is CPU for any unauthenticated client. Rate limiting is out of scope, so this is only a
+  note.
+
+**Info**
+
+- `tests/zkteco-adms.test.ts:26-33` replaces both commands with hand-built instances. No HTTP test
+  exercises the real path `env.ZKTECO_ALLOWED_SERIALS` → `allowedDeviceSerials` → command.
+  `container.test.ts` only proves that the path resolves. The verifier's run against a real
+  `.env` covers it.
+
+Status stays `review`. The checklist has 2 failed items (M1, M2). M1 is plan-only. M2 needs a
+scope decision. L1–L3 are for the main session and the user to accept or schedule.
 
 ## Verification

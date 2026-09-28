@@ -1,4 +1,8 @@
-import { redactDeviceFields, type DevicePushRecord } from '../domain/device-record';
+import {
+  isDeviceIdentifier,
+  redactDeviceFields,
+  type DevicePushRecord,
+} from '../domain/device-record';
 
 /**
  * Traduce el formato de cable de ZKTeco ADMS (texto, una entrada por línea) a registros del
@@ -24,8 +28,9 @@ const OPTIONS_SEPARATOR = /,(?=~?[A-Za-z]\w*=)/;
 function parseOptionsLine(line: string): DevicePushRecord {
   const fields: Record<string, string> = {};
   for (const pair of line.split(OPTIONS_SEPARATOR)) {
-    const parsed = splitKeyValue(pair);
-    if (parsed) fields[parsed.key.replace(/^~/, '')] = parsed.value;
+    const parsed = splitKeyValue(pair.replace(/^~/, ''));
+    if (!parsed) return unparsed(line);
+    fields[parsed.key] = parsed.value;
   }
   return { kind: 'entry', prefix: 'options', fields: redactDeviceFields(fields) };
 }
@@ -43,6 +48,7 @@ function parsePrefixedLine(line: string): DevicePushRecord {
   const space = line.indexOf(' ');
   if (space <= 0) return unparsed(line);
   const prefix = line.slice(0, space);
+  if (!isDeviceIdentifier(prefix)) return unparsed(line);
   const parts = line.slice(space + 1).split('\t');
 
   if (prefix === 'OPLOG') {
@@ -63,11 +69,16 @@ function parsePrefixedLine(line: string): DevicePushRecord {
   return { kind: 'entry', prefix, fields: redactDeviceFields(fields) };
 }
 
-/** Corta en el PRIMER `=`: los valores base64 terminan en `=`. */
+/**
+ * Corta en el PRIMER `=`: los valores base64 terminan en `=`. Una clave que no tiene forma de
+ * identificador invalida el par (y con él la línea).
+ */
 function splitKeyValue(pair: string): { key: string; value: string } | null {
   const eq = pair.indexOf('=');
   if (eq <= 0) return null;
-  return { key: pair.slice(0, eq), value: pair.slice(eq + 1) };
+  const key = pair.slice(0, eq);
+  if (!isDeviceIdentifier(key)) return null;
+  return { key, value: pair.slice(eq + 1) };
 }
 
 function unparsed(line: string): DevicePushRecord {

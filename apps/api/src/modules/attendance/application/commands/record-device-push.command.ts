@@ -9,8 +9,11 @@ import { DeviceNotAllowedError } from '../../domain/errors';
 export interface RecordDevicePushInput {
   serialNumber: string;
   table: string;
-  /** Registros ya interpretados; los `entry` llegan con sus campos redactados. */
-  records: readonly DevicePushRecord[];
+  /**
+   * Registros ya interpretados; los `entry` llegan con sus campos redactados. Se lee solo después
+   * de autorizar, así el llamador puede pasarlo como getter y no parsear bodies ajenos.
+   */
+  readonly records: readonly DevicePushRecord[];
 }
 
 interface Deps {
@@ -31,13 +34,14 @@ export class RecordDevicePush implements Command<
 
   execute(input: RecordDevicePushInput) {
     const { logger, allowedDeviceSerials } = this.deps;
-    const { serialNumber, table, records } = input;
+    const { serialNumber, table } = input;
 
     if (!allowedDeviceSerials.includes(serialNumber)) {
       logger.warn({ serialNumber, table }, 'zkteco: dispositivo no autorizado');
       return Promise.resolve(err(new DeviceNotAllowedError(serialNumber)));
     }
 
+    const { records } = input;
     logger.info(
       { serialNumber, table, total: records.length, byKind: countByKind(records) },
       'zkteco: datos recibidos',

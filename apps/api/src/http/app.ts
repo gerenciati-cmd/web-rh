@@ -20,7 +20,6 @@ export function createApp(container: AppContainer): Express {
   app.disable('x-powered-by');
   app.use(helmet());
   app.use(cors({ origin: env.CORS_ORIGINS, credentials: true }));
-  app.use(express.json({ limit: '1mb' }));
   app.use(
     pinoHttp({
       logger,
@@ -32,11 +31,14 @@ export function createApp(container: AppContainer): Express {
     }),
   );
 
-  app.use('/health', createHealthRouter({ healthChecks }));
-
+  // Antes del parser JSON: los equipos leen su body como texto sea cual sea el Content-Type.
   for (const module of modules) {
     if (module.deviceRouter) app.use(module.deviceRouter(container.cradle));
   }
+
+  app.use(express.json({ limit: '1mb' }));
+
+  app.use('/health', createHealthRouter({ healthChecks }));
 
   const api = Router();
   for (const module of modules) {
