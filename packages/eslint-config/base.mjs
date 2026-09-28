@@ -55,7 +55,7 @@ export const base = defineConfig([
   },
   {
     // Los tests pueden ser algo más laxos
-    files: ['**/*.test.ts', '**/*.spec.ts', '**/tests/**'],
+    files: ['**/*.test.{ts,tsx}', '**/*.spec.{ts,tsx}', '**/tests/**'],
     rules: {
       '@typescript-eslint/no-non-null-assertion': 'off',
       // supertest/fetch devuelven `any` en el body; en tests se valida con expect.

@@ -1,4 +1,4 @@
-import type { NationalId } from '@rrhh/domain';
+import { err, ok, type NationalId, type Result } from '@rrhh/domain';
 
 import type { PrismaDatabase } from '@/infrastructure/database/prisma-database';
 import { isUniqueViolation } from '@/infrastructure/database/prisma-errors';
@@ -28,7 +28,7 @@ export class PrismaEmployeeRepository implements EmployeeRepository {
     return count > 0;
   }
 
-  async save(employee: Employee): Promise<void> {
+  async save(employee: Employee): Promise<Result<void, EmployeeAlreadyExistsError>> {
     const data = EmployeeMapper.toPersistence(employee);
     try {
       await this.deps.database.client.employee.upsert({
@@ -36,9 +36,10 @@ export class PrismaEmployeeRepository implements EmployeeRepository {
         create: data,
         update: data,
       });
+      return ok(undefined);
     } catch (error) {
       if (isUniqueViolation(error)) {
-        throw new EmployeeAlreadyExistsError(employee.snapshot.nationalId.format());
+        return err(new EmployeeAlreadyExistsError(employee.snapshot.nationalId.format()));
       }
       throw error;
     }

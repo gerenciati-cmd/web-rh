@@ -1,6 +1,6 @@
 import { ApiError } from '@rrhh/api-client';
 import type { CompanyDto } from '@rrhh/contracts';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { api } from '@/lib/api';
 
@@ -28,20 +28,34 @@ async function fetchCompanies(): Promise<State> {
 export function useCompanies() {
   const [state, setState] = useState<State>({ status: 'loading' });
 
-  useEffect(() => {
-    let cancelled = false;
-    void fetchCompanies().then((next) => {
-      if (!cancelled) setState(next);
-    });
-    return () => {
-      cancelled = true;
-    };
+  const mounted = useRef(false);
+  const generation = useRef(0);
+
+  const load = useCallback(async () => {
+    const request = ++generation.current;
+    const next = await fetchCompanies();
+    if (mounted.current && request === generation.current) setState(next);
   }, []);
 
-  const reload = useCallback(async () => {
-    setState({ status: 'loading' });
-    setState(await fetchCompanies());
+  const invalidate = useCallback(() => {
+    generation.current++;
   }, []);
+
+  useEffect(() => {
+    mounted.current = true;
+    void load();
+    return () => {
+      mounted.current = false;
+      // Invalida las respuestas pendientes incluso durante el remount de StrictMode.
+      invalidate();
+    };
+  }, [load, invalidate]);
+
+  const reload = useCallback(async () => {
+    if (!mounted.current) return;
+    setState({ status: 'loading' });
+    await load();
+  }, [load]);
 
   return { state, reload };
 }

@@ -7,7 +7,7 @@ import { HintRow } from '@/components/hint-row';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { WebBadge } from '@/components/web-badge';
-import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
+import { BOTTOM_TAB_INSET, MAX_CONTENT_WIDTH, SPACING } from '@/constants/theme';
 
 function getDevMenuHint() {
   if (Platform.OS === 'web') {
@@ -69,18 +69,18 @@ const styles = StyleSheet.create({
   },
   safeArea: {
     flex: 1,
-    paddingHorizontal: Spacing.four,
+    paddingHorizontal: SPACING.four,
     alignItems: 'center',
-    gap: Spacing.three,
-    paddingBottom: BottomTabInset + Spacing.three,
-    maxWidth: MaxContentWidth,
+    gap: SPACING.three,
+    paddingBottom: BOTTOM_TAB_INSET + SPACING.three,
+    maxWidth: MAX_CONTENT_WIDTH,
   },
   heroSection: {
     alignItems: 'center',
     justifyContent: 'center',
     flex: 1,
-    paddingHorizontal: Spacing.four,
-    gap: Spacing.four,
+    paddingHorizontal: SPACING.four,
+    gap: SPACING.four,
   },
   title: {
     textAlign: 'center',
@@ -89,10 +89,10 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
   },
   stepContainer: {
-    gap: Spacing.three,
+    gap: SPACING.three,
     alignSelf: 'stretch',
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.four,
-    borderRadius: Spacing.four,
+    paddingHorizontal: SPACING.three,
+    paddingVertical: SPACING.four,
+    borderRadius: SPACING.four,
   },
 });

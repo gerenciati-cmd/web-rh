@@ -18,7 +18,7 @@ export interface CompanyProps {
   createdAt: Date;
 }
 
-export const CompanyCreated = 'organization.company.created';
+export const COMPANY_CREATED = 'organization.company.created';
 
 /**
  * Agregado Company. Sus invariantes solo se pueden romper desde aquí:
@@ -51,7 +51,11 @@ export class Company extends AggregateRoot<CompanyId> {
       createdAt: input.now,
     });
     company.record(
-      createEvent(CompanyCreated, { companyId: input.id, country: input.taxId.country }, input.now),
+      createEvent(
+        COMPANY_CREATED,
+        { companyId: input.id, country: input.taxId.country },
+        input.now,
+      ),
     );
     return ok(company);
   }

@@ -1,15 +1,15 @@
 import type { ReactNode } from 'react';
 import { View, StyleSheet } from 'react-native';
 
+import { SPACING } from '@/constants/theme';
+
 import { ThemedText } from './themed-text';
 import { ThemedView } from './themed-view';
 
-import { Spacing } from '@/constants/theme';
-
-type HintRowProps = {
+interface HintRowProps {
   title?: string;
   hint?: ReactNode;
-};
+}
 
 export function HintRow({ title = 'Try editing', hint = 'app/index.tsx' }: HintRowProps) {
   return (
@@ -28,8 +28,8 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   codeSnippet: {
-    borderRadius: Spacing.two,
-    paddingVertical: Spacing.half,
-    paddingHorizontal: Spacing.two,
+    borderRadius: SPACING.two,
+    paddingVertical: SPACING.half,
+    paddingHorizontal: SPACING.two,
   },
 });

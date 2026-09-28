@@ -1,7 +1,7 @@
 {
   "name": "apsholding-rrhh",
   "private": true,
-  "description": "Plataforma de RRHH de APS Holding (web, móvil y API)",
+  "description": "Plataforma de RRHH de APS Holding (web, m\u00f3vil y API)",
   "packageManager": "pnpm@12.6.0",
   "engines": {
     "node": ">=24",
@@ -19,7 +19,7 @@
     "test": "turbo run test",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "check": "pnpm format:check && turbo run typecheck lint test && pnpm arch:check && pnpm plans:lint && pnpm harness:check && pnpm test:harness && pnpm test:bootstrap",
+    "check": "pnpm format:check && turbo run typecheck lint test && pnpm arch:check && pnpm plans:lint && pnpm harness:check && pnpm test:harness && pnpm test:bootstrap && pnpm test:quality",
     "arch:check": "pnpm --filter @rrhh/api arch:check",
     "db:up": "docker compose -f infra/docker/docker-compose.yml up -d",
     "db:down": "docker compose -f infra/docker/docker-compose.yml down",
@@ -35,9 +35,10 @@
     "plans:scope": "node scripts/plans/scope.mjs",
     "harness:sync": "node scripts/harness/sync.mjs",
     "harness:check": "node scripts/harness/sync.mjs --check",
-    "test:harness": "node --test .claude/hooks/hooks.test.mjs scripts/plans/plans.test.mjs",
+    "test:harness": "node --test .claude/hooks/hooks.test.mjs scripts/plans/plans.test.mjs scripts/plans/scope.test.mjs",
     "test:integration": "pnpm --filter @rrhh/api test:integration",
-    "test:bootstrap": "node --test scripts/bootstrap-database.test.mjs"
+    "test:bootstrap": "node --test scripts/bootstrap-database.test.mjs",
+    "test:quality": "node --test scripts/quality/frontend-config.test.mjs"
   },
   "devDependencies": {
     "@commitlint/cli": "catalog:",

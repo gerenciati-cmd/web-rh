@@ -3,7 +3,8 @@ import type { DomainEvent } from '@rrhh/domain';
 import type { EventBus, EventHandler, Logger } from '@/shared/application/ports';
 
 /**
- * Bus en proceso: los handlers corren en el mismo proceso tras el commit.
+ * Bus en proceso: el caller decide cuándo publicar después de persistir.
+ * No programa callbacks post-commit ni asegura entrega durable.
  *
  * Limitación conocida: si el proceso cae entre el commit y el publish, el evento se pierde.
  * Cuando un evento no pueda perderse (p. ej. gatillar cálculo de nómina), migrar a

@@ -99,3 +99,46 @@ tercera repetición real antes de abstraer.
 - Nombres de test en español describiendo comportamiento: `'rechaza duplicados aunque el RUT venga con otro formato'`.
 - Arrange-Act-Assert, un comportamiento por test, sin lógica condicional en los tests.
 - Deterministas: `FixedClock`, `SequentialIdGenerator`, nada de `Date.now()`/red/BD en unit tests.
+
+## Constantes y conjuntos de valores
+
+| Elemento                                       | Regla                                    | Ejemplo                                              |
+| ---------------------------------------------- | ---------------------------------------- | ---------------------------------------------------- |
+| Archivos y carpetas                            | kebab-case; sufijo de rol cuando aplique | `employee-status.ts`, `employee-policy.constants.ts` |
+| Constantes fijas, catálogos, nombres de evento | SCREAMING_SNAKE_CASE                     | `EMPLOYEE_STATUSES`, `EMPLOYEE_HIRED`                |
+| Variables y funciones                          | camelCase, aunque se declaren con const  | `employee`, `registerEmployee`                       |
+| Clases, interfaces y tipos                     | PascalCase                               | `EmployeeStatus`                                     |
+| Schemas Zod                                    | PascalCase + Schema                      | `EmployeeStatusSchema`                               |
+| Tablas y columnas                              | snake_case con mapeo Prisma              | `hire_date`                                          |
+
+Una constante privada permanece junto a su uso. Si varios consumidores comparten su significado,
+se extrae a un archivo específico del módulo propietario. No hay una carpeta global de constantes.
+Un literal merece nombre si expresa política, unidad o conocimiento compartido; no se extraen
+ceros, índices o textos obvios solo para reducir literales.
+
+Para tipos sin uso en ejecución, usa uniones literales. Para valores usados en ejecución, una lista
+u objeto `as const` es la fuente y el tipo se deriva: `type Status = (typeof STATUSES)[number]`.
+No uses enums numéricos ni `enum` de TypeScript como patrón habitual. Los enums de Prisma pertenecen
+a persistencia; no se importan en dominio/UI. `as const` no congela objetos en ejecución.
+
+El vocabulario compartido entre capas es puro y tiene dueño explícito; ver
+[ADR 0007](adr/0007-vocabulario-compartido-y-errores-esperados.md). El dominio nunca importa Zod o
+contratos HTTP para reutilizar valores. Conceptos con significados diferentes se traducen en la
+frontera en vez de unificarse artificialmente.
+
+Excepciones: nombres reservados de frameworks (`_layout.tsx`, `page.tsx`, configuraciones), variantes
+`.web.tsx`, default exports exigidos por rutas/configs, schemas Zod y objetos mapper existentes
+(`EmployeeMapper`, servicio sin estado). Componentes reutilizables usan exports nombrados.
+`styles`, instancias, servicios DI, funciones y `metadata` no se vuelven mayúsculas por ser const.
+
+## Documentación del código
+
+Los docblocks son selectivos, en español. Documenta interfaces públicas y comportamiento no
+obvio: invariantes, unidades, límites inclusivos/exclusivos, significado de null, efectos secundarios,
+errores esperados como Result, excepciones inesperadas y garantías de mutabilidad/durabilidad.
+Usa `@param`, `@returns`, `@throws` o ejemplos solo si agregan información que no expresan los tipos.
+No exijas comentarios en cada exportación/getter ni repitas la firma TypeScript en prosa.
+
+Los comentarios explican decisiones y restricciones, y se actualizan junto al comportamiento.
+Ningún docblock puede prometer una transacción, inmutabilidad o aislamiento que su implementación
+no garantiza. La review verifica exactitud; no se mide calidad contando comentarios con regex.

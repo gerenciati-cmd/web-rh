@@ -50,9 +50,13 @@ export function AnimatedSplashOverlay() {
   ) : (
     <View
       onLayout={() => {
-        SplashScreen.hideAsync().finally(() => {
-          setAnimate(true);
-        });
+        void SplashScreen.hideAsync()
+          .catch(() => {
+            // Una recarga puede haber ocultado ya el splash nativo.
+          })
+          .finally(() => {
+            setAnimate(true);
+          });
       }}
       style={styles.splashOverlay}
     >

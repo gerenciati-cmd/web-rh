@@ -16,3 +16,12 @@
 - [ ] Tipos de request/response desde `@rrhh/contracts` (sin duplicar)
 - [ ] Si cambió el esquema: migración NUEVA y SQL revisado (sin DROP inesperados)
 - [ ] Si hubo una decisión de arquitectura: ADR en `docs/adr/`
+
+## Plan y límites de verificación
+
+- Plan único: <!-- enlace a plans/<iniciativa>/NNN-slug.md; o motivo de fast lane -->
+- [ ] `pnpm plans:scope <plan> --base <base-real>` pasa; la base existe y es la del PR
+- [ ] `pnpm test:integration` pasa si cambió infraestructura o persistencia
+- [ ] Convenciones y documentación actualizadas en su fuente canónica ([CONTRIBUTING](../CONTRIBUTING.md))
+- [ ] Evidencia del plan actualizada, sin presentar caché/unit tests como QA en vivo
+- NOT VERIFIED: <!-- dispositivo, proveedor de IA u otros límites; indicar qué falta aceptar -->

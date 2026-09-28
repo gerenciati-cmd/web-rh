@@ -1,7 +1,8 @@
-import type { NationalId } from '@rrhh/domain';
+import { err, ok, type NationalId, type Result } from '@rrhh/domain';
 
 import type { Employee, EmployeeId } from '../../domain/employee';
 import type { EmployeeRepository } from '../../domain/employee.repository';
+import { EmployeeAlreadyExistsError } from '../../domain/errors';
 
 export class InMemoryEmployeeRepository implements EmployeeRepository {
   readonly employees = new Map<string, Employee>();
@@ -17,8 +18,18 @@ export class InMemoryEmployeeRepository implements EmployeeRepository {
     return Promise.resolve(exists);
   }
 
-  save(employee: Employee): Promise<void> {
+  save(employee: Employee): Promise<Result<void, EmployeeAlreadyExistsError>> {
+    const duplicate = [...this.employees.values()].some(
+      (other) =>
+        other.id !== employee.id &&
+        other.snapshot.companyId === employee.snapshot.companyId &&
+        other.snapshot.nationalId.equals(employee.snapshot.nationalId),
+    );
+    if (duplicate)
+      return Promise.resolve(
+        err(new EmployeeAlreadyExistsError(employee.snapshot.nationalId.format())),
+      );
     this.employees.set(employee.id, employee);
-    return Promise.resolve();
+    return Promise.resolve(ok(undefined));
   }
 }

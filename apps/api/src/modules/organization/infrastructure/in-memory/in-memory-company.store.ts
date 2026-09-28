@@ -1,9 +1,10 @@
 import type { CompanyDto, Page, PageQuery } from '@rrhh/contracts';
-import type { NationalId } from '@rrhh/domain';
+import { err, ok, type NationalId, type Result } from '@rrhh/domain';
 
 import type { CompanyQueries } from '../../application/queries/company.queries';
 import type { Company, CompanyId } from '../../domain/company';
 import type { CompanyRepository } from '../../domain/company.repository';
+import { CompanyAlreadyExistsError } from '../../domain/errors';
 
 /**
  * Adaptadores en memoria para tests. Cumplen los MISMOS contratos que la versión Prisma,
@@ -26,9 +27,14 @@ export class InMemoryCompanyRepository implements CompanyRepository {
     return Promise.resolve(companies.some((company) => company.taxId.equals(taxId)));
   }
 
-  save(company: Company): Promise<void> {
+  save(company: Company): Promise<Result<void, CompanyAlreadyExistsError>> {
+    const duplicate = [...this.store.companies.values()].some(
+      (other) => other.id !== company.id && other.taxId.equals(company.taxId),
+    );
+    if (duplicate)
+      return Promise.resolve(err(new CompanyAlreadyExistsError(company.taxId.format())));
     this.store.companies.set(company.id, company);
-    return Promise.resolve();
+    return Promise.resolve(ok(undefined));
   }
 }
 

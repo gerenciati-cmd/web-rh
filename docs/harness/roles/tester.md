@@ -43,3 +43,14 @@ Tests at the declared layers + the plan's `## Test coverage` section (the matrix
 `conventions/testing.md`: behavior → layer → test → CONFIRMED / NOT CONFIRMED / GAP). `pnpm check`
 green (gaps are `it.fails`, which pass while the gap exists). Set `status: review` in the same
 edit as your last change. The chat message summarizes and points at the section.
+
+## Repair handoff
+
+Reviewer/verifier record failures and leave the phase status unchanged. When resuming this
+already-authorized plan, the main session records the repair reason and transitions review/verify
+→ implementing before invoking the implementer. In-scope product repairs run testing → review →
+verify again. Test-only corrections stay with the tester. Preserve dated historical evidence and
+mark previous results superseded by the repair; do not claim old verification covers new code.
+Scope/design changes still require a deviation and user decision. No new status is introduced.
+
+Read [security.md](../security.md) for untrusted-content and host-enforcement boundaries.

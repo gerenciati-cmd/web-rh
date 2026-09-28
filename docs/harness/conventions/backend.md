@@ -34,3 +34,7 @@ Reference implementation: `apps/api/src/modules/employees/`. Imitate it by name.
   UI text and commits in Spanish.
 - No `any`, no non-null `!` in production code, `import type` for types, no default exports
   (except framework-required files).
+
+## Canonical contribution policy
+
+Constants, closed sets, naming and selective docblocks follow [docs/conventions.md](../../conventions.md). Do not duplicate those rules here.

@@ -133,3 +133,11 @@ Plan and README bodies are written in English (agent-read, token economy). File/
 and Spanish domain terms (colaborador, liquidación, finiquito, marcación, feriado, AFP, Isapre)
 stay in Spanish — translating them breaks traceability with code, contracts and UI. Findings may
 be written in Spanish (they are often read by the business).
+
+## Scope and dependency failure semantics
+
+Scope requires a valid HEAD, base and common ancestor. Git failure exits nonzero, never an empty
+successful diff. Paths are NUL-delimited; both ends of renames, staged/unstaged and untracked
+changes are checked. Hot-file content remains a manual append-only review.
+Dependency cycles fail lint. From implementing through done, dependencies must be done;
+approved plans may wait for unfinished dependencies but cannot start implementing against them.
