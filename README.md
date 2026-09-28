@@ -3,14 +3,14 @@
 Plataforma de gestión de personas para las empresas del holding (reemplazo de Buk): colaboradores,
 asistencia, vacaciones y licencias, remuneraciones y documentos. Web, app móvil y API en un monorepo.
 
-| App / paquete         | Stack                                                                 |
-| --------------------- | --------------------------------------------------------------------- |
-| `apps/api`            | Node 24+ · Express 5 · TypeScript · Prisma 7 · PostgreSQL 18 · BullMQ |
-| `apps/web`            | Next.js 16 (App Router) · React 19 · Tailwind 4                       |
-| `apps/mobile`         | Expo SDK 57 · React Native 0.86 · expo-router                         |
-| `packages/contracts`  | Contratos HTTP con Zod 4 (fuente única de verdad)                     |
-| `packages/api-client` | Cliente tipado derivado de los contratos                              |
-| `packages/domain`     | Shared kernel (Result, NationalId/RUT, Money, DateRange…)             |
+| App / paquete         | Stack                                                                    |
+| --------------------- | ------------------------------------------------------------------------ |
+| `apps/api`            | Node 24+ · Express 5 · TypeScript · Prisma 7 · PostgreSQL 18 · BullMQ    |
+| `apps/web`            | Next.js 16 (App Router) · React 19 · Tailwind 4                          |
+| `apps/mobile`         | Expo SDK 57 · React Native 0.86 · expo-router                            |
+| `packages/contracts`  | Contratos HTTP con Zod 4 (fuente única de verdad)                        |
+| `packages/api-client` | Cliente tipado derivado de los contratos                                 |
+| `packages/domain`     | Shared kernel (Result, CountryCode, TaxId/NationalId, Money, DateRange…) |
 
 ## Empezar
 

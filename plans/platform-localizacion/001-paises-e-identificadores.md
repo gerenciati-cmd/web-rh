@@ -1,5 +1,5 @@
 ---
-status: review
+status: testing
 module: platform
 min_implementer: mid
 depends_on: []
@@ -236,7 +236,7 @@ None
    - Observable result: `pnpm check` green, and `pnpm test:integration` green.
 
 8. **Docs and vocabulary**
-   - Files: `docs/adr/0009-paises-soportados-e-identificadores.md` (create), `docs/adr/README.md` (modify), `docs/conventions.md` (modify), `docs/harness/conventions/plans.md` (modify), `docs/harness/HARNESS.md` (modify), `.claude/skills/new-module/SKILL.md` (modify), `packages/domain/src/errors.ts` (modify), `plans/hallazgos/platform-localizacion-mexico.md` (modify)
+   - Files: `docs/adr/0009-paises-soportados-e-identificadores.md` (create), `docs/adr/README.md` (modify), `docs/conventions.md` (modify), `docs/harness/conventions/plans.md` (modify), `docs/harness/HARNESS.md` (modify), `.claude/skills/new-module/SKILL.md` (modify), `packages/domain/src/errors.ts` (modify), `plans/hallazgos/platform-localizacion-mexico.md` (modify), `README.md` (modify)
    - Do:
      - **ADR 0009** (Spanish, template `docs/adr/0000-plantilla.md`, Aceptado, 2026-09-28).
        Supported countries are MX, DO and CO; Chile and Peru are dropped. `TaxId` (company) and
@@ -373,6 +373,17 @@ Runs on 2026-09-28 (tester phase):
   the Context fixture table, not by execution — see the "seed crea 3 empresas y 2 colaboradores"
   row below, marked NOT CONFIRMED.
 
+**Repair after review (2026-09-28).** The review (`## Review findings`) found M1 (stale docs)
+and M2 (weak CURP date/state fixtures). On the user's decision the main session moved the plan
+review → implementing and fixed M1. M2 is test-only and goes to the tester in the next testing
+round.
+
+8. **Scope extension, M1 (approved by the user).** `README.md` is added to step 8, and `:13` now
+   lists `CountryCode, TaxId/NationalId`. `docs/conventions.md`, already in step 8, is fixed in
+   two places. The OCP example now says a new country means registering two validators, and the
+   shared-validation line names `TaxId.isValid` and `NationalId.isValid`. The docs are the only
+   change.
+
 ## Test coverage
 
 | Behavior (from plan / code)                                                                                                                                           | Source (`file:line`)                                                                                         | Layer       | Test                                                                                                                                                                                                                                   | State                                                                                                                                                   |
@@ -422,5 +433,79 @@ Runs on 2026-09-28 (tester phase):
 | Web/mobile fixtures compile and pass with MX/DO/CO data                                                                                                               | `company-table.test.tsx`, `use-companies.test.tsx` (existing suites, updated in the implementing phase)      | —           | unchanged this phase (`pnpm check`: web 2, mobile 5 — green)                                                                                                                                                                           | CONFIRMED                                                                                                                                               |
 
 ## Review findings
+
+Reviewed 2026-09-28 (reviewer subagent), diff `main...HEAD` (9188161, 00260b2), working tree clean.
+
+**Checklist: 12/13 — FAIL** (item 13, stale docs).
+
+- [x] `pnpm plans:scope`: 44 declared, 46 changed, all in scope.
+- [x] `pnpm check` green (api 102, domain 49, contracts 15, web 2, mobile 5, api-client 3; arch
+      `no dependency violations found (105 modules, 297 dependencies cruised)`; plans:lint,
+      harness:check, hook/bootstrap/quality tests pass).
+- [x] `pnpm test:integration`: 2 files, 16 tests passed.
+- [x] Business rules in `domain/` (validators in `packages/domain`); mappers/routers only swap types.
+- [x] CQRS-lite unchanged; `existsByTaxId` is a domain port method, not screen-specific.
+- [x] Types from `@rrhh/contracts`; `CountrySchema = z.enum(SUPPORTED_COUNTRIES)` without a cast.
+- [x] Expected errors are `Result` + `InvalidValueError`; the contract refines give 400 at the field.
+- [x] Money/dates/Clock: not affected (`Date.UTC` is only used for pure calendar validation).
+- [x] No schema change, no migration (fits `VarChar(20)`/`Char(2)`).
+- [x] DI: no new registrations; `tests/container.test.ts` green.
+- [x] No secrets or real personal data (synthetic IDs, SAT's public test RFC).
+- [x] `## Deviations` honest; spot-check: Deviation 2 `BBB020202BB2` is at
+      `apps/api/tests/integration/organization/prisma-company.int.test.ts:77`.
+- [ ] Existing docs updated: **fails**, see M1.
+
+### High
+
+None.
+
+### Medium
+
+- **M1 — Stale docs describing the changed behavior (needs doc changes).**
+  - `docs/conventions.md:57`: "`CreateCompanySchema` usa `NationalId.isValid`". That is now false:
+    it uses `TaxId.isValid` (`packages/contracts/src/organization/company.contract.ts:26`).
+  - `docs/conventions.md:19-21`: the OCP example says "un país nuevo = un validador nuevo en el
+    mapa; `NationalId` no se toca". Since this plan, a new country needs **two** validators
+    (`NATIONAL_ID_VALIDATORS` and `TAX_ID_VALIDATORS`, and `SUPPORTED_COUNTRIES` in
+    `country.ts`), as ADR 0009 "Consecuencias" says.
+  - `README.md:13`: "Shared kernel (Result, NationalId/RUT, …)". RUT no longer exists.
+    `README.md` is **not** in any `Files:` line: the main session must add it to step 8 before the
+    implementer touches it.
+  - Scenario: someone adding a country follows `docs/conventions.md:19-21` and only adds a person
+    validator. That no longer compiles, and the doc points them the wrong way. A reader of
+    `conventions.md:57` looks for a `NationalId` refine in the company contract that isn't there.
+- **M2 — The CURP date and state rules are not isolated by their reject tests (test-only; tester).**
+  Every one of these fixtures also has a **wrong check digit**, so it would still be rejected if
+  `isValidCurpDate` or the `CURP_STATES` check were deleted. Check digits were computed with the
+  plan's algorithm (scratch script outside the repo):
+  - `packages/domain/src/national-id/national-id.test.ts:36`: `GOMA850230HQRRRN01` has DV 1, but
+    the correct DV is **2**. The fixture that isolates the date rule is `GOMA850230HQRRRN02`.
+  - `packages/domain/src/national-id/national-id.test.ts:40`: `GOMA850101HXXRRN04` has DV 4, but
+    the correct DV is **9**. The fixture that isolates the state rule is `GOMA850101HXXRRN09`.
+  - `apps/api/tests/http.test.ts:164` and
+    `packages/contracts/src/employees/employee.contract.test.ts:33` use the same
+    `GOMA850230HQRRRN01`.
+  - Scenario: a refactor drops the date check. All suites stay green, so a CURP with a birth
+    date of 30 February (with a DV computed to match) is accepted. The acceptance criterion
+    "a CURP whose date is `850230` → 400" and the Test coverage rows marked CONFIRMED for the date
+    and state rules (`national-id/validators.ts:9-42` and `:56-63`) are not actually proven.
+    Deviation 4's "date `850230` or state `XX` gives ERR" has the same gap.
+
+### Low (informational, no change required by this plan)
+
+- **L1 — A leftover `CL`/`PE` row turns the listing into a 500 instead of the mapper's fallback.**
+  `apps/api/src/modules/organization/infrastructure/company.mapper.ts:39` (and `:14`,
+  `employees/infrastructure/prisma-employee.queries.ts:61-62`, `employee.mapper.ts:9-10`):
+  `TAX_ID_VALIDATORS['CL']` is `undefined`, so `validator.normalize` throws a `TypeError` before the
+  `taxId.ok ? … : row.taxId` fallback runs. Decision 3 accepts this: dev data is dropped by hand,
+  and Deviation 5 says the dev DB was empty. It is recorded only so that verify knows why a stale
+  local DB would return 500 on `GET /companies`.
+- **L2 (uncertain) — CURP sex character.** `CURP_FORMAT` only accepts `[HM]`, as the plan fixed. I
+  could not confirm whether RENAPO or current python-stdnum also accept `X` (non-binary). If they
+  do, such a CURP would get a 400. This is outside this plan's validation table, and I did not
+  check it against the source.
+
+Status stays `review`. M1 goes back to the implementer (after the main session adds `README.md` to
+step 8), and M2 goes to the tester.
 
 ## Verification
