@@ -21,9 +21,9 @@
     },
     {
       "name": "attendance",
-      "status": "planned",
+      "status": "active",
       "path": "apps/api/src/modules/attendance",
-      "summary": "Marcaciones, turnos, jornadas, horas extra. Legal requirements apply."
+      "summary": "Marcaciones, turnos, jornadas, horas extra. Legal requirements apply. Today: ZKTeco ADMS probe (log only)."
     },
     {
       "name": "leave",

@@ -34,6 +34,10 @@ export function createApp(container: AppContainer): Express {
 
   app.use('/health', createHealthRouter({ healthChecks }));
 
+  for (const module of modules) {
+    if (module.deviceRouter) app.use(module.deviceRouter(container.cradle));
+  }
+
   const api = Router();
   for (const module of modules) {
     if (module.router) api.use(module.router(container.cradle));
