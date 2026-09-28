@@ -212,6 +212,32 @@ describe('ADMS /iclock', () => {
     );
   });
 
+  // Regresión de la reparación de revisión (deviación 7, hallazgo L2): antes, `express.json`
+  // corría antes del router de dispositivos y un `Content-Type: application/json` se comía el
+  // body, dejando `bodyText` en `''` (`OK: 0`). Ahora los device routers se montan antes de
+  // `express.json` (`app.ts:35-37`), así que el body llega como texto sin importar el
+  // Content-Type que el equipo declare.
+  it('lee el body como texto aunque el equipo declare Content-Type: application/json', async () => {
+    const body =
+      '1\t2026-09-28 08:01:00\t0\t1\t0\t0\t0\t0\t0\t0\t\n' +
+      '2\t2026-09-28 08:02:00\t0\t15\t0\t0\t0\t0\t0\t0\t\n';
+
+    const response = await request(app)
+      .post('/iclock/cdata?SN=TESTSN001&table=ATTLOG')
+      .set('Content-Type', 'application/json')
+      .send(body);
+
+    expect(response.status).toBe(200);
+    expect(response.text).toBe('OK: 2');
+    expect(logger.entries).toContainEqual(
+      expect.objectContaining({
+        level: 'info',
+        msg: 'zkteco: datos recibidos',
+        obj: expect.objectContaining({ total: 2 }),
+      }),
+    );
+  });
+
   it('el resto de /api/v1 y /health sigue funcionando sin cambios', async () => {
     await request(app).get('/health/live').expect(200, { status: 'ok' });
     await request(app)

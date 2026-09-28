@@ -149,6 +149,41 @@ describe('parseAdmsBody', () => {
     expect(record).toEqual({ kind: 'unparsed', length: 'texto-plano-sin-formato'.length });
   });
 
+  // Regresión de la reparación de revisión (deviación 7, hallazgo L1): un prefijo o una clave sin
+  // forma de identificador ya no cuelan contenido crudo (p. ej. un `ATTPHOTO` binario, o firmware
+  // viejo mandando `PIN=1\tName=Juan` sin prefijo).
+  it('marca como no interpretada una línea con prefijo que no tiene forma de identificador', () => {
+    const line = '1BIODATA Pin=1\tNo=6';
+
+    const [record] = parseAdmsBody('OPERLOG', line);
+
+    expect(record).toEqual({ kind: 'unparsed', length: line.length });
+  });
+
+  it('marca como no interpretada una línea con una clave que no tiene forma de identificador', () => {
+    const line = 'USER 1PIN=1\tName=Prueba';
+
+    const [record] = parseAdmsBody('OPERLOG', line);
+
+    expect(record).toEqual({ kind: 'unparsed', length: line.length });
+  });
+
+  it('marca como no interpretada una línea table=options con una clave inválida', () => {
+    const line = '~1Key=valor,DeviceName=SenseFace 2A';
+
+    const [record] = parseAdmsBody('options', line);
+
+    expect(record).toEqual({ kind: 'unparsed', length: line.length });
+  });
+
+  it('nunca expone el crudo de una línea rechazada por prefijo o clave inválidos', () => {
+    const secretPrefix = '1BIODATA Tmp=plantilla-secreta';
+
+    const [record] = parseAdmsBody('OPERLOG', secretPrefix);
+
+    expect(JSON.stringify(record)).not.toContain('plantilla-secreta');
+  });
+
   it('nunca incluye el contenido crudo de una línea no interpretada', () => {
     const secret = 'dato-que-no-debe-aparecer';
     const [record] = parseAdmsBody('DESCONOCIDA', secret);

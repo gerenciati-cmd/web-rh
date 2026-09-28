@@ -4,7 +4,7 @@ import { RecordingLogger } from '@/shared/testing/fakes';
 
 import type { DevicePushRecord } from '../../domain/device-record';
 
-import { RecordDevicePush } from './record-device-push.command';
+import { RecordDevicePush, type RecordDevicePushInput } from './record-device-push.command';
 
 describe('RecordDevicePush', () => {
   const attendanceRecord: DevicePushRecord = {
@@ -35,6 +35,29 @@ describe('RecordDevicePush', () => {
         msg: 'zkteco: dispositivo no autorizado',
       },
     ]);
+  });
+
+  // Regresión de la reparación de revisión (deviación 7, hallazgo L3): `records` se lee solo
+  // después de autorizar. El router lo pasa como getter para no parsear el body de un equipo no
+  // autorizado; aquí se prueba en el propio comando, sin depender del router.
+  it('no lee `records` cuando el número de serie no está autorizado', async () => {
+    const logger = new RecordingLogger();
+    const command = new RecordDevicePush({ logger, allowedDeviceSerials: ['OTRO'] });
+    let accessed = false;
+    const input: RecordDevicePushInput = {
+      serialNumber: 'TESTSN001',
+      table: 'ATTLOG',
+      get records(): readonly DevicePushRecord[] {
+        accessed = true;
+        throw new Error('no debería leerse records de un equipo no autorizado');
+      },
+    };
+
+    const result = await command.execute(input);
+
+    expect(result.ok).toBe(false);
+    expect(!result.ok && result.error.code).toBe('DEVICE_NOT_ALLOWED');
+    expect(accessed).toBe(false);
   });
 
   it('rechaza cualquier equipo cuando la lista permitida está vacía', async () => {

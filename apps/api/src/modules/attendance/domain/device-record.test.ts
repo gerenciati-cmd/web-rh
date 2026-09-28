@@ -1,6 +1,31 @@
 import { describe, expect, it } from 'vitest';
 
-import { LOGGABLE_DEVICE_FIELDS, redactDeviceFields } from './device-record';
+import { isDeviceIdentifier, LOGGABLE_DEVICE_FIELDS, redactDeviceFields } from './device-record';
+
+// Regresión de la reparación de revisión (deviación 7, hallazgo L1): antes, cualquier clave o
+// prefijo se aceptaba y se registraba tal cual, sin límite de forma ni de largo.
+describe('isDeviceIdentifier', () => {
+  it('acepta un identificador que empieza con letra, con dígitos y guion bajo', () => {
+    expect(isDeviceIdentifier('PIN')).toBe(true);
+    expect(isDeviceIdentifier('BIODATA')).toBe(true);
+    expect(isDeviceIdentifier('Major_Ver2')).toBe(true);
+  });
+
+  it('rechaza un identificador que empieza con dígito', () => {
+    expect(isDeviceIdentifier('1BIODATA')).toBe(false);
+  });
+
+  it('rechaza un identificador con espacios o símbolos', () => {
+    expect(isDeviceIdentifier('ATT LOG')).toBe(false);
+    expect(isDeviceIdentifier('ATT:LOG')).toBe(false);
+    expect(isDeviceIdentifier('')).toBe(false);
+  });
+
+  it('acepta hasta 32 caracteres y rechaza 33', () => {
+    expect(isDeviceIdentifier('A'.repeat(32))).toBe(true);
+    expect(isDeviceIdentifier('A'.repeat(33))).toBe(false);
+  });
+});
 
 describe('redactDeviceFields', () => {
   it('conserva un valor corto de una clave permitida', () => {
