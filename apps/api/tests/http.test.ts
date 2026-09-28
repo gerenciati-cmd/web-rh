@@ -161,7 +161,8 @@ describe('API HTTP', () => {
     const response = await request(app)
       .post(`${API_PREFIX}/companies/${body.id}/employees`)
       .send({
-        nationalId: { country: 'MX', number: 'GOMA850230HQRRRN01' },
+        // Dígito verificador correcto (2): aísla solo la regla de fecha inválida.
+        nationalId: { country: 'MX', number: 'GOMA850230HQRRRN02' },
         firstName: 'Ana',
         lastName: 'Rojas',
         email: 'ana@aps.cl',

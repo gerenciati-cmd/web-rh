@@ -30,7 +30,8 @@ describe('RegisterEmployeeSchema', () => {
   it('rechaza una CURP cuya fecha de nacimiento no existe en el calendario', () => {
     const result = RegisterEmployeeSchema.safeParse({
       ...base,
-      nationalId: { country: 'MX', number: 'GOMA850230HQRRRN01' },
+      // Dígito verificador correcto (2): aísla solo la regla de fecha inválida.
+      nationalId: { country: 'MX', number: 'GOMA850230HQRRRN02' },
     });
     expect(result.success).toBe(false);
   });

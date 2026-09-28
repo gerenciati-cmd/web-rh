@@ -32,12 +32,15 @@ describe('NationalId', () => {
   });
 
   it('México: rechaza una fecha de nacimiento que no existe en el calendario', () => {
-    // 850230: 30 de febrero no existe.
-    expect(NationalId.create('MX', 'GOMA850230HQRRRN01').ok).toBe(false);
+    // 850230: 30 de febrero no existe. Dígito verificador correcto (2), para aislar solo la
+    // regla de fecha (si no, un DV incorrecto rechazaría igual aunque se quitara esta regla).
+    expect(NationalId.create('MX', 'GOMA850230HQRRRN02').ok).toBe(false);
   });
 
   it('México: rechaza una clave de entidad federativa inexistente', () => {
-    expect(NationalId.create('MX', 'GOMA850101HXXRRN04').ok).toBe(false);
+    // XX no es una entidad federativa válida. Fecha real y dígito verificador correcto (9),
+    // para aislar solo la regla de entidad federativa.
+    expect(NationalId.create('MX', 'GOMA850101HXXRRN09').ok).toBe(false);
   });
 
   it('México: NationalId.isValid coincide con el resultado de create', () => {
