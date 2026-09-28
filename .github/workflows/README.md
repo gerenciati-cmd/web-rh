@@ -27,6 +27,11 @@ debe coincidir con Compose. Se cachea el almacén de pnpm y las capas de Docker 
 no se reutilizan resultados de Turbo entre ejecuciones. Las ejecuciones reemplazadas se cancelan.
 
 El workflow no publica imágenes ni despliega. Un build exitoso no prueba el arranque del
-contenedor. Mobile participa en tipos/lint, pero no se compilan binarios nativos ni se ejecutan
+contenedor. Mobile participa en tipos/lint y tests del hook React; web ejecuta tests de componente con jsdom, pero no se compilan binarios nativos ni se ejecutan
 pruebas de navegador/dispositivo. La protección de ramas se configura por separado usando los
 nombres estables de estos checks; este cambio no modifica esa configuración.
+
+`pnpm check` también ejecuta los controles negativos de ESLint/TypeScript (`test:quality`) y
+las regresiones de alcance/guards (`test:harness`). CI no aprueba planes, no carga hooks en una
+sesión de IA y no calcula automáticamente el alcance de cada plan: esa comparación requiere
+la base real del PR y queda registrada en su checklist.

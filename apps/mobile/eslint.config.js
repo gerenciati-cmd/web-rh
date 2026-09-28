@@ -1,5 +1,4 @@
-// https://docs.expo.dev/guides/using-eslint/
-const { defineConfig } = require('eslint/config');
+const { withFrontend } = require('@rrhh/eslint-config/frontend');
 const expoConfig = require('eslint-config-expo/flat');
 
-module.exports = defineConfig([expoConfig, { ignores: ['dist/*', '.expo/*'] }]);
+module.exports = withFrontend(expoConfig, { mobile: true });

@@ -14,6 +14,7 @@ export interface IdGenerator {
   next(): string;
 }
 
+/** Publicación explícita del caller; este puerto no asegura transacción ni durabilidad. */
 export interface EventBus {
   publish(events: readonly DomainEvent[]): Promise<void>;
   subscribe(eventName: string, handler: EventHandler): void;

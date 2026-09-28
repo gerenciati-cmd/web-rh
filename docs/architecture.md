@@ -132,3 +132,12 @@ awilix en modo PROXY: cada clase recibe un objeto `deps` tipado con solo lo que 
 - Multi-tenancy: filtro por empresa en repositorios/queries + RLS en Postgres como segunda barrera.
 - Auditoría (quién cambió qué) como módulo transversal alimentado por eventos.
 - Outbox para eventos críticos. Observabilidad (OpenTelemetry).
+
+## Vocabulario y escrituras esperadas
+
+El [ADR 0007](adr/0007-vocabulario-compartido-y-errores-esperados.md) permite compartir vocabulario
+puro con dueño explícito entre dominio y contratos. EmployeeStatus se deriva de EMPLOYEE_STATUSES;
+Prisma mantiene su representación de almacenamiento sin filtrarla a otras capas.
+Los puertos de escritura retornan Result ante conflictos esperados; las fallas inesperadas rechazan
+la promesa. El command revisa el resultado antes de publicar eventos. El bus no programa callbacks
+post-commit: publicar después de persistir es responsabilidad del caller; no hay outbox todavía.

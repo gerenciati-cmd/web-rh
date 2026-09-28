@@ -49,20 +49,21 @@ session, any tool, any model, or a human reads a plan's `status:` and the routin
 
 ## Mechanical enforcement (what is NOT left to good intentions)
 
-| Guarantee                                                                        | Enforced by                                  |
-| -------------------------------------------------------------------------------- | -------------------------------------------- |
-| Layer and module boundaries                                                      | `pnpm arch:check` (dependency-cruiser)       |
-| Plans are well-formed, statuses coherent                                         | `pnpm plans:lint` (in `pnpm check`)          |
-| Diff stays inside the plan's file list                                           | `pnpm plans:scope <plan>` (reviewer runs it) |
-| Adapters match their role docs                                                   | `pnpm harness:check` (in `pnpm check`)       |
-| No destructive shell/git/db/docker commands                                      | `.claude/hooks/guard-bash.mjs` (+ its tests) |
-| No edits to secrets, lockfile, generated, applied migrations, generated adapters | `.claude/hooks/guard-files.mjs`              |
-| Formatting                                                                       | `.claude/hooks/format-file.mjs`, lint-staged |
-| Commit format, registry scopes, no AI attribution, no generic subjects           | commitlint (`commit-msg` hook)               |
-| Explicit staging only (no `git add -A` / `.` / `commit -a`)                      | `.claude/hooks/guard-bash.mjs`               |
+| Guarantee                                                                   | Enforced by                                  |
+| --------------------------------------------------------------------------- | -------------------------------------------- |
+| Layer and module boundaries                                                 | `pnpm arch:check` (dependency-cruiser)       |
+| Plans are well-formed, statuses coherent                                    | `pnpm plans:lint` (in `pnpm check`)          |
+| Diff stays inside the plan's file list                                      | `pnpm plans:scope <plan>` (reviewer runs it) |
+| Adapters match their role docs                                              | `pnpm harness:check` (in `pnpm check`)       |
+| Known destructive shell/git/db/docker forms (registered Claude hook only)   | `.claude/hooks/guard-bash.mjs` (+ its tests) |
+| Protected paths through registered read/edit hooks (not arbitrary programs) | `.claude/hooks/guard-files.mjs`              |
+| Formatting                                                                  | `.claude/hooks/format-file.mjs`, lint-staged |
+| Commit format, registry scopes, no AI attribution, no generic subjects      | commitlint (`commit-msg` hook)               |
+| Explicit staging only (no `git add -A` / `.` / `commit -a`)                 | `.claude/hooks/guard-bash.mjs`               |
 
 Codex does not run Claude hooks. That is why its generated profiles carry the destructive
-rules as text, and why the scripts above run in `pnpm check` regardless of the tool.
+rules as text. `pnpm check` tests guard behavior; it does not register hooks in Codex or prove
+live enforcement. Host sandbox/permissions remain essential. See [security.md](security.md).
 
 ## Module registry
 

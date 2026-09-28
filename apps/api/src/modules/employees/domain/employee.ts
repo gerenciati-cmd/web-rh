@@ -6,13 +6,14 @@ import {
   InvalidValueError,
   ok,
   type Email,
+  type EmployeeStatus,
   type Id,
   type NationalId,
   type Result,
 } from '@rrhh/domain';
 
 export type EmployeeId = Id<'Employee'>;
-export type EmployeeStatus = 'ACTIVE' | 'TERMINATED';
+export type { EmployeeStatus } from '@rrhh/domain';
 
 export interface EmployeeProps {
   companyId: string;
@@ -25,8 +26,8 @@ export interface EmployeeProps {
   status: EmployeeStatus;
 }
 
-export const EmployeeHired = 'employees.employee.hired';
-export const EmployeeTerminated = 'employees.employee.terminated';
+export const EMPLOYEE_HIRED = 'employees.employee.hired';
+export const EMPLOYEE_TERMINATED = 'employees.employee.terminated';
 
 /** Máximo de anticipación para registrar una contratación futura. */
 const MAX_DAYS_HIRE_IN_ADVANCE = 90;
@@ -77,7 +78,7 @@ export class Employee extends AggregateRoot<EmployeeId> {
       status: 'ACTIVE',
     });
     employee.record(
-      createEvent(EmployeeHired, { employeeId: input.id, companyId: input.companyId }, input.now),
+      createEvent(EMPLOYEE_HIRED, { employeeId: input.id, companyId: input.companyId }, input.now),
     );
     return ok(employee);
   }
@@ -97,7 +98,7 @@ export class Employee extends AggregateRoot<EmployeeId> {
       );
     }
     this.props = { ...this.props, status: 'TERMINATED' };
-    this.record(createEvent(EmployeeTerminated, { employeeId: this.id, terminationDate }, now));
+    this.record(createEvent(EMPLOYEE_TERMINATED, { employeeId: this.id, terminationDate }, now));
     return ok(undefined);
   }
 

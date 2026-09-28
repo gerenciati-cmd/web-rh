@@ -84,7 +84,7 @@ describe('PrismaEmployeeRepository', () => {
           lastName: 'Rojas',
         }),
       ),
-    ).resolves.toBeUndefined();
+    ).resolves.toEqual({ ok: true, value: undefined });
   });
 
   it('traduce la violación del índice único (carrera) al conflicto de dominio', async () => {
@@ -92,8 +92,22 @@ describe('PrismaEmployeeRepository', () => {
 
     await expect(
       repository.save(employee({ rut: '12.345.678-5', firstName: 'Otra', lastName: 'Persona' })),
-    ).rejects.toBeInstanceOf(EmployeeAlreadyExistsError);
+    ).resolves.toMatchObject({ ok: false, error: expect.any(EmployeeAlreadyExistsError) });
   });
+});
+
+it('dos saves concurrentes conservan una fila por empresa y documento', async () => {
+  const results = await Promise.all([
+    repository.save(employee({ rut: '12.345.678-5', firstName: 'Fixture', lastName: 'Uno' })),
+    repository.save(employee({ rut: '12.345.678-5', firstName: 'Fixture', lastName: 'Dos' })),
+  ]);
+  expect(results.filter((result) => result.ok)).toHaveLength(1);
+  expect(results.filter((result) => !result.ok).map((result) => result.error.code)).toEqual([
+    'EMPLOYEE_ALREADY_EXISTS',
+  ]);
+  expect((await queries.listDirectory({ companyId: COMPANY_A, page: 1, pageSize: 20 })).total).toBe(
+    1,
+  );
 });
 
 describe('PrismaEmployeeQueries.listDirectory', () => {

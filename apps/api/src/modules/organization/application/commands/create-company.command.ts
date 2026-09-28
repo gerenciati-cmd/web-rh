@@ -43,7 +43,8 @@ export class CreateCompany implements Command<CreateCompanyInput, { id: CompanyI
     });
     if (!company.ok) return company;
 
-    await this.deps.companyRepository.save(company.value);
+    const saved = await this.deps.companyRepository.save(company.value);
+    if (!saved.ok) return saved;
     await this.deps.eventBus.publish(company.value.pullEvents());
 
     return ok({ id: company.value.id });

@@ -1,6 +1,7 @@
-import type { NationalId } from '@rrhh/domain';
+import type { NationalId, Result } from '@rrhh/domain';
 
 import type { Company, CompanyId } from './company';
+import type { CompanyAlreadyExistsError } from './errors';
 
 /**
  * Puerto de ESCRITURA (lado command). Trabaja con agregados completos.
@@ -9,5 +10,6 @@ import type { Company, CompanyId } from './company';
 export interface CompanyRepository {
   findById(id: CompanyId): Promise<Company | null>;
   existsByTaxId(taxId: NationalId): Promise<boolean>;
-  save(company: Company): Promise<void>;
+  /** Conflictos esperados retornan err; fallas de IO inesperadas rechazan la promesa. */
+  save(company: Company): Promise<Result<void, CompanyAlreadyExistsError>>;
 }

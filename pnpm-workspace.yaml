@@ -5,6 +5,9 @@ packages:
 # Versiones compartidas: se declaran UNA vez aquí y los package.json usan "catalog:".
 # Para subir una versión en todo el monorepo se cambia solo esta línea.
 catalog:
+  '@testing-library/react': 16.3.3
+  '@testing-library/dom': 10.4.2
+  jsdom: 26.1.0
   '@commitlint/cli': 21.2.3
   '@commitlint/config-conventional': 21.2.3
   '@eslint/js': 9.39.5

@@ -68,3 +68,5 @@ when the commit moves a plan (`Plan 003 a verify.`).
 `feat/<initiative>` for a plan series (`feat/attendance-marcaciones`), `fix/<module>-<slug>` for
 fast-lane fixes, `chore/<slug>` for tooling. Never commit directly to `main`; merge through a PR
 using `.github/pull_request_template.md`.
+
+Repair iterations preserve dated phase evidence; only the main session commits with existing user authorization. Repairing a plan grants no new commit/push permission.

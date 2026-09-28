@@ -2,6 +2,7 @@ export * from './date-range';
 export * from './domain-event';
 export * from './email';
 export * from './entity';
+export * from './employees/employee-status';
 export * from './errors';
 export * from './money';
 export * from './national-id/national-id';

@@ -203,3 +203,24 @@ describe('declaredFiles (base de plans:scope)', () => {
     ]);
   });
 });
+
+describe('dependencias de ejecución', () => {
+  for (const status of ['implementing', 'testing', 'review', 'verify', 'done']) {
+    it(`${status} exige dependencias done`, () => {
+      const errors = lint({
+        ...readme,
+        'employees-desvinculacion/001-a.md': plan({ status: 'approved', fill: EVIDENCE }),
+        'employees-desvinculacion/002-b.md': plan({ status, deps: '["001"]', fill: EVIDENCE }),
+      });
+      assert.ok(errors.some((error) => error.includes('dependencia')));
+    });
+  }
+  it('rechaza ciclos incluso en draft', () => {
+    const errors = lint({
+      ...readme,
+      'employees-desvinculacion/001-a.md': plan({ deps: '["002"]' }),
+      'employees-desvinculacion/002-b.md': plan({ deps: '["001"]' }),
+    });
+    assert.ok(errors.some((error) => /ciclo/i.test(error)));
+  });
+});

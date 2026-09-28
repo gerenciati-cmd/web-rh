@@ -4,7 +4,7 @@
  * un falso positivo entrena al agente a buscar rodeos.
  */
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync, mkdirSync, symlinkSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { after, describe, it } from 'node:test';
@@ -116,7 +116,6 @@ describe('guard-bash: permite', () => {
     'grep -n "prisma db push\\|git stash" AGENTS.md',
     'git commit -m "docs: prohibir git reset --hard y rm -rf"',
     'echo "DROP TABLE x" > /tmp/nota.txt',
-    "python3 - <<'PY'\nprint('git stash; rm -rf apps')\nPY",
   ]) {
     it(command, () => assert.equal(bash(command), 0));
   }
@@ -147,15 +146,15 @@ describe('guard-bash: rm de archivos untracked', () => {
     assert.equal(bash(`rm ${path.basename(file)}`, { transcript_path: t }), 2);
   });
 
-  it('permite si esta sesión lo creó con redirección de Bash', () => {
+  it('bloquea aunque la transcripción afirme que lo creó con redirección de Bash', () => {
     const rel = path.basename(file);
     const t = transcript([
       { type: 'tool_use', name: 'Bash', input: { command: `printf 'x' > ${rel}` } },
     ]);
-    assert.equal(bash(`rm ${rel}`, { transcript_path: t }), 0);
+    assert.equal(bash(`rm ${rel}`, { transcript_path: t }), 2);
   });
 
-  it('permite si esta sesión lo creó con open(..., "w") en un script multilínea', () => {
+  it('bloquea aunque la transcripción afirme que lo creó con open(..., "w") en un script multilínea', () => {
     const t = transcript([
       {
         type: 'tool_use',
@@ -163,7 +162,7 @@ describe('guard-bash: rm de archivos untracked', () => {
         input: { command: `python3 - <<'PY'\ns = 'x'\nopen('${file}','w').write(s)\nPY` },
       },
     ]);
-    assert.equal(bash(`rm ${path.basename(file)}`, { transcript_path: t }), 0);
+    assert.equal(bash(`rm ${path.basename(file)}`, { transcript_path: t }), 2);
   });
 
   it('bloquea si Bash solo lo leyó (cat/grep)', () => {
@@ -177,9 +176,9 @@ describe('guard-bash: rm de archivos untracked', () => {
     assert.equal(bash(`rm ${path.basename(file)}`, { transcript_path: t }), 2);
   });
 
-  it('permite si esta sesión lo creó con Write', () => {
+  it('bloquea aunque la transcripción afirme que lo creó con Write', () => {
     const t = transcript([{ type: 'tool_use', name: 'Write', input: { file_path: file } }]);
-    assert.equal(bash(`rm ${path.basename(file)}`, { transcript_path: t }), 0);
+    assert.equal(bash(`rm ${path.basename(file)}`, { transcript_path: t }), 2);
   });
 });
 
@@ -203,4 +202,77 @@ describe('guard-files', () => {
   it('permite código fuente', () =>
     assert.equal(edit('apps/api/src/modules/employees/domain/employee.ts'), 0));
   it('permite schema.prisma', () => assert.equal(edit('apps/api/prisma/schema.prisma'), 0));
+});
+
+describe('guards: entradas adversarias inertes', () => {
+  for (const command of [
+    '"git" "stash"',
+    "sh -c 'git reset --hard'",
+    'git -C apps stash',
+    'bash -c \'sh -c "git clean -fd"\'',
+    'git push origin HEAD:main',
+    'echo x > pnpm-lock.yaml',
+    'cat .env.production',
+    'cat < .env.staging',
+    'tee apps/api/.env.secret',
+    'cat .env*',
+    'git push origin HEAD:refs/heads/main',
+    'echo $(git stash)',
+    'node -e"process.exit()"',
+    "python3 - <<'PY'\nprint('benigno')\nPY",
+    'echo "sin cerrar',
+    'rm -rf .env.secret/generated',
+    'cat .git/../.env.local',
+  ])
+    it(command, () => assert.equal(bash(command), 2));
+  for (const command of [
+    'echo "git stash"',
+    'git diff -- package.json',
+    'cat .env.example',
+    "sh -c 'pnpm check'",
+  ])
+    it(`permite literal: ${command}`, () => assert.equal(bash(command), 0));
+  for (const hook of ['guard-bash.mjs', 'guard-files.mjs', 'guard-read.mjs']) {
+    it(`${hook} rechaza JSON inválido y payload vacío`, () => {
+      assert.equal(run(hook, {}), 2);
+      assert.equal(
+        spawnSync('node', [path.join(dir, hook)], { input: '{', encoding: 'utf8' }).status,
+        2,
+      );
+    });
+  }
+  it('MultiEdit inspecciona cada ruta', () => {
+    assert.equal(
+      run('guard-files.mjs', {
+        tool_input: { edits: [{ file_path: 'README.md' }, { file_path: '.env.ci' }] },
+      }),
+      2,
+    );
+    assert.equal(run('guard-files.mjs', { tool_input: { edits: [] } }), 2);
+  });
+  it('read distingue ejemplo exacto de variantes secretas', () => {
+    for (const file_path of ['.env.production', '.env.example.local', 'private.key', 'cert.pem'])
+      assert.equal(run('guard-read.mjs', { tool_input: { file_path } }), 2);
+    assert.equal(run('guard-read.mjs', { tool_input: { file_path: '.env.example' } }), 0);
+  });
+  it('resuelve symlinks de archivo y padres; no modifica el fixture denegado', () => {
+    const tmp = mkdtempSync(path.join(tmpdir(), 'rrhh-guard-path-'));
+    try {
+      const protectedDir = path.join(tmp, '.git');
+      mkdirSync(protectedDir);
+      const file = path.join(tmp, '.env.fixture');
+      writeFileSync(file, 'INERT');
+      symlinkSync(file, path.join(tmp, 'alias.txt'));
+      symlinkSync(protectedDir, path.join(tmp, 'alias-dir'));
+      assert.equal(edit(path.join(tmp, 'alias.txt')), 2);
+      assert.equal(edit(path.join(tmp, 'alias-dir', 'new-file')), 2);
+      assert.equal(
+        run('guard-read.mjs', { tool_input: { file_path: path.join(tmp, 'alias.txt') } }),
+        2,
+      );
+      assert.equal(readFileSync(file, 'utf8'), 'INERT');
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
 });

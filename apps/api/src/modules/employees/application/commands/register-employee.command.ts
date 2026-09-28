@@ -63,7 +63,8 @@ export class RegisterEmployee implements Command<RegisterEmployeeInput, { id: Em
     });
     if (!employee.ok) return employee;
 
-    await employeeRepository.save(employee.value);
+    const saved = await employeeRepository.save(employee.value);
+    if (!saved.ok) return saved;
     await eventBus.publish(employee.value.pullEvents());
 
     return ok({ id: employee.value.id });

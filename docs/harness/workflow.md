@@ -205,3 +205,12 @@ pnpm check                        # format, types, lint, unit+http tests, arch, 
 pnpm test:integration             # Prisma adapters against the test DB (needs pnpm db:up)
 pnpm harness:sync                 # regenerate agent/skill adapters from the role docs
 ```
+
+## Repair handoff
+
+Reviewer/verifier record failures and leave the phase status unchanged. When resuming this
+already-authorized plan, the main session records the repair reason and transitions review/verify
+→ implementing before invoking the implementer. In-scope product repairs run testing → review →
+verify again. Test-only corrections stay with the tester. Preserve dated historical evidence and
+mark previous results superseded by the repair; do not claim old verification covers new code.
+Scope/design changes still require a deviation and user decision. No new status is introduced.

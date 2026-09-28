@@ -1,4 +1,4 @@
-import type { NationalId } from '@rrhh/domain';
+import { err, ok, type NationalId, type Result } from '@rrhh/domain';
 
 import type { PrismaDatabase } from '@/infrastructure/database/prisma-database';
 import { isUniqueViolation } from '@/infrastructure/database/prisma-errors';
@@ -24,7 +24,7 @@ export class PrismaCompanyRepository implements CompanyRepository {
     return count > 0;
   }
 
-  async save(company: Company): Promise<void> {
+  async save(company: Company): Promise<Result<void, CompanyAlreadyExistsError>> {
     const data = CompanyMapper.toPersistence(company);
     try {
       await this.deps.database.client.company.upsert({
@@ -32,9 +32,11 @@ export class PrismaCompanyRepository implements CompanyRepository {
         create: data,
         update: data,
       });
+      return ok(undefined);
     } catch (error) {
       // Carrera entre dos requests que pasaron el `existsByTaxId`: el índice único decide.
-      if (isUniqueViolation(error)) throw new CompanyAlreadyExistsError(company.taxId.format());
+      if (isUniqueViolation(error))
+        return err(new CompanyAlreadyExistsError(company.taxId.format()));
       throw error;
     }
   }

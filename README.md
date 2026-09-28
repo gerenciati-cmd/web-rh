@@ -94,3 +94,7 @@ No necesitas esperar a CI para ejecutar estos mismos controles durante desarroll
 GitHub Actions ejecuta calidad con Node de `.nvmrc` y Node 24, integración y migraciones con
 PostgreSQL efímero, y builds Docker de web, API y migrador. No publica imágenes ni despliega.
 Consulta [el detalle de los checks](.github/workflows/README.md).
+
+## Contribución
+
+Consulta [CONTRIBUTING.md](CONTRIBUTING.md) para convenciones, pruebas, seguridad y flujo de PR.

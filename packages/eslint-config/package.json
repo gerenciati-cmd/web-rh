@@ -5,7 +5,8 @@
   "type": "module",
   "exports": {
     "./base": "./base.mjs",
-    "./node": "./node.mjs"
+    "./node": "./node.mjs",
+    "./frontend": "./frontend.mjs"
   },
   "peerDependencies": {
     "eslint": "catalog:"

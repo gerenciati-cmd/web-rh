@@ -61,3 +61,19 @@ plan may require the e2e layer.
 3. Weakening assertions to pass; `.skip` without a `NOT CONFIRMED:` reason.
 4. Hitting the dev database, the network or the real clock from unit/application/http tests.
 5. Fixture ids or data that collide across tests (use `SequentialIdGenerator` / per-test data).
+
+## Frontend y herramientas del repo
+
+`pnpm check` incluye `vitest run` en web y mobile mediante Turbo. Web usa jsdom y React Testing
+Library sobre `CompanyTable`; mobile prueba el hook React `useCompanies` con el cliente HTTP
+simulado. Son pruebas de componente/hook: no verifican render nativo, navegación en dispositivo
+ni E2E de navegador. Los tests viven junto a la feature, fuera de carpetas de rutas.
+
+Usar promesas controladas para carreras de red, sin sleeps ni servicios externos. Cubrir respuesta
+antigua después de reload y desmontaje. No activar `passWithNoTests`. Cada app conserva su propia
+pareja React/react-dom. Las versiones de herramientas compartidas viven en el catálogo.
+
+`test:quality` ejecuta ESLint real sobre snippets en memoria con rutas del proyecto y resuelve la
+configuración TypeScript efectiva; prueba controles negativos y excepciones del framework.
+`test:harness` usa payloads inertes y repos Git temporales propios. No ejecutar un comando
+malicioso para comprobar que el hook lo clasifica; se entrega como texto al proceso del guard.

@@ -3,7 +3,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
+import { BOTTOM_TAB_INSET, MAX_CONTENT_WIDTH, SPACING } from '@/constants/theme';
 import { useCompanies } from '@/features/organization/hooks/use-companies';
 
 export default function CompaniesScreen() {
@@ -47,10 +47,10 @@ const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
     width: '100%',
-    maxWidth: MaxContentWidth,
-    gap: Spacing.three,
-    paddingHorizontal: Spacing.four,
-    paddingBottom: BottomTabInset + Spacing.three,
+    maxWidth: MAX_CONTENT_WIDTH,
+    gap: SPACING.three,
+    paddingHorizontal: SPACING.four,
+    paddingBottom: BOTTOM_TAB_INSET + SPACING.three,
   },
-  row: { paddingVertical: Spacing.two, gap: Spacing.one },
+  row: { paddingVertical: SPACING.two, gap: SPACING.one },
 });

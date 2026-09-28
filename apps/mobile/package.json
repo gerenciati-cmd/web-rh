@@ -33,7 +33,13 @@
     "@types/react": "~19.2.2",
     "typescript": "catalog:",
     "eslint": "catalog:",
-    "eslint-config-expo": "~57.0.2"
+    "eslint-config-expo": "~57.0.2",
+    "@rrhh/eslint-config": "workspace:*",
+    "@rrhh/tsconfig": "workspace:*",
+    "vitest": "catalog:",
+    "@testing-library/react": "catalog:",
+    "@testing-library/dom": "catalog:",
+    "jsdom": "catalog:"
   },
   "scripts": {
     "start": "expo start",
@@ -41,7 +47,8 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "lint": "eslint .",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
   },
   "private": true
 }

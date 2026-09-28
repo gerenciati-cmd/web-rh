@@ -86,8 +86,11 @@ export function lintRepo({ plans, initiatives, findings, modules }) {
       const target = resolveRef(plan, ref, plans);
       if (!target) report(where, `depends_on "${ref}" no existe`);
       else if (target === plan) report(where, 'un plan no puede depender de sí mismo');
-      else if (fm.status === 'done' && target.frontmatter?.status !== 'done') {
-        report(where, `está done pero su dependencia ${target.id} no`);
+      else if (
+        ['implementing', 'testing', 'review', 'verify', 'done'].includes(fm.status) &&
+        target.frontmatter?.status !== 'done'
+      ) {
+        report(where, `está ${fm.status} pero su dependencia ${target.id} no está done`);
       }
     }
 
@@ -112,6 +115,26 @@ export function lintRepo({ plans, initiatives, findings, modules }) {
       report(where, '"## Out of scope" vacío: es la cerca del implementador');
     }
   }
+
+  // DFS con estados: un ciclo no se resuelve reintentando el pipeline.
+  const visited = new Set();
+  const visiting = new Set();
+  function visit(plan, chain = []) {
+    if (visiting.has(plan)) {
+      report(plan.rel, `ciclo de dependencias: ${[...chain, plan.id].join(' → ')}`);
+      return;
+    }
+    if (visited.has(plan)) return;
+    visiting.add(plan);
+    const refs = plan.frontmatter?.depends_on;
+    for (const ref of Array.isArray(refs) ? refs : []) {
+      const target = resolveRef(plan, ref, plans);
+      if (target) visit(target, [...chain, plan.id]);
+    }
+    visiting.delete(plan);
+    visited.add(plan);
+  }
+  for (const plan of plans) visit(plan);
 
   // ── Hallazgos ────────────────────────────────────────────────────────
   for (const finding of findings) {

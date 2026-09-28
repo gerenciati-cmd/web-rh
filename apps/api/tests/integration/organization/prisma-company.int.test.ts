@@ -53,10 +53,21 @@ describe('PrismaCompanyRepository', () => {
   it('traduce la violación del índice único (carrera) al conflicto de dominio', async () => {
     await repository.save(company('APS Holding SpA', '76.086.428-5'));
 
-    await expect(repository.save(company('Duplicada', '76.086.428-5'))).rejects.toBeInstanceOf(
-      CompanyAlreadyExistsError,
-    );
+    const result = await repository.save(company('Duplicada', '76.086.428-5'));
+    expect(!result.ok && result.error).toBeInstanceOf(CompanyAlreadyExistsError);
   });
+});
+
+it('dos saves concurrentes conservan una fila y devuelven un conflicto', async () => {
+  const results = await Promise.all([
+    repository.save(company('Fixture Uno', '76.086.428-5')),
+    repository.save(company('Fixture Dos', '76.086.428-5')),
+  ]);
+  expect(results.filter((result) => result.ok)).toHaveLength(1);
+  expect(results.filter((result) => !result.ok).map((result) => result.error.code)).toEqual([
+    'COMPANY_ALREADY_EXISTS',
+  ]);
+  expect((await queries.list({ page: 1, pageSize: 20 })).total).toBe(1);
 });
 
 describe('PrismaCompanyQueries', () => {

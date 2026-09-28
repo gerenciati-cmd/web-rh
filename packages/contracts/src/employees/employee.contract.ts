@@ -1,10 +1,10 @@
-import { NationalId } from '@rrhh/domain';
+import { EMPLOYEE_STATUSES, NationalId } from '@rrhh/domain';
 import { z } from 'zod';
 
 import { CountrySchema, CreatedSchema, PageQuerySchema, pageOf } from '../common';
 import { defineRoute } from '../http';
 
-export const EmployeeStatusSchema = z.enum(['ACTIVE', 'TERMINATED']);
+export const EmployeeStatusSchema = z.enum(EMPLOYEE_STATUSES);
 
 // ── Modelos de lectura ─────────────────────────────────────────────────────
 export const EmployeeListItemSchema = z.object({

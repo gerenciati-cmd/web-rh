@@ -26,3 +26,18 @@
   versions). Never edit `ios/` or `android/` (generated).
 - Secrets and tokens in `expo-secure-store`, never AsyncStorage.
 - `EXPO_PUBLIC_*` variables are public by definition: never put secrets in them.
+
+## Canonical contribution policy
+
+Constants, closed sets, naming and selective docblocks follow [docs/conventions.md](../../conventions.md). Do not duplicate those rules here.
+
+### Reglas compartidas y excepciones
+
+Ambas apps heredan opciones estrictas de `@rrhh/tsconfig/strict-options.json` y componen su preset
+Next/Expo con `@rrhh/eslint-config/frontend`. Los imports directos de Prisma, fuentes del API e
+infrastructure están prohibidos; los wrappers locales del cliente (`@/lib/api`) siguen permitidos.
+
+Default export se permite en archivos de rutas requeridos por el framework. Metro requiere
+`require` literal para assets: la excepción se limita a imports `@/assets/` en los componentes
+que los usan. Las promesas de callbacks se manejan explícitamente; no se desactiva la regla para
+todas las pantallas. `test:quality` comprueba estas excepciones y los casos rechazados.

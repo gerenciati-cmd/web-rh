@@ -32,19 +32,26 @@ export class Money {
     return new Money(0, currency);
   }
 
-  add(other: Money): Money {
-    this.assertSameCurrency(other);
-    return new Money(this.amountMinor + other.amountMinor, this.currency);
+  /** Moneda distinta o desbordamiento devuelven err; nunca se construye un monto inseguro. */
+  add(other: Money): Result<Money, InvalidValueError> {
+    const currency = this.checkCurrency(other);
+    if (!currency.ok) return currency;
+    return Money.ofMinor(this.amountMinor + other.amountMinor, this.currency);
   }
 
-  subtract(other: Money): Money {
-    this.assertSameCurrency(other);
-    return new Money(this.amountMinor - other.amountMinor, this.currency);
+  subtract(other: Money): Result<Money, InvalidValueError> {
+    const currency = this.checkCurrency(other);
+    if (!currency.ok) return currency;
+    return Money.ofMinor(this.amountMinor - other.amountMinor, this.currency);
   }
 
-  /** Multiplica por un factor (p. ej. horas extra × 1.5) redondeando a la unidad mínima. */
-  multiply(factor: number): Money {
-    return new Money(Math.round(this.amountMinor * factor), this.currency);
+  /**
+   * Math.round conserva el redondeo actual: los empates van hacia +infinito.
+   * No define una política legal de nómina. Factor no finito o resultado inseguro retorna err.
+   */
+  multiply(factor: number): Result<Money, InvalidValueError> {
+    if (!Number.isFinite(factor)) return err(new InvalidValueError('El factor debe ser finito'));
+    return Money.ofMinor(Math.round(this.amountMinor * factor), this.currency);
   }
 
   isNegative(): boolean {
@@ -60,13 +67,15 @@ export class Money {
     return (this.amountMinor / 10 ** digits).toFixed(digits);
   }
 
-  private assertSameCurrency(other: Money): void {
+  private checkCurrency(other: Money): Result<void, InvalidValueError> {
     if (other.currency !== this.currency) {
-      // Mezclar monedas es un bug de programación, no un caso de negocio esperado.
-      throw new InvalidValueError('No se pueden operar montos de distinta moneda', {
-        left: this.currency,
-        right: other.currency,
-      });
+      return err(
+        new InvalidValueError('No se pueden operar montos de distinta moneda', {
+          left: this.currency,
+          right: other.currency,
+        }),
+      );
     }
+    return ok(undefined);
   }
 }

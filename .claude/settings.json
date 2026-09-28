@@ -26,13 +26,10 @@
       "Bash(pnpm --filter @rrhh/* lint)",
       "Bash(pnpm --filter @rrhh/* test)",
       "Bash(pnpm --filter @rrhh/* build)",
-      "Bash(pnpm exec vitest *)",
       "Bash(pnpm exec tsc --noEmit)",
-      "Bash(pnpm exec eslint *)",
       "Bash(pnpm exec prisma generate)",
       "Bash(pnpm exec prisma validate)",
       "Bash(pnpm exec prisma format)",
-      "Bash(pnpm exec turbo *)",
       "Bash(git status *)",
       "Bash(git diff *)",
       "Bash(git log *)",
@@ -90,6 +87,16 @@
           {
             "type": "command",
             "command": "node \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/guard-files.mjs",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "Read",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/guard-read.mjs",
             "timeout": 10
           }
         ]

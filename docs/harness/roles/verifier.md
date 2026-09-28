@@ -34,3 +34,14 @@ A short report in the plan's `## Verification` section — never chat-only: what
 how (commands/URLs), what was observed (decisive lines only), acceptance criteria checked off,
 anything unverifiable flagged. On full pass the plan is ready for the user to set `done` and
 commit — only the user makes that move. On failure, the status stays `verify`.
+
+## Repair handoff
+
+Reviewer/verifier record failures and leave the phase status unchanged. When resuming this
+already-authorized plan, the main session records the repair reason and transitions review/verify
+→ implementing before invoking the implementer. In-scope product repairs run testing → review →
+verify again. Test-only corrections stay with the tester. Preserve dated historical evidence and
+mark previous results superseded by the repair; do not claim old verification covers new code.
+Scope/design changes still require a deviation and user decision. No new status is introduced.
+
+Read [security.md](../security.md) for untrusted-content and host-enforcement boundaries.
