@@ -722,10 +722,16 @@ The user set `ZKTECO_ALLOWED_SERIALS` (the real device SN only) and `LOG_LEVEL=d
 - Face marcaciones (2): `ATTLOG` `verifyMode: "15"` at `12:21:34` and `12:24:52`.
 - Device time is UTC−5 (Cancún), logged raw.
 
-**NOT VERIFIED:** a real enrolment (fingerprint/face) sent through the API. No new user was
-enrolled during this session. `BIODATA`/`BIOPHOTO`/`USERPIC` redaction is verified against the
-running app with synthetic lines that have the exact shapes captured from this device earlier
-(Context). The earlier real enrolment went through the throwaway probe, not the API.
+- **Real enrolment through the API** (user re-enrolled test PIN 2, 17:48–17:49 UTC):
+  - `USER`: `PIN: "2"`. `Name`, `Passwd`, `Card` and `ViceCard` are `[redactado:…]`.
+  - Fingerprint `BIODATA`: `Type: "1"`, `Tmp: "[redactado:1400]"`.
+  - Face `BIOPHOTO`: `Type: "9"`, `Content: "[redactado:37172]"`.
+  - Face `BIODATA`: `Type: "9"`, `Tmp: "[redactado:756]"`.
+  - `USERPIC`: `Content: "[redactado:37172]"`.
+  - The accompanying `OPLOG` lines (codes 4, 103, 70, 7, 30, 6, 101, 68) are logged as
+    `operation`.
+  - Zero `unparsed` records in the whole session log.
 
-**Result: PASS**, with the one NOT VERIFIED item above. Status stays `verify` until the user
-sets `done`.
+**Result: PASS.** Every acceptance criterion was exercised against the running app, and the real
+device ones with the physical SenseFace 2A. Nothing is NOT VERIFIED. Status stays `verify` until
+the user sets `done`.
