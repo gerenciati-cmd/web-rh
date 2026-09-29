@@ -1,5 +1,5 @@
 ---
-status: review
+status: verify
 module: identity
 min_implementer: mid
 depends_on: []
@@ -549,5 +549,113 @@ evidencia de la ronda 1 y no se repitieron (el código que cubren no cambió en 
 Estado: sigue en `review`. H1 y L1-L2 se arreglan dentro del alcance. H2 y H3 cambian puertos de
 repositorio y M2 es una decisión de diseño: los tres necesitan decisión del usuario o deviation
 antes de volver a `implementing`. M1 es una edición del plan.
+
+---
+
+**Ronda 2 (reviewer, 2026-09-29).** Revisión del repair: `f059dd6` (fix) + `5b55cd9` (tests),
+contra `043027b`, más el diff completo `main...HEAD` (6 commits) para el checklist. Árbol limpio.
+Los hallazgos de la ronda 1 quedan arriba como historia; esta ronda los da por resueltos.
+
+### Checklist: 13/13
+
+- [x] `pnpm plans:scope`: "73 declarados, 75 cambiados… Todos los cambios están dentro del
+      alcance del plan". Hot files revisados: `tests/test-app.ts` en el repair solo agrega
+      (import de `TransactionRunner`, clase `NoopTransactionRunner`, un registro); las líneas
+      quitadas en `main...HEAD` son de la ronda 1 (`buildTestContainer(env = testEnv)`), ya
+      documentadas en `## Test coverage`.
+- [x] `pnpm check`: verde (api 24 archivos/180 tests, contracts 32, domain 49, web 2, mobile 5,
+      api-client 3; `no dependency violations found (153 modules, 481 dependencies cruised)`;
+      plans/harness/hooks/bootstrap/quality sin fallos).
+- [x] `pnpm test:integration`: verde (6 archivos, 39 tests).
+- [x] Reglas de negocio en `domain/`: `registerAttempt`/`releaseAttempt` en `LoginThrottle`; `LogIn`
+      solo orquesta reservas y elige política por prefijo de llave.
+- [x] CQRS ligero: `recordActivity` y `lock` son operaciones de persistencia de agregado, no
+      métodos para pantallas.
+- [x] Tipos desde `@rrhh/contracts` (`LogInSchema.email` ahora `.max(254)`).
+- [x] Errores esperados con `Result`; el `throw` de `lock` cuando falta la fila es inesperado
+      (no puede pasar tras el `createMany`), correcto como excepción.
+- [x] Tiempo vía `Clock`; `now` se pasa a `lock`/`registerAttempt`/`clear`.
+- [x] Sin migración nueva en el repair (el esquema no cambió); la de la ronda 1 sigue igual.
+- [x] DI: `tests/container.test.ts` verde; `transactionRunner` ya existía en el cradle raíz.
+- [x] Sin secretos ni datos reales. Leí solo `.env.example`.
+- [x] `## Deviations` honesta. Revisé "fakes.ts revertido a su contenido original":
+      `git diff main -- apps/api/src/shared/testing/fakes.ts` está vacío.
+- [x] Docs: `docs/architecture.md` (flujo con `cookieParser` → `createAuthenticate` →
+      `RequestContext`, mapeo 401/429 y `AUTHENTICATION_REQUIRED`, "Pendiente" reducido a RBAC) y
+      ADR 0011 (límites separados, row lock) al día.
+
+### Estado de los hallazgos de la ronda 1
+
+- **H1 resuelto.** `config/env.ts:131-134` trata `""` como ausente. Lo comprobé aparte: parsear
+  `apps/api/.env.example` con `util.parseEnv` y pasarlo por `loadEnv` no lanza
+  (`SEED_USER_PASSWORD` queda `undefined`, `LOGIN_IP_MAX_FAILURES` = 50). Regresión en
+  `env.test.ts` (4 casos).
+- **H2 resuelto.** `SessionAuthenticator` llama a `recordActivity`
+  (`application/session-authenticator.ts:151-156`). Prisma usa
+  `updateMany … where { id, revokedAt: null }` (`prisma-session.repository.ts:113-120`). La
+  carrera inversa (el logout lee la sesión, un touch escribe y el logout guarda el snapshot
+  completo) solo hace retroceder `lastSeenAt` en una sesión que ya quedó revocada, así que no
+  tiene efecto. Hay regresiones en memoria y en Postgres.
+- **H3 resuelto.** Cada llave reserva su intento en una transacción propia con
+  `SELECT … FOR UPDATE` antes de argon2 (`log-in.command.ts:88,164-174`), y ninguna transacción
+  queda abierta durante `verify`. Como cada transacción bloquea una sola fila, no hay orden de
+  locks que pueda generar un deadlock. Una ráfaga de N intentos en paralelo reserva 1..5, la
+  quinta reserva fija el bloqueo y las demás reciben 429 sin llegar a argon2, así que solo se
+  prueban 5 contraseñas. El test de integración de concurrencia prueba que el lock serializa las
+  reservas (`failures === 2`). También revisé `releaseAttempt` cuando hay peticiones
+  concurrentes: el comentario "el bloqueo solo pudo originarse en esta misma reserva" no es
+  literal, porque la reserva de otra petición pudo alcanzar el máximo. Aun así, el contador que
+  queda después de liberar sigue siendo coherente con los intentos no exitosos, así que levantar
+  el bloqueo en ese caso es correcto (ver I4).
+- **M1 resuelto.** `plans:scope` verde; paso 16 declara los tests y la ruta de la migración es la real.
+- **M2 resuelto.** `LOGIN_IP_MAX_FAILURES` (50) en env y `.env.example`, `policyFor` por prefijo
+  y, en un login exitoso, `release` de la reserva de IP (`log-in.command.ts:106-107`), sin
+  limpiarla entera. Hay test de aplicación.
+- **L1 resuelto.** `LogInSchema.email` → `z.email().max(254)`. El test del contrato cubre 254
+  (acepta) y 255 (rechaza). La llave más larga posible es `email:` + 254 = 260 ≤ `VARCHAR(320)`.
+- **L2 resuelto.** Ver el checklist (docs).
+- **I1 resuelto.** `## Test coverage` corrige la cifra y la ronda 2 cuadra con lo que medí (180 / 32 / 39).
+
+### Hallazgos nuevos (0 High, 0 Medium, 1 Low, 4 Info)
+
+**Low (no bloquea)**
+
+- **L3: se reserva la IP aunque el correo ya esté bloqueado, y eso puede dar un 429 falso a otra
+  persona detrás de la misma IP.** Ubicación: `log-in.command.ts:145-146` (`reserveOrBlock`
+  reserva todas las llaves antes de mirar los resultados) y `:156-158` (libera después).
+  Escenario: la IP de una oficina tiene 49 intentos contados, con límite 50. Un atacante insiste
+  con un correo ya bloqueado desde esa misma IP. Cada una de sus peticiones sube la IP a 50 y
+  fija `blockedUntil` durante unos milisegundos antes de liberarla. Si justo en ese intervalo
+  entra el login de otra persona de la oficina, recibe 429 con `Retry-After` de unos 900 s,
+  aunque el bloqueo desaparece enseguida. Hace falta que la IP esté exactamente en `max-1` y que
+  las peticiones coincidan: es poco probable y se recupera reintentando. Además hay una
+  transacción de escritura de más por cada intento bloqueado. Arreglo posible dentro del
+  alcance: dejar de reservar las llaves siguientes en cuanto una sale bloqueada. Lo dejo a
+  decisión del usuario: no impide pasar a verify.
+
+**Info**
+
+- **I3: el renombre de la clave del cradle no quedó en `## Deviations`.** El paso 15 dice que el
+  registro `loginThrottlePolicy` "becomes `{ email; ip }`". El código lo renombró a
+  `loginThrottlePolicies` (`identity.module.ts:36,65`, `log-in.command.ts:45`). Es inocuo, porque
+  nada fuera de `identity` lo resuelve, pero no está anotado.
+- **I4: el comentario de `releaseAttempt` (`domain/login-throttle.ts:274-280`) y el de
+  `reserveOrBlock` (`log-in.command.ts:154-155`) dicen que el bloqueo "solo pudo originarse en
+  esta misma reserva".** Con peticiones concurrentes también pudo originarlo la reserva de otra
+  petición. El comportamiento es correcto (ver H3), pero la justificación del comentario no lo es.
+- **I5 (incierto): bajo una ráfaga muy grande sobre la misma llave, algunas peticiones podrían
+  responder 500 en vez de 429.** Cada intento abre hasta 4 transacciones interactivas de Prisma,
+  y las que esperan el row lock ocupan una conexión del pool. Si el pool se agota más allá del
+  `maxWait` de `$transaction`, la petición falla antes de `verify`. Falla de forma segura: no se
+  prueba ninguna contraseña. No lo reproduje; lo dejo anotado para verify o para el plan de
+  producción.
+- **I6 (hueco de test): nada comprueba que se libera la reserva del correo cuando la IP está
+  bloqueada.** El test "bloqueado por el throttle de la IP aunque el correo esté libre"
+  (`log-in.command.test.ts:118-132`) verifica el 429, pero no que el throttle del correo vuelva a
+  0 después del `release` de `reserveOrBlock`.
+
+Estado: todos los hallazgos de la ronda 1 están resueltos y no hay hallazgos nuevos que bloqueen
+→ `status: verify`. L3 e I3-I6 quedan a decisión del usuario. Recordatorio para verify: el
+criterio de `pnpm db:seed` con `SEED_USER_PASSWORD` sigue NOT CONFIRMED (ver `## Test coverage`).
 
 ## Verification
