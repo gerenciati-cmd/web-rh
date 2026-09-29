@@ -17,5 +17,6 @@ cómo se comunican los módulos o cualquier decisión difícil de revertir.
 | 0007 | [Vocabulario compartido y errores esperados](0007-vocabulario-compartido-y-errores-esperados.md)                     | Aceptado |
 | 0008 | [Endpoints de dispositivos físicos fuera de los contratos](0008-endpoints-de-dispositivos-fuera-de-contratos.md)     | Aceptado |
 | 0009 | [Países soportados (MX, DO, CO) e identificadores de empresa y persona](0009-paises-soportados-e-identificadores.md) | Aceptado |
+| 0010 | [Integridad referencial entre módulos sin foreign keys](0010-integridad-referencial-entre-modulos.md)                | Aceptado |
 
 Plantilla: [0000-plantilla.md](0000-plantilla.md).
