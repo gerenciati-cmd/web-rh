@@ -1,6 +1,6 @@
 import { asValue } from 'awilix';
 
-import { loadEnv } from '@/config/env';
+import { loadEnv, type Env } from '@/config/env';
 import { buildContainer } from '@/container';
 import { createApp } from '@/http/app';
 import { createLogger } from '@/infrastructure/logging/pino-logger';
@@ -24,8 +24,8 @@ export const testEnv = loadEnv({
 });
 
 /** Contenedor real con los adaptadores de persistencia reemplazados por memoria. */
-export function buildTestContainer() {
-  const container = buildContainer(testEnv, createLogger(testEnv));
+export function buildTestContainer(env: Env = testEnv) {
+  const container = buildContainer(env, createLogger(env));
   const companies = new InMemoryCompanyStore();
   const employees = new InMemoryEmployeeRepository();
   const users = new InMemoryUserRepository();
