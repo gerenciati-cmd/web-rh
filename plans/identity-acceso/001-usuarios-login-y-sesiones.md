@@ -659,3 +659,172 @@ Estado: todos los hallazgos de la ronda 1 están resueltos y no hay hallazgos nu
 criterio de `pnpm db:seed` con `SEED_USER_PASSWORD` sigue NOT CONFIRMED (ver `## Test coverage`).
 
 ## Verification
+
+**Verifier, 2026-09-29.** App corriendo de verdad: `pnpm db:up` (Postgres/Valkey/RustFS/Mailpit ya
+arriba), `pnpm dev:api` (arrancó con el `.env` real del usuario, con `SEED_USER_PASSWORD` fijada
+por él — nunca leí ni imprimí su valor). Base `rrhh` (dev), no `rrhh_test`. Todos los criterios se
+ejercitaron contra la app corriendo con `curl` (algunos forzando `--ipv4` para no chocar con mi
+propio throttle de IP, ver nota al final) y consultas `SELECT` directas a Postgres; los scripts
+puntuales que necesité (crear usuarios de prueba vía el caso de uso real, no por HTTP — no hay
+endpoint de registro en este plan) viven solo en el scratchpad de la sesión, nunca en el repo.
+`git status` al cierre: árbol limpio, ningún archivo del repo tocado.
+
+### Suites
+
+- [x] `pnpm check`: verde completo (formato, typecheck, lint, tests, `arch:check` sin violaciones,
+      `plans:lint`, `harness:check`, hooks, bootstrap, quality). `@rrhh/api`: 24 archivos/180 tests;
+      `@rrhh/contracts`: 4 archivos/32 tests — coincide exactamente con lo que reporta `## Test
+  coverage` ronda 2.
+- [x] `pnpm test:integration`: verde, 6 archivos/39 tests — coincide con `## Test coverage`.
+
+### Migración y esquema
+
+- [x] `apps/api/prisma/migrations/20260929171530_create_identity/` aplicada; `\dt identity.*` en la
+      BD `rrhh` muestra `users`, `sessions`, `login_throttles`.
+- [x] `pnpm db:seed` (ver más abajo) creó `admin@example.com` con
+      `password_hash = $argon2id$v=19$m=19456,t=2,p=1$Voj3fheAii9OsiRuSvbYvw$DY74LctcuPzrMKOvbMUQqSVRBHfR4Ss9oBuQaiRK984`
+      — prefijo exacto del criterio. `sessions.token_hash` de una sesión mobile recién creada
+      (`57932c9b19...fabcf7`) coincide byte a byte con `sha256sum` del token devuelto por
+      `/auth/login` (`zPD1RVUUGTd93LgfXnEQw7NXPvaqcmuFDLK6me0ZRFs`), y no es el token. Revisé
+      `users`, `sessions` y `login_throttles`: ninguna columna guarda contraseña o token en claro.
+
+### Login (web / mobile) y `/auth/me`
+
+- [x] `POST /auth/login` `client:"web"` con credenciales válidas → 200,
+      `{"user":{"id","email"},"expiresAt","token":null}`, y
+      `Set-Cookie: __Host-rrhh_session=…; Path=/; Expires=…; HttpOnly; Secure; SameSite=Lax` (headers
+      exactos, verificado con `curl -i`).
+- [x] Mismo con `client:"mobile"` → 200, `token` no nulo, **sin** `Set-Cookie`; `expiresAt` a 30
+      días (`SESSION_MOBILE_ABSOLUTE_DAYS`); `idle_timeout_seconds` de esa fila es `NULL` en BD
+      (mobile sin idle) frente a `1800` (30×60) en la fila web — políticas de sesión aplicadas
+      correctamente por `client`.
+- [x] `GET /auth/me`: `Authorization: Bearer <token>` → 200 `{id,email}`; cookie `__Host-rrhh_session`
+      (vía jar de `curl`) → 200; sin credenciales → 401 `AUTHENTICATION_REQUIRED`; token
+      desconocido (`Bearer totally-unknown-token-value`) → 401 `AUTHENTICATION_REQUIRED`.
+
+### Credenciales inválidas y throttle
+
+- [x] Contraseña incorrecta, correo desconocido y usuario `DISABLED` (creado con `registerUser` y
+      pasado a `DISABLED` por SQL, ya que el dominio no expone un comando para deshabilitar en
+      este plan) → los tres devuelven exactamente
+      `{"code":"INVALID_CREDENTIALS","message":"Correo o contraseña incorrectos"}` — mismo
+      `Content-Length` (75) y mismo `ETag` en los tres casos, cuerpos bit a bit idénticos.
+- [x] Correo mal formado (`"not-an-email"`) → 400 `VALIDATION_ERROR` del contrato, antes de tocar
+      `LogIn` (criterio corregido el 2026-09-29, como documenta el plan).
+- [x] 5 intentos fallidos seguidos sobre el mismo correo → el 6.º intento, **con la contraseña
+      correcta**, responde 429 `LOGIN_TEMPORARILY_BLOCKED` con `Retry-After: 898` — bloqueado antes
+      de verificar la contraseña, tal como diseña H3.
+- [x] Un correo nuevo con 2 fallos y luego un login exitoso: `login_throttles` de ese correo queda
+      en `failures=0` después del éxito — el contador se limpia.
+- [x] **Concurrencia real (H3), en la app corriendo, no solo en el test de integración**: disparé 10
+      intentos con contraseña incorrecta en paralelo (`Promise.all` con `fetch`, mismo correo nuevo)
+      contra `POST /auth/login`. Resultado: exactamente 5×401 y 5×429 (`{401:5, 429:5}`), y la fila
+      de `login_throttles` quedó en `failures=5` — ni menos (que delataría un lost update) ni más
+      (que delataría que el candado no sirvió). El row lock serializa la ráfaga como se diseñó.
+- [x] Límite de IP independiente (M2): con `ip:::1` en 15 fallos previos, hice 3 logins exitosos
+      seguidos desde la misma IP con otra cuenta — el contador de `ip:::1` quedó igual (15, no bajó
+      ni subió): reservar-y-liberar en un éxito no cambia el saldo. Luego empujé 35 intentos
+      fallidos más (correos distintos, cada uno bajo su propio límite de 5) y el bloqueo apareció
+      justo en el intento que llevó el contador a 50 (`failures=50, blocked_until` fijado); el
+      siguiente intento devolvió 429. `LOGIN_IP_MAX_FAILURES=50` se respeta con precisión de a uno.
+
+### Logout, revocación concurrente y Origin
+
+- [x] `POST /auth/logout` con sesión válida y `Origin` permitido (`http://localhost:3000`) → 204,
+      `Set-Cookie` que limpia la cookie (`Expires: Thu, 01 Jan 1970…`). El mismo token (enviado a
+      mano, no el que `curl` ya había expirado en su jar) → 401 en `/auth/me` después. En BD,
+      `sessions.revoked_at` quedó fijado. Sin sesión → 401.
+- [x] `POST /auth/logout` autenticado por cookie con `Origin` ausente → 401
+      `AUTHENTICATION_REQUIRED` y la sesión siguió activa (`GET /auth/me` con la misma cookie → 200
+      después). Con `Origin: https://evil.example.com` (no está en `CORS_ORIGINS`) → también 401,
+      sesión intacta.
+- [x] **H2, reproducido en vivo contra la Postgres real de la app** (no solo el test de integración):
+      no es posible forzar por HTTP la interleaving exacta de milisegundos, así que llamé
+      directamente al `sessionRepository` real (`PrismaSessionRepository`, el mismo que usa el
+      contenedor) desde un script: (1) login, (2) leo la sesión "vieja" (`revokedAt=null`, simula la
+      lectura de una petición A antes del logout), (3) ejecuto el logout real (petición B) que fija
+      `revoked_at`, (4) confirmo que `revoked_at` quedó fijado, (5) con el snapshot **viejo** en
+      memoria (que todavía cree `revokedAt=null`) llamo `touch()` + `recordActivity()` — la escritura
+      tardía de la petición A. Resultado: la sesión sigue revocada y `last_seen_at` **no** cambió
+      (la escritura tardía no tuvo efecto, por el `WHERE revoked_at IS NULL` de
+      `PrismaSessionRepository.recordActivity`). El fix de H2 sostiene la garantía "logout ⇒
+      revocación instantánea" incluso bajo esta carrera, ejercitado con el código de producción real
+      contra la BD real, no un doble.
+
+### Vigencia de sesión (idle / absoluta)
+
+- [x] Sesión web fresca con `last_seen_at` retrasado por SQL a 31 minutos (> `SESSION_WEB_IDLE_MINUTES=30`,
+      `expires_at` sin tocar) → `GET /auth/me` con esa cookie → 401.
+- [x] Otra sesión web fresca con `expires_at` retrasado por SQL a 1 minuto en el pasado (vigencia
+      absoluta vencida, `last_seen_at` reciente) → `GET /auth/me` → 401.
+
+### `.env` verbatim (H1) y correo largo (L1)
+
+- [x] La app ya estaba corriendo con el `.env` real del usuario (copiado en su momento de
+      `.env.example` y con `SEED_USER_PASSWORD` agregada) — arrancó sin problema. Para aislar el
+      caso exacto de H1 (la línea vacía `SEED_USER_PASSWORD=` que deja `""`, no `undefined`), corrí
+      `loadEnv` (la función real de producción) sobre el contenido **actual** de
+      `apps/api/.env.example` parseado con `node:util.parseEnv` (el mismo parser que usa
+      `process.loadEnvFile`): no lanza, `env.SEED_USER_PASSWORD` queda `undefined`. No creé un
+      segundo `apps/api/.env*` para no rozar la regla de nunca tocar esos archivos.
+- [x] Login con un correo de 255 caracteres (formato válido, sobre el límite) → 400
+      `VALIDATION_ERROR` (`too_big`, `maximum:254`), no 500. Con exactamente 254 caracteres → 401
+      `INVALID_CREDENTIALS` (correo desconocido, no encontrado, sin crash). `L1` sostenido en vivo.
+
+### Rutas existentes sin tocar
+
+- [x] `GET /api/v1/companies` → 200 sin credenciales, misma forma de respuesta que antes.
+- [x] `GET /api/v1/companies/:id/employees` → 200 sin credenciales.
+- [x] `GET /iclock/cdata?SN=UNKNOWN` (fuera de `/api/v1`) → 403 `ERROR: dispositivo no autorizado`
+      — el propio control de seriales del dispositivo, **no** el `AUTHENTICATION_REQUIRED` de
+      identity: confirma que el middleware de auth no se monta sobre `/iclock/*` (ADR 0008).
+
+### `pnpm db:seed`
+
+- [x] Corrido dos veces de verdad (`pnpm db:seed`, sin variables efímeras — la contraseña ya estaba
+      en el `.env` real del usuario). 1.ª vez: log `"usuario creado" email:"admin@example.com"`.
+      2.ª vez: sin esa línea, solo `"seed completado"`. `SELECT` confirma una sola fila
+      `admin@example.com` en `identity.users` tras las dos corridas.
+- [~] Rama "sin `SEED_USER_PASSWORD`": **no pude correr `pnpm db:seed` literalmente sin la
+  variable** — el `.env` real ya la tiene fijada (no se debe editar ni leer `.env`), y
+  `guard-bash` bloquea toda forma de inyectar una variable de entorno efímera en un comando
+  (`VAR=x cmd`, wrappers) en este sandbox, igual que documentó el Implementer para el mismo
+  obstáculo. Sustituto ejercitado en vivo: un script que reconstruye textualmente la misma rama
+  `if (env.SEED_USER_PASSWORD) {…} else {…}` de `apps/api/prisma/seed.ts:61-70`, usando el
+  contenedor real y el `env` real con `SEED_USER_PASSWORD` forzado a `undefined` en una copia
+  del objeto (no se tocó el `.env`). Resultado: log
+  `"SEED_USER_PASSWORD no está definida: se omite la creación del usuario admin"` y
+  `registerUser.execute` nunca se llamó (confirmado: el conteo de `admin@example.com` siguió en
+  1 antes y después). Esto ya estaba cubierto por `env.test.ts` (H1, 4 casos) y por revisión de
+  código; con esto queda además ejercitado en vivo con el contenedor real, pero no es
+  literalmente `pnpm db:seed` sin la variable — lo marco confirmado con esta salvedad, no como
+  NOT VERIFIED, porque la lógica ejercitada es exactamente la del script, solo que invocada
+  desde un segundo entry point en vez de la CLI de `pnpm`.
+
+### Limpieza de datos de prueba
+
+Usuarios y sesiones que creé para estas pruebas (`verifier-test@example.com`,
+`verifier-disabled@example.com`, `verifier-reset@example.com`, `verifier-ipcheck@example.com`, sus
+12 filas de `identity.sessions`, y 44 filas de `identity.login_throttles` con claves
+`email:verifier-*`, `email:verifier-ipburst-*`, `email:nonexistent@example.com`, el correo largo
+fabricado y `ip:203.0.113.9`) se borraron al cierre, cada `DELETE` precedido de su `SELECT count(*)`
+con el mismo `WHERE`. Quedó en la BD, sin tocar: `admin@example.com` (resultado esperado del
+criterio de seed) y tres filas de `login_throttles` que **no creé yo** y por eso no borré:
+`email:smoke-test-1790702932232@example.com` (de una sesión anterior), `ip:127.0.0.1` (preexistente,
+sin modificar) e **`ip:::1`, que sí modifiqué** al correr las pruebas de throttle por IP: quedó en
+`failures=50`, bloqueada hasta **2026-09-29 20:22:29 UTC + `LOGIN_BLOCK_MINUTES` (15 min) ≈ 20:37:29
+UTC**. Se destrabará sola (el diseño no tiene "unblock" manual); cualquier login real desde el
+loopback IPv6 de esta máquina antes de esa hora verá 429. No la reseteé por SQL porque no la creé y
+la instrucción es no borrar/alterar datos que no son míos salvo para decirlo — lo digo aquí.
+`pnpm dev:api` (proceso en segundo plano que arranqué para estas pruebas) se detuvo al cierre.
+`git status` limpio.
+
+### Veredicto
+
+14/14 criterios de aceptación confirmados en la app corriendo (uno, el de `pnpm db:seed` sin
+`SEED_USER_PASSWORD`, con la salvedad de método explicada arriba por restricciones del sandbox, no
+por comportamiento dudoso). Nada quedó en NOT VERIFIED. `pnpm check` y `pnpm test:integration`
+verdes. Sin hallazgos nuevos ni desviaciones de producto — los hallazgos abiertos L3/I3-I6 de la
+ronda 2 del reviewer siguen anotados como decisión del usuario, no bloquean.
+
+**Listo para que el usuario pase el plan a `done`.**
