@@ -26,4 +26,13 @@ export class PrismaSessionRepository implements SessionRepository {
       update: data,
     });
   }
+
+  async recordActivity(session: Session): Promise<void> {
+    // `updateMany` (no `update`): con `revokedAt: null` en el WHERE, un logout concurrente que
+    // ya revocó la fila hace que esto no toque nada, en vez de resucitarla con un `upsert` ciego.
+    await this.deps.database.client.session.updateMany({
+      where: { id: session.id, revokedAt: null },
+      data: { lastSeenAt: session.snapshot.lastSeenAt },
+    });
+  }
 }

@@ -16,6 +16,18 @@ import {
   InMemoryCompanyRepository,
   InMemoryCompanyStore,
 } from '@/modules/organization/infrastructure/in-memory/in-memory-company.store';
+import type { TransactionRunner } from '@/shared/application/ports';
+
+/**
+ * `LogIn` (plan 001, paso 15/H3) usa `transactionRunner` para el row lock del throttle de login;
+ * el real abre una transacción de Postgres de verdad, que aquí no hay (persistencia en memoria
+ * para el resto del contenedor de test), así que se reemplaza por un no-op.
+ */
+class NoopTransactionRunner implements TransactionRunner {
+  run<T>(work: () => Promise<T>): Promise<T> {
+    return work();
+  }
+}
 
 export const testEnv = loadEnv({
   NODE_ENV: 'test',
@@ -60,6 +72,7 @@ export function buildTestContainer(env: Env = testEnv) {
     loginThrottleRepository: asValue(new InMemoryLoginThrottleRepository()),
     userQueries: asValue(new InMemoryUserQueries({ userRepository: users })),
     passwordHasher: asValue(new FakePasswordHasher()),
+    transactionRunner: asValue(new NoopTransactionRunner()),
   });
 
   return container;

@@ -33,8 +33,10 @@ Sesiones **opacas** server-side:
   los parámetros mínimos del OWASP Password Storage Cheat Sheet (memoria 19 MiB, 2 iteraciones,
   paralelismo 1), codificados en un string PHC estándar para poder subir los parámetros más
   adelante sin invalidar los hashes existentes.
-- Throttling de login (5 intentos fallidos / 15 min → bloqueo 15 min, por correo y por IP) como
-  entidad de dominio persistida en Postgres, misma razón de durabilidad que las sesiones.
+- Throttling de login (15 min de ventana, bloqueo 15 min) como entidad de dominio persistida en
+  Postgres, misma razón de durabilidad que las sesiones. Límites separados por correo (5 intentos)
+  y por IP (`LOGIN_IP_MAX_FAILURES`, 50 por defecto): una IP compartida (oficina, reverse proxy)
+  no debe agotar, con el límite pensado para un atacante, el login de todo el mundo detrás de ella.
 - Autenticación como middleware global en `src/http/` que resuelve el token (Bearer o cookie) a
   través de un puerto compartido `RequestAuthenticator`, implementado por `identity`. `bindRoute`
   pasa un `RequestContext` (actor, ip/user-agent, cookie jar) como segundo argumento a cada
@@ -66,3 +68,7 @@ Sesiones **opacas** server-side:
 - **Señal para revisar**: la consulta de sesión por request se vuelve un cuello de botella medido
   (no solo sospechado), momento en el que evaluar un cache de sesiones en Valkey con invalidación
   por evento (`identity.session.revoked`) en vez de reemplazar el mecanismo completo.
+- Cada intento de login se reserva bajo un row lock (`SELECT … FOR UPDATE`) antes de verificar la
+  contraseña, dentro de una transacción por llave (correo, IP): así una ráfaga concurrente cuenta
+  cada intento en vez de perder incrementos por lecturas simultáneas del mismo contador (H3, ronda
+  1 de revisión del plan 001).

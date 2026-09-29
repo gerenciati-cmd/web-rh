@@ -6,7 +6,15 @@ export interface LoginThrottlePolicy {
   blockMs: number;
 }
 
+/** Límites separados por correo y por IP (M2): una IP compartida (oficina, reverse proxy) no
+ *  debe agotar, con el límite pensado para un atacante, el login de todo el mundo detrás de ella. */
+export interface LoginThrottlePolicies {
+  email: LoginThrottlePolicy;
+  ip: LoginThrottlePolicy;
+}
+
 export interface LoginThrottleProps {
+  /** Intentos (reservas) contados en la ventana actual, incluidos los aún no verificados. */
   failures: number;
   windowStartedAt: Date;
   blockedUntil: Date | null;
@@ -46,7 +54,12 @@ export class LoginThrottle extends Entity<string> {
     return this.props.blockedUntil > now ? this.props.blockedUntil : null;
   }
 
-  registerFailure(now: Date, policy: LoginThrottlePolicy): void {
+  /**
+   * Reserva un intento ANTES de verificar la contraseña (H3, README decisión 11): el repositorio
+   * llama a esto bajo un row lock, así que una ráfaga concurrente serializa sus reservas en vez
+   * de leer el mismo contador y perder incrementos.
+   */
+  registerAttempt(now: Date, policy: LoginThrottlePolicy): void {
     let { failures, windowStartedAt, blockedUntil } = this.props;
     if (now.getTime() - windowStartedAt.getTime() >= policy.windowMs) {
       failures = 0;
@@ -58,6 +71,19 @@ export class LoginThrottle extends Entity<string> {
       blockedUntil = new Date(now.getTime() + policy.blockMs);
     }
     this.props = { failures, windowStartedAt, blockedUntil };
+  }
+
+  /**
+   * Deshace la reserva de UN intento: lo usa `LogIn` cuando la contraseña resultó correcta (no
+   * consumir el cupo de la IP por un login ajeno exitoso) o cuando otra llave de la misma
+   * petición terminó bloqueada. El bloqueo, si lo hay, solo pudo originarse en esta misma
+   * reserva (una llave ya bloqueada se rechaza antes de reservar), así que basta con restar el
+   * intento y levantar el bloqueo si ya no se alcanza el máximo.
+   */
+  releaseAttempt(policy: LoginThrottlePolicy): void {
+    const failures = Math.max(0, this.props.failures - 1);
+    const blockedUntil = failures < policy.maxFailures ? null : this.props.blockedUntil;
+    this.props = { ...this.props, failures, blockedUntil };
   }
 
   clear(now: Date): void {

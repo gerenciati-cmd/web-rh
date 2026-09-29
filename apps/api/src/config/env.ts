@@ -36,10 +36,18 @@ const EnvSchema = z.object({
   SESSION_WEB_ABSOLUTE_HOURS: z.coerce.number().int().positive().default(12),
   SESSION_MOBILE_ABSOLUTE_DAYS: z.coerce.number().int().positive().default(30),
   LOGIN_MAX_FAILURES: z.coerce.number().int().positive().default(5),
+  // Límite del throttle por IP, aparte del de correo (M2): una oficina o un reverse proxy
+  // detrás de una sola IP no debe bloquear el login de toda la plataforma con 5 intentos.
+  LOGIN_IP_MAX_FAILURES: z.coerce.number().int().positive().default(50),
   LOGIN_FAILURE_WINDOW_MINUTES: z.coerce.number().int().positive().default(15),
   LOGIN_BLOCK_MINUTES: z.coerce.number().int().positive().default(15),
   // Contraseña del usuario admin@example.com que crea `pnpm db:seed`; vacío = no se crea.
-  SEED_USER_PASSWORD: z.string().min(12).optional(),
+  // `process.loadEnvFile` convierte `SEED_USER_PASSWORD=` (línea vacía en .env) en `""`, no en
+  // `undefined`, así que sin este preprocess un .env recién copiado de .env.example no arranca.
+  SEED_USER_PASSWORD: z.preprocess(
+    (value) => (value === '' ? undefined : value),
+    z.string().min(12).optional(),
+  ),
 });
 
 export type Env = z.output<typeof EnvSchema>;

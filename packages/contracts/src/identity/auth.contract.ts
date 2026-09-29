@@ -11,7 +11,10 @@ export type SessionUser = z.infer<typeof SessionUserSchema>;
 // Sin regla de fortaleza aquí: el login debe aceptar lo que la persona escriba
 // (la política solo se exige al fijar una contraseña).
 export const LogInSchema = z.object({
-  email: z.email(),
+  // .max(254): mismo límite que `users.email VARCHAR(254)` y `login_throttles.key VARCHAR(320)`
+  // (`email:` + correo); sin él, un correo válido pero larguísimo hacía fallar el guardado del
+  // throttle con un 500 en vez de un 401 (L1).
+  email: z.email().max(254),
   password: z.string().min(1).max(128),
   client: SessionClientSchema,
 });

@@ -103,24 +103,26 @@ describe('SessionAuthenticator', () => {
 
   it('sesión activa y reciente: resuelve el actor y NO toca lastSeenAt (needsTouch=false)', async () => {
     const { session, token } = issueSession();
-    const saveSpy = vi.spyOn(sessionRepository, 'save');
+    const recordActivitySpy = vi.spyOn(sessionRepository, 'recordActivity');
 
     const actor = await authenticator.authenticate(token);
 
     expect(actor).toEqual({ userId: USER_ID, sessionId: session.id });
-    expect(saveSpy).not.toHaveBeenCalled();
+    expect(recordActivitySpy).not.toHaveBeenCalled();
   });
 
-  it('sesión activa pero con lastSeenAt viejo: hace touch y guarda', async () => {
+  it('sesión activa pero con lastSeenAt viejo: hace touch y registra la actividad (no `save`, H2)', async () => {
     const { session, token } = issueSession();
     // needsTouch es true a partir de 60s sin actividad.
     clock.set(new Date(now.getTime() + 61_000));
+    const recordActivitySpy = vi.spyOn(sessionRepository, 'recordActivity');
     const saveSpy = vi.spyOn(sessionRepository, 'save');
 
     const actor = await authenticator.authenticate(token);
 
     expect(actor).toEqual({ userId: USER_ID, sessionId: session.id });
-    expect(saveSpy).toHaveBeenCalledTimes(1);
+    expect(recordActivitySpy).toHaveBeenCalledTimes(1);
+    expect(saveSpy).not.toHaveBeenCalled();
     expect(sessionRepository.sessions.get(session.id)?.snapshot.lastSeenAt).toEqual(clock.now());
   });
 });

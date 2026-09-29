@@ -1,9 +1,10 @@
 import { Email } from '@rrhh/domain';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import type { TransactionRunner } from '@/shared/application/ports';
 import { FixedClock, RecordingEventBus, SequentialIdGenerator } from '@/shared/testing/fakes';
 
-import { LoginThrottle, type LoginThrottlePolicy } from '../../domain/login-throttle';
+import { LoginThrottle, type LoginThrottlePolicies } from '../../domain/login-throttle';
 import type { SessionPolicy } from '../../domain/session';
 import { User, type UserId } from '../../domain/user';
 import { CryptoSessionTokens } from '../../infrastructure/crypto-session-tokens';
@@ -16,14 +17,20 @@ import { LogIn, type LogInCommandInput } from './log-in.command';
 
 const now = new Date('2026-01-15T12:00:00Z');
 
+/** Sin BD real, `run` solo ejecuta el trabajo: no hay `tx` que propagar (H3). */
+class NoopTransactionRunner implements TransactionRunner {
+  run<T>(work: () => Promise<T>): Promise<T> {
+    return work();
+  }
+}
+
 const SESSION_POLICY: SessionPolicy = {
   WEB: { absoluteMs: 12 * 3_600_000, idleMs: 30 * 60_000 },
   MOBILE: { absoluteMs: 30 * 86_400_000, idleMs: null },
 };
-const THROTTLE_POLICY: LoginThrottlePolicy = {
-  maxFailures: 5,
-  windowMs: 15 * 60_000,
-  blockMs: 15 * 60_000,
+const THROTTLE_POLICIES: LoginThrottlePolicies = {
+  email: { maxFailures: 5, windowMs: 15 * 60_000, blockMs: 15 * 60_000 },
+  ip: { maxFailures: 5, windowMs: 15 * 60_000, blockMs: 15 * 60_000 },
 };
 const PASSWORD = 'contraseña-correcta';
 
@@ -56,7 +63,8 @@ describe('LogIn', () => {
       passwordHasher: hasher,
       sessionTokens,
       sessionPolicy: SESSION_POLICY,
-      loginThrottlePolicy: THROTTLE_POLICY,
+      loginThrottlePolicies: THROTTLE_POLICIES,
+      transactionRunner: new NoopTransactionRunner(),
       idGenerator: new SequentialIdGenerator(),
       clock: new FixedClock(now),
       eventBus,
@@ -91,7 +99,7 @@ describe('LogIn', () => {
   it('bloqueado por el throttle de correo: no verifica la contraseña y responde 429 con retryAfterSeconds', async () => {
     const blockedUntil = new Date(now.getTime() + 10 * 60_000);
     const throttle = LoginThrottle.restore(LoginThrottle.keyForEmail(email(input.email)), {
-      failures: THROTTLE_POLICY.maxFailures,
+      failures: THROTTLE_POLICIES.email.maxFailures,
       windowStartedAt: now,
       blockedUntil,
     });
@@ -110,7 +118,7 @@ describe('LogIn', () => {
   it('bloqueado por el throttle de la IP aunque el correo esté libre', async () => {
     const blockedUntil = new Date(now.getTime() + 5 * 60_000);
     const throttle = LoginThrottle.restore(LoginThrottle.keyForIp(input.ip!), {
-      failures: THROTTLE_POLICY.maxFailures,
+      failures: THROTTLE_POLICIES.ip.maxFailures,
       windowStartedAt: now,
       blockedUntil,
     });

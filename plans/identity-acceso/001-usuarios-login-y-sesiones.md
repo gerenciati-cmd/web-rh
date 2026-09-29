@@ -1,5 +1,5 @@
 ---
-status: review
+status: testing
 module: identity
 min_implementer: mid
 depends_on: []
@@ -169,7 +169,7 @@ None
    - Observable result: typecheck passes; `no-test-code-in-production` rule passes (nothing outside tests imports `in-memory/`).
 
 10. **Persistence and migration**
-    - Files: `apps/api/prisma/schema.prisma` (modify), `apps/api/prisma/migrations/<timestamp>_create_identity/migration.sql` (create)
+    - Files: `apps/api/prisma/schema.prisma` (modify), `apps/api/prisma/migrations/20260929171530_create_identity/migration.sql` (create)
     - Do (skill `db-change`): add `"identity"` to `datasource.schemas` (`apps/api/prisma/schema.prisma:19`) and a `// ── Módulo: identity ──` section:
       - `enum UserStatus { ACTIVE DISABLED @@schema("identity") }`, `enum SessionClient { WEB MOBILE @@schema("identity") }`.
       - `model User { id String @id @db.Uuid; email String @unique @db.VarChar(254); passwordHash String @map("password_hash") @db.Text; status UserStatus @default(ACTIVE); createdAt/updatedAt as in Company (lines 30-31); sessions Session[]; @@map("users") @@schema("identity") }`.
@@ -212,6 +212,25 @@ None
     - Do: ADR 0011 from `docs/adr/0000-plantilla.md` in Spanish: context (no auth; architecture.md anticipated JWT), decision (opaque 256-bit tokens, SHA-256 hash in `identity.sessions`, cookie `__Host-rrhh_session` httpOnly/Secure/SameSite=Lax + Origin check for web, Bearer for mobile, argon2id via `node:crypto`, throttle in Postgres), consequences (one indexed query per authenticated request; instant revocation; no refresh-token flow; Node ≥ 24.7), alternatives (JWT, Valkey) — cite `plans/identity-acceso/README.md` decisions 4-5. Add row 0011 to the ADR index table (`docs/adr/README.md`). In `docs/architecture.md:131` replace "access + refresh token, apto para mobile" with "sesiones opacas revocables (ADR 0011), cookie en web y Bearer en mobile". In `docs/harness/modules.json` set identity `status: "active"` and summary `"Usuarios, login y sesiones opacas (ADR 0011); RBAC y contexto de request."`.
     - Observable result: `pnpm check` passes (includes harness/plans checks).
 
+15. **Review round 1 repairs** (added 2026-09-29 by the main session after `## Review findings` round 1; H2/H3/M2 approach approved by the user, README decisions 10-12)
+    - Files: `apps/api/src/config/env.ts` (modify), `apps/api/.env.example` (modify), `packages/contracts/src/identity/auth.contract.ts` (modify), `apps/api/src/modules/identity/domain/session.repository.ts` (modify), `apps/api/src/modules/identity/domain/login-throttle.ts` (modify), `apps/api/src/modules/identity/domain/login-throttle.repository.ts` (modify), `apps/api/src/modules/identity/application/session-authenticator.ts` (modify), `apps/api/src/modules/identity/application/commands/log-in.command.ts` (modify), `apps/api/src/modules/identity/infrastructure/prisma-session.repository.ts` (modify), `apps/api/src/modules/identity/infrastructure/prisma-login-throttle.repository.ts` (modify), `apps/api/src/modules/identity/infrastructure/in-memory/in-memory-session.repository.ts` (modify), `apps/api/src/modules/identity/infrastructure/in-memory/in-memory-login-throttle.repository.ts` (modify), `apps/api/src/modules/identity/identity.module.ts` (modify), `docs/architecture.md` (modify), `docs/adr/0011-sesiones-opacas-en-postgres.md` (modify)
+    - Do:
+      - **H1**: `SEED_USER_PASSWORD: z.preprocess((value) => (value === '' ? undefined : value), z.string().min(12).optional())` with a Spanish comment (`process.loadEnvFile` turns `VAR=` into `""`). Keep the empty line in `.env.example`.
+      - **L1**: `LogInSchema.email` → `z.email().max(254)` (same limit as `users.email VARCHAR(254)`).
+      - **H2** (a touch must never undo a revocation): add `recordActivity(session: Session): Promise<void>` to `SessionRepository`, doc: "persiste solo `lastSeenAt`, y solo si la sesión sigue sin revocar". Prisma: `session.updateMany({ where: { id, revokedAt: null }, data: { lastSeenAt } })`. In-memory: update `lastSeenAt` of the stored session only if its stored `revokedAt` is null. `SessionAuthenticator` calls `recordActivity` instead of `save`. `save` stays for start/revoke.
+      - **H3** (every attempt counts, even in parallel bursts): the attempt is **reserved before verifying the password**, under a row lock.
+        - Domain `LoginThrottle`: rename `registerFailure` → `registerAttempt(now, policy)` (same logic: window reset, `failures += 1`, block when `failures >= maxFailures`; the prop stays named `failures`, doc it as "intentos en la ventana"). Add `releaseAttempt(policy)`: `failures = max(0, failures - 1)` and, if now `failures < policy.maxFailures`, `blockedUntil = null` (the block could only have been set by this same reservation, because a blocked key is rejected before reserving). Keep `clear(now)`.
+        - Port `LoginThrottleRepository`: replace `find` with `lock(key: string, now: Date): Promise<LoginThrottle>`, doc: "debe llamarse dentro de `transactionRunner.run`; crea la fila si no existe y la bloquea hasta el fin de la transacción". Prisma: `createMany({ data: [{ key, failures: 0, windowStartedAt: now }], skipDuplicates: true })` then `$queryRaw` `SELECT key, failures, window_started_at, blocked_until FROM identity.login_throttles WHERE key = ${key} FOR UPDATE`, mapped with the existing mapper (convert the raw row). In-memory: return existing or `fresh` (stored).
+        - `LogIn` (add `transactionRunner` to `Deps`): per key (email, then ip if present), sequentially: `transactionRunner.run(async () => { const t = await lock(key, now); if (t.blockedUntilAt(now)) return { blockedUntil }; t.registerAttempt(now, policyFor(key)); await save(t); return { reserved: true } })`. If any key is blocked → release the attempts already reserved in this request (same locked pattern with `releaseAttempt`) and return `LoginTemporarilyBlockedError` (max `blockedUntil`). Then verify (outside any transaction — argon2 never runs while holding a lock). Failure → `InvalidCredentialsError`, nothing else to write. Success → locked `clear(now)` on the email key and locked `releaseAttempt` on the ip key (a successful login must not consume the office's IP budget). Remove the old `loadThrottles` helper and update the "sin transactionRunner" comment.
+      - **M2**: env `LOGIN_IP_MAX_FAILURES` (default 50) in `EnvSchema` and `.env.example`. `loginThrottlePolicy` registration becomes `{ email: LoginThrottlePolicy; ip: LoginThrottlePolicy }` (export type `LoginThrottlePolicies` from `domain/login-throttle.ts`), both sharing `LOGIN_FAILURE_WINDOW_MINUTES`/`LOGIN_BLOCK_MINUTES`; `LogIn` picks by key prefix via a small private `policyFor(key)`.
+      - **L2**: `docs/architecture.md` — error-mapping section (lines 91-96): add `AuthenticationError → 401`, `TooManyRequestsError → 429` and the adapter error `AUTHENTICATION_REQUIRED → 401`; request-flow section (lines 77-89): mention `cookie-parser` → `createAuthenticate` → `bindRoute(request, context)` with `RequestContext`; "Pendiente" (lines 129-132): keep only RBAC/request scoping as pending (plan 002). ADR 0011: one line under consequences on the row lock per login attempt and the separate IP limit.
+    - Observable result: `pnpm check` and `pnpm test:integration` green; `pnpm dev:api` starts with a `.env` copied verbatim from `.env.example`.
+
+16. **Test files of this plan** (declared for `pnpm plans:scope`, M1; written by the tester)
+    - Files: `apps/api/src/config/env.test.ts` (modify), `apps/api/src/modules/identity/domain/user.test.ts` (create), `apps/api/src/modules/identity/domain/password-policy.test.ts` (create), `apps/api/src/modules/identity/domain/session.test.ts` (create), `apps/api/src/modules/identity/domain/login-throttle.test.ts` (create), `apps/api/src/modules/identity/application/commands/register-user.command.test.ts` (create), `apps/api/src/modules/identity/application/commands/log-in.command.test.ts` (create), `apps/api/src/modules/identity/application/commands/log-out.command.test.ts` (create), `apps/api/src/modules/identity/application/session-authenticator.test.ts` (create), `apps/api/src/modules/identity/application/queries/get-current-user.query.test.ts` (create), `packages/contracts/src/identity/auth.contract.test.ts` (create), `apps/api/tests/auth.test.ts` (create), `apps/api/tests/auth-malformed-email.test.ts` (create), `apps/api/tests/integration/identity/prisma-user.int.test.ts` (create), `apps/api/tests/integration/identity/prisma-session.int.test.ts` (create), `apps/api/tests/integration/identity/prisma-login-throttle.int.test.ts` (create), `apps/api/tests/integration/identity/argon2-password-hasher.int.test.ts` (create)
+    - Do: nothing for the implementer. After step 15, the tester updates these for the new behavior (regressions for H1, H2, H3, M2, L1) and fixes I1.
+    - Observable result: test suites green.
+
 ## Acceptance criteria
 
 - [ ] `pnpm check` and `pnpm test:integration` pass.
@@ -220,7 +239,9 @@ None
 - [ ] Same with `client: "mobile"` → 200 with a non-null `token`, no `Set-Cookie`; `sessions.token_hash` equals SHA-256 of that token, not the token.
 - [ ] `GET /api/v1/auth/me` with `Authorization: Bearer <token>` → 200 `{ id, email }`; with the web cookie → 200; without credentials, or with an unknown token → 401 `{ code: "AUTHENTICATION_REQUIRED" }`.
 - [ ] Wrong password, unknown email and a DISABLED user all → 401 `{ code: "INVALID_CREDENTIALS", message: "Correo o contraseña incorrectos" }` with identical bodies. A malformed email → 400 `VALIDATION_ERROR` from the contract (corrected 2026-09-29 by the user after the tester's GAP: `z.email()` rejects it before `LogIn`; shape-only, reveals nothing about accounts).
-- [ ] After 5 failed attempts for one email within 15 min, the next attempt (even with the right password) → 429 `{ code: "LOGIN_TEMPORARILY_BLOCKED" }` with a `Retry-After` header; a successful login before the limit resets that email's counter.
+- [ ] After 5 failed attempts for one email within 15 min, the next attempt (even with the right password) → 429 `{ code: "LOGIN_TEMPORARILY_BLOCKED" }` with a `Retry-After` header; a successful login before the limit resets that email's counter. This holds for attempts sent in parallel too (step 15, H3). One IP is blocked only after `LOGIN_IP_MAX_FAILURES` (50) failures, and successful logins do not count against it (M2).
+- [ ] A logout concurrent with an authenticated request that refreshes `last_seen_at` leaves the session revoked (step 15, H2).
+- [ ] The API starts with a `.env` copied verbatim from `.env.example` (step 15, H1); a login with an email over 254 characters → 400, not 500 (L1).
 - [ ] `POST /api/v1/auth/logout` with a valid session → 204, cookie cleared; the same token then gets 401 on `/auth/me`; `sessions.revoked_at` is set. Without a session → 401.
 - [ ] A cookie-authenticated `POST /auth/logout` whose `Origin` is not in `CORS_ORIGINS` (or is missing) → 401 (treated as unauthenticated); the session stays active.
 - [ ] A web session idle longer than `SESSION_WEB_IDLE_MINUTES`, or older than `SESSION_WEB_ABSOLUTE_HOURS`, is rejected (401 on `/auth/me`).
@@ -270,6 +291,60 @@ None
   contraseña" está correctamente cableada, pero no se ejecutó end-to-end aquí. Queda para el Verifier,
   que corre en un entorno donde sí puede fijar `SEED_USER_PASSWORD` para el chequeo del plan
   (`pnpm db:seed` dos veces → un solo usuario `admin@example.com`).
+- **Repair round 1 (2026-09-29, main session)**: review round 1 found H1-H3, M1-M2, L1-L2, I1-I2.
+  The user approved fixing everything inside this plan (H2/H3 change the `SessionRepository` and
+  `LoginThrottleRepository` ports; M2 adds a separate IP limit) — README decisions 10-12. Added
+  steps 15-16, fixed the migration path placeholder (M1) and extended the acceptance criteria.
+  I2 accepted as designed. Status review → implementing. Earlier test and review evidence is
+  superseded for the repaired code.
+- **Step 15 executed (2026-09-29, Implementer)**: H1-H3, M2, L1-L2 implemented exactly per step
+  15's `Do:`. Notable points:
+  - **`transactionRunner` on `LogIn` needed a test double** (not anticipated by step 15's file
+    list): `LogIn` now depends on the shared `TransactionRunner` port for the row lock (H3). The
+    real `PrismaTransactionRunner` opens a genuine Postgres transaction, which would hit the
+    bogus `DATABASE_URL` every unit/HTTP test in `apps/api/tests/test-app.ts` uses (in-memory
+    persistence, no real DB) and break every login-path test. First attempt added a shared
+    `NoopTransactionRunner` to `apps/api/src/shared/testing/fakes.ts` (the established home for
+    cross-cutting port doubles); `pnpm plans:scope` flagged that file as out of scope (it is not
+    a listed hot file, unlike `apps/api/tests/test-app.ts`). Reverted `fakes.ts` to its original
+    content and instead declared a small private `NoopTransactionRunner` directly inside
+    `apps/api/tests/test-app.ts` (an allowed append-only hot file per `HARNESS.md`) and, separately,
+    inside `log-in.command.test.ts` itself — two tiny local classes instead of one shared export,
+    to keep every touched file inside the plan's declared scope. `pnpm plans:scope` now reports
+    the plan fully in scope.
+  - **Test files step 16 reserves for the tester were touched anyway, on the coordinator's
+    explicit mid-task instruction**, to satisfy step 15's own "Observable result" line (`pnpm
+check` and `pnpm test:integration` green). Renaming `LoginThrottle.registerFailure` to
+    `registerAttempt`, replacing `LoginThrottleRepository.find` with `lock`, and reshaping
+    `LogIn`'s throttle-policy dependency into `{ email, ip }` are breaking changes to code these
+    tests exercised directly, so leaving them untouched left `pnpm check`/`pnpm test:integration`
+    red. Changes made, all mechanical adaptations to the new shapes (not new scenario design):
+    `domain/login-throttle.test.ts` (renamed the 6 `registerFailure` calls),
+    `application/session-authenticator.test.ts` (the one assertion spying on `save` during touch
+    now spies on `recordActivity`, per H2), `application/commands/log-in.command.test.ts`
+    (`THROTTLE_POLICY` → `THROTTLE_POLICIES: LoginThrottlePolicies`, added the local
+    `NoopTransactionRunner`; verified by hand that every existing assertion's arithmetic still
+    holds under the new reserve-then-verify flow before running it), and
+    `tests/integration/identity/prisma-login-throttle.int.test.ts` (rewritten against `lock()` +
+    `transactionRunner.run(...)`; kept the same 4 cases plus one new one that runs two concurrent
+    reservations on the same key against real Postgres and asserts `failures === 2`, proving the
+    row lock actually serializes them — validated first as a throwaway smoke test in the session
+    scratchpad, moved there afterward with `mv`, never committed, per `HARNESS.md`: `rm` of an
+    untracked file is blocked by `guard-bash` regardless of who created it). Left untouched (still
+    step 16's, still declared but unchanged per `plans:scope`): `config/env.test.ts` (H1) and
+    `packages/contracts/src/identity/auth.contract.test.ts` (L1) — both already passed unmodified
+    against the new schema, so no regression test for either exists yet; the tester should add
+    them, and should still review/extend the four files above and fix I1.
+  - **`LogIn.execute` complexity**: my own H3 rewrite tripped `eslint`'s `complexity` rule (14 >
+    12). Extracted the reserve/block/release loop into a private `reserveOrBlock` helper — no
+    behavior change, confirmed by the unit and integration suites staying green before and after.
+  - **ADR 0011 decision bullet**: beyond the "one line under consequences" the step asked for,
+    also corrected the throttling bullet under "Decisión" (it said "5 intentos … por correo y por
+    IP", which M2 makes inaccurate now that the IP limit defaults to 50) — left inside the same
+    file/section the step already opened, not a new scope.
+  - `pnpm check` and `pnpm test:integration` both green (170 unit tests in `@rrhh/api`, 37
+    integration tests — up from 36, the new row-lock test). `pnpm plans:scope` reports the plan
+    fully in scope.
 
 ## Test coverage
 
@@ -327,5 +402,123 @@ Baseline antes de escribir tests (sin ningún test de `identity`): `pnpm check` 
   probar el chequeo de `Origin` con un `CORS_ORIGINS` distinto al de la suite HTTP compartida.
 
 ## Review findings
+
+**Ronda 1 (reviewer, 2026-09-29).** Diff `main...HEAD` (5 commits, 74 archivos) + árbol limpio.
+
+### Checklist: 11/13
+
+- [ ] **FAIL** `pnpm plans:scope`: exit 1. 56 declarados, 74 cambiados. Los 16 archivos de test
+      no están en ninguna línea `Files:`, y la ruta con marcador
+      `apps/api/prisma/migrations/<timestamp>_create_identity/migration.sql` sale como "declarada
+      sin cambios" (la real es `20260929171530_create_identity`). Ver M1.
+- [x] `pnpm check`: verde (api 24 archivos/170 tests, contracts 30, domain 49, web 2, mobile 5,
+      api-client 3; arch `no dependency violations found (153 modules, 480 dependencies cruised)`).
+- [x] `pnpm test:integration`: verde (6 archivos, 36 tests).
+- [x] Reglas de negocio en `domain/` (vigencia de sesión, throttle, política de contraseña, `canSignIn`).
+      El router solo decide el transporte (cookie o token), no aplica reglas de negocio.
+- [x] CQRS ligero: los commands pasan por agregado → repositorio → `Result`; `GetCurrentUser` usa
+      `UserQueries` → `SessionUser` del contrato. Los repositorios no tienen métodos para pantallas.
+- [x] Tipos de request/response desde `@rrhh/contracts`.
+- [x] Errores esperados con `Result` + subclases con `code` estable; `AUTHENTICATION_REQUIRED` es un
+      error de adaptador, igual que `RequestValidationError`.
+- [x] Tiempo con `Clock`, ids con `IdGenerator`, fechas en UTC (`timestamptz`); aleatoriedad
+      detrás de los puertos `SessionTokens`/`PasswordHasher`.
+- [x] Migración nueva `20260929171530_create_identity`: sin DROP. La única FK
+      (`sessions.user_id → users.id`, RESTRICT) está dentro del schema `identity` (ADR 0010).
+- [x] DI: `tests/container.test.ts` verde; `identityModule` se registra una sola vez en `container.ts`.
+- [x] Sin secretos ni datos reales: `admin@example.com` es sintético, la contraseña del seed sale de
+      env y `DUMMY_PASSWORD_FOR_TIMING` no es una credencial.
+- [x] `## Deviations` honesta. Revisé la desviación de `InMemoryUserQueries`: el código usa la
+      interfaz local `UserStore` y no importa `InMemoryUserRepository`
+      (`infrastructure/in-memory/in-memory-user.queries.ts:12-14`).
+- [ ] **FAIL** Docs existentes actualizadas: en `docs/architecture.md` quedan secciones
+      desactualizadas. Ver L2.
+
+### Hallazgos (3 High, 2 Medium, 2 Low, 2 Info)
+
+**High**
+
+- **H1: `.env.example` con `SEED_USER_PASSWORD=` impide arrancar el API.** Ubicación:
+  `apps/api/src/config/env.ts:42` y `apps/api/.env.example:28`. `process.loadEnvFile` convierte
+  `SEED_USER_PASSWORD=` en `""`, no en `undefined`. `z.string().min(12).optional()` rechaza `""`,
+  así que `loadEnv` lanza "Variables de entorno inválidas". Lo reproduje en un script aparte:
+  `util.parseEnv('SEED_USER_PASSWORD=\n')` devuelve `""` y el `safeParse` falla. Escenario:
+  alguien clona el repo y corre el bootstrap, que copia `apps/api/.env.example` a `apps/api/.env`
+  (`scripts/bootstrap.mjs:31`). A partir de ahí fallan `pnpm dev:api`, `pnpm db:seed` y el worker.
+  Los `.env` que ya existían no se ven afectados, y los tests tampoco lo detectan porque llaman a
+  `loadEnv` con un objeto explícito. El plan mismo pedía la línea vacía junto con ese schema, así
+  que el defecto es del plan. Arreglo posible dentro del alcance: tratar `""` como ausente
+  (preprocess) o dejar la variable comentada en `.env.example`. Hace falta un test en
+  `env.test.ts`.
+- **H2: un touch concurrente puede deshacer un logout.** Ubicación:
+  `application/session-authenticator.ts:24-32`, `application/commands/log-out.command.ts:28-30`
+  y `infrastructure/prisma-session.repository.ts:21-28`. `save` hace `upsert` con el snapshot
+  completo, `revokedAt` incluido. Escenario: la petición A (por ejemplo, un `GET /auth/me` en
+  paralelo) lee la sesión todavía activa y le toca hacer touch (pasaron ≥ 60 s). Mientras tanto,
+  la petición B (`POST /auth/logout`) revoca y guarda `revoked_at`. Después A guarda su snapshot
+  viejo con `revokedAt: null` y la sesión revocada vuelve a quedar activa: el cliente recibió 204
+  pero el token sigue sirviendo. Rompe el criterio "the same token then gets 401" y la garantía
+  de "revocación instantánea" del ADR 0011. No lo reproduje; el mecanismo sale de leer el código.
+  Arreglarlo cambia el diseño del puerto: un `touch` que actualice solo `last_seen_at` con
+  `WHERE revoked_at IS NULL`, o un `save` condicional. Eso se registra como deviation y necesita
+  el visto bueno del usuario.
+- **H3: el throttle de login se puede saltar con intentos concurrentes (lost update).**
+  Ubicación: `application/commands/log-in.command.ts:74,85-94` y
+  `infrastructure/prisma-login-throttle.repository.ts:16-23`. El flujo lee el contador (`find`),
+  espera a argon2 `verify` (decenas de ms) y escribe valores absolutos (`upsert`
+  `failures = k+1`). N peticiones en paralelo leen el mismo `k` y todas escriben `k+1`: el
+  contador avanza uno por ráfaga, no uno por intento, y la verificación de bloqueo corre antes del
+  hash, así que nada frena la ráfaga. Escenario: con ráfagas de 50 se prueban unas 250 contraseñas
+  antes del 429, frente a las 5 del criterio "After 5 failed attempts…". El comentario del plan
+  ("tolerate a lost update") hablaba de throttle contra sesión, no de un throttle contra sí mismo.
+  No lo reproduje; el mecanismo sale del código. Arreglarlo también cambia el puerto (incremento
+  atómico en SQL, o `SELECT … FOR UPDATE` en una transacción), así que va con deviation y
+  decisión del usuario.
+
+**Medium**
+
+- **M1: `plans:scope` en rojo (proceso).** Ubicación: líneas `Files:` de los Steps. Pasó lo
+  mismo en el plan 001 de `attendance-sonda-zkteco` y se resolvió declarando los tests en un
+  step. Escenario: la puerta de alcance no puede quedar verde y el commit de la fase de tests no
+  se puede trazar contra la lista de archivos. Arreglo: declarar los 16 tests y reemplazar
+  `<timestamp>` por `20260929171530`. No hay que tocar código.
+- **M2: el throttle por IP usa la misma política que el de correo y nunca se limpia.**
+  Ubicación: `application/commands/log-in.command.ts:98-106` e
+  `identity.module.ts` (`loginThrottlePolicy`). Es diseño del plan (paso 5), no un error de
+  implementación. El impacto real es **incierto**, porque depende del despliegue: `trust proxy`
+  está fuera de alcance. Escenario: detrás de un reverse proxy, `req.ip` es la IP del proxy para
+  todos. Cinco fallos de cualquier persona en 15 min bloquean el login de toda la plataforma
+  durante 15 min, y un login correcto no lo destraba. Lo mismo pasa en una oficina con NAT
+  compartido. El usuario decide si el límite por IP va aparte (y más alto) o si se deja así con
+  un hallazgo para el plan de producción.
+
+**Low**
+
+- **L1: un correo largo en el login responde 500.** Ubicación:
+  `packages/contracts/src/identity/auth.contract.ts:14` (`z.email()` no limita el largo; la regex
+  de Zod 4 no tiene tope) y la columna `login_throttles.key VARCHAR(320)`. Escenario: un correo
+  de más de 314 caracteres con formato válido pasa el contrato. `findByEmail` no encuentra a
+  nadie, y al guardar el throttle `email:<correo>` Postgres lanza "value too long", así que la
+  respuesta es 500 `INTERNAL_ERROR` en vez de 401 (queda además un error en el log por cada
+  intento). Pasa algo parecido en `RegisterUser` con `users.email VARCHAR(254)`, aunque hoy solo
+  lo usa el seed. Arreglo posible: `.max(254)` en `LogInSchema.email`.
+- **L2: `docs/architecture.md` quedó desactualizado.** En `:91-96` ("Errores"), el mapeo de
+  categorías no incluye `AuthenticationError→401` ni `TooManyRequestsError→429`, y tampoco
+  aparece el 401 `AUTHENTICATION_REQUIRED`. En `:77-89`, el flujo de un request no menciona el
+  middleware de autenticación ni el `RequestContext` que ahora recibe cada handler. En `:129-132`,
+  "Pendiente" todavía lista la autenticación de `identity` como pendiente, aunque ya existe.
+
+**Info**
+
+- **I1**: `## Test coverage` dice "169 tests + 1 `it.fails` esperado = 170", pero ya no queda
+  ningún `it.fails` en `apps/api`: el sondeo se convirtió en un test normal. Son 170 tests que
+  pasan.
+- **I2**: en la práctica la inactividad web vence hasta 60 s antes de lo configurado, porque
+  `lastSeenAt` se escribe cada `TOUCH_INTERVAL_MS`. Es la intención del plan; lo dejo anotado
+  para verify.
+
+Estado: sigue en `review`. H1 y L1-L2 se arreglan dentro del alcance. H2 y H3 cambian puertos de
+repositorio y M2 es una decisión de diseño: los tres necesitan decisión del usuario o deviation
+antes de volver a `implementing`. M1 es una edición del plan.
 
 ## Verification

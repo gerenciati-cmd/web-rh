@@ -12,7 +12,7 @@ import type { SessionTokens } from './application/ports/session-tokens';
 import { GetCurrentUser } from './application/queries/get-current-user.query';
 import type { UserQueries } from './application/queries/user.queries';
 import { SessionAuthenticator } from './application/session-authenticator';
-import type { LoginThrottlePolicy } from './domain/login-throttle';
+import type { LoginThrottlePolicies } from './domain/login-throttle';
 import type { LoginThrottleRepository } from './domain/login-throttle.repository';
 import type { SessionPolicy } from './domain/session';
 import type { SessionRepository } from './domain/session.repository';
@@ -33,7 +33,7 @@ export interface IdentityCradle {
   passwordHasher: PasswordHasher;
   sessionTokens: SessionTokens;
   sessionPolicy: SessionPolicy;
-  loginThrottlePolicy: LoginThrottlePolicy;
+  loginThrottlePolicies: LoginThrottlePolicies;
   registerUser: RegisterUser;
   logIn: LogIn;
   logOut: LogOut;
@@ -60,10 +60,19 @@ export const identityModule: AppModule<IdentityCradle> = {
         idleMs: null,
       },
     })).singleton(),
-    loginThrottlePolicy: asFunction(({ env }: { env: Env }) => ({
-      maxFailures: env.LOGIN_MAX_FAILURES,
-      windowMs: env.LOGIN_FAILURE_WINDOW_MINUTES * 60_000,
-      blockMs: env.LOGIN_BLOCK_MINUTES * 60_000,
+    // M2: la IP tiene su propio límite (LOGIN_IP_MAX_FAILURES), separado del de correo — ver
+    // README decisión 12.
+    loginThrottlePolicies: asFunction(({ env }: { env: Env }) => ({
+      email: {
+        maxFailures: env.LOGIN_MAX_FAILURES,
+        windowMs: env.LOGIN_FAILURE_WINDOW_MINUTES * 60_000,
+        blockMs: env.LOGIN_BLOCK_MINUTES * 60_000,
+      },
+      ip: {
+        maxFailures: env.LOGIN_IP_MAX_FAILURES,
+        windowMs: env.LOGIN_FAILURE_WINDOW_MINUTES * 60_000,
+        blockMs: env.LOGIN_BLOCK_MINUTES * 60_000,
+      },
     })).singleton(),
     registerUser: asClass(RegisterUser).singleton(),
     logIn: asClass(LogIn).singleton(),

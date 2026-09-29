@@ -75,6 +75,13 @@ leer de una vista materializada o réplica sin tocar el dominio.
 
 ## Flujo de un request (command)
 
+Antes de llegar al router de cualquier módulo, `cookieParser()` y luego `createAuthenticate(...)`
+(`src/http/authenticate.ts`) resuelven el actor desde `Authorization: Bearer` o la cookie de
+sesión y lo dejan en `res.locals.actor` (`null` si no hay token o no es válido). `bindRoute` arma
+con eso un `RequestContext` (`actor`, `client.ip/userAgent`, `cookies`) y lo pasa como segundo
+argumento al handler; `requireActor(context)` lo exige donde el endpoint no admite anónimos (ver
+ADR 0011).
+
 ```
 POST /api/v1/companies/:id/employees
  → bindRoute: valida params/body con el schema de @rrhh/contracts (400 si falla)
@@ -92,8 +99,12 @@ POST /api/v1/companies/:id/employees
 
 - **Esperados** (validación, reglas, no encontrado, conflicto) → `Result` con un `DomainError`
   con `code` estable. La capa HTTP traduce la **categoría** a status:
-  `NotFoundError→404`, `ConflictError→409`, `InvalidValueError/BusinessRuleViolationError→422`.
+  `NotFoundError→404`, `ConflictError→409`, `InvalidValueError/BusinessRuleViolationError→422`,
+  `AuthenticationError→401`, `TooManyRequestsError→429`.
 - **Entrada HTTP inválida** → 400 `VALIDATION_ERROR` con los issues de Zod por campo.
+- **Sin sesión válida** (o token desconocido/vencido) → 401 `AUTHENTICATION_REQUIRED`: error de
+  adaptador (`src/http/request-context.ts`), igual que `RequestValidationError`, no una categoría
+  de dominio.
 - **Inesperados** → se loguean completos y el cliente recibe 500 `INTERNAL_ERROR` sin detalles.
 - Los clientes reciben siempre `{ code, message, details? }` (`ApiErrorSchema`) y usan `code` para i18n.
 
@@ -128,8 +139,9 @@ awilix en modo PROXY: cada clase recibe un objeto `deps` tipado con solo lo que 
 
 ## Pendiente (siguiente etapa)
 
-- Módulo `identity`: sesiones opacas revocables (ADR 0011), cookie en web y Bearer en mobile,
-  usuarios, RBAC, y contexto de request (usuario, empresa) propagado a los casos de uso.
+- Módulo `identity`: RBAC (roles, permisos y scopes) y contexto de request (empresa) propagado a
+  los casos de uso (plan 002). Usuarios, login/logout, sesiones opacas y throttling ya existen
+  (ADR 0011).
 - Multi-tenancy: filtro por empresa en repositorios/queries + RLS en Postgres como segunda barrera.
 - Auditoría (quién cambió qué) como módulo transversal alimentado por eventos.
 - Outbox para eventos críticos. Observabilidad (OpenTelemetry).

@@ -28,7 +28,7 @@ describe('LoginThrottle', () => {
   it('registrar fallos por debajo del máximo no bloquea', () => {
     const throttle = LoginThrottle.fresh('email:ana@aps.cl', now);
 
-    for (let i = 0; i < POLICY.maxFailures - 1; i++) throttle.registerFailure(now, POLICY);
+    for (let i = 0; i < POLICY.maxFailures - 1; i++) throttle.registerAttempt(now, POLICY);
 
     expect(throttle.snapshot.failures).toBe(POLICY.maxFailures - 1);
     expect(throttle.blockedUntilAt(now)).toBeNull();
@@ -37,7 +37,7 @@ describe('LoginThrottle', () => {
   it('llegar al máximo de fallos bloquea hasta now + blockMs', () => {
     const throttle = LoginThrottle.fresh('email:ana@aps.cl', now);
 
-    for (let i = 0; i < POLICY.maxFailures; i++) throttle.registerFailure(now, POLICY);
+    for (let i = 0; i < POLICY.maxFailures; i++) throttle.registerAttempt(now, POLICY);
 
     expect(throttle.snapshot.failures).toBe(POLICY.maxFailures);
     expect(throttle.blockedUntilAt(now)).toEqual(new Date(now.getTime() + POLICY.blockMs));
@@ -45,7 +45,7 @@ describe('LoginThrottle', () => {
 
   it('blockedUntilAt vuelve a null una vez que el bloqueo venció', () => {
     const throttle = LoginThrottle.fresh('email:ana@aps.cl', now);
-    for (let i = 0; i < POLICY.maxFailures; i++) throttle.registerFailure(now, POLICY);
+    for (let i = 0; i < POLICY.maxFailures; i++) throttle.registerAttempt(now, POLICY);
 
     const afterBlock = new Date(now.getTime() + POLICY.blockMs + 1);
 
@@ -54,11 +54,11 @@ describe('LoginThrottle', () => {
 
   it('la ventana se reinicia tras windowMs sin resetear manualmente', () => {
     const throttle = LoginThrottle.fresh('email:ana@aps.cl', now);
-    for (let i = 0; i < POLICY.maxFailures - 1; i++) throttle.registerFailure(now, POLICY);
+    for (let i = 0; i < POLICY.maxFailures - 1; i++) throttle.registerAttempt(now, POLICY);
     expect(throttle.snapshot.failures).toBe(POLICY.maxFailures - 1);
 
     const afterWindow = new Date(now.getTime() + POLICY.windowMs);
-    throttle.registerFailure(afterWindow, POLICY);
+    throttle.registerAttempt(afterWindow, POLICY);
 
     // La ventana se reinició: este es el primer fallo de la nueva ventana, no el quinto.
     expect(throttle.snapshot.failures).toBe(1);
@@ -68,7 +68,7 @@ describe('LoginThrottle', () => {
 
   it('clear resetea fallos, ventana y bloqueo', () => {
     const throttle = LoginThrottle.fresh('email:ana@aps.cl', now);
-    for (let i = 0; i < POLICY.maxFailures; i++) throttle.registerFailure(now, POLICY);
+    for (let i = 0; i < POLICY.maxFailures; i++) throttle.registerAttempt(now, POLICY);
     expect(throttle.blockedUntilAt(now)).not.toBeNull();
 
     const later = new Date(now.getTime() + 1000);

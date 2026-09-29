@@ -29,7 +29,9 @@ export class SessionAuthenticator implements RequestAuthenticator {
 
     if (session.needsTouch(now)) {
       session.touch(now);
-      await sessionRepository.save(session);
+      // recordActivity, no save (H2): solo toca `lastSeenAt` y solo si sigue sin revocar, para
+      // no poder deshacer un logout concurrente con el snapshot viejo de esta petición.
+      await sessionRepository.recordActivity(session);
     }
 
     return { userId: user.id, sessionId: session.id };

@@ -1,10 +1,14 @@
 import { Email, err, ok } from '@rrhh/domain';
 
-import type { Clock, EventBus, IdGenerator } from '@/shared/application/ports';
+import type { Clock, EventBus, IdGenerator, TransactionRunner } from '@/shared/application/ports';
 import type { Command } from '@/shared/application/use-case';
 
 import { InvalidCredentialsError, LoginTemporarilyBlockedError } from '../../domain/errors';
-import { LoginThrottle, type LoginThrottlePolicy } from '../../domain/login-throttle';
+import {
+  LoginThrottle,
+  type LoginThrottlePolicies,
+  type LoginThrottlePolicy,
+} from '../../domain/login-throttle';
 import type { LoginThrottleRepository } from '../../domain/login-throttle.repository';
 import {
   Session,
@@ -38,13 +42,18 @@ interface Deps {
   passwordHasher: PasswordHasher;
   sessionTokens: SessionTokens;
   sessionPolicy: SessionPolicy;
-  loginThrottlePolicy: LoginThrottlePolicy;
+  loginThrottlePolicies: LoginThrottlePolicies;
+  transactionRunner: TransactionRunner;
   idGenerator: IdGenerator;
   clock: Clock;
   eventBus: EventBus;
 }
 
 const MS_PER_SECOND = 1_000;
+
+/** Resultado de reservar un intento para una llave: o quedó reservado, o la llave ya estaba
+ *  bloqueada de antes (en cuyo caso nada se registró). */
+type ReservationOutcome = { reserved: true } | { reserved: false; blockedUntil: Date };
 
 export class LogIn implements Command<LogInCommandInput, LogInOutput> {
   constructor(private readonly deps: Deps) {}
@@ -53,11 +62,9 @@ export class LogIn implements Command<LogInCommandInput, LogInOutput> {
     const {
       userRepository,
       sessionRepository,
-      loginThrottleRepository,
       passwordHasher,
       sessionTokens,
       sessionPolicy,
-      loginThrottlePolicy,
       idGenerator,
       clock,
       eventBus,
@@ -71,16 +78,15 @@ export class LogIn implements Command<LogInCommandInput, LogInOutput> {
       return err(new InvalidCredentialsError());
     }
 
-    const throttles = await this.loadThrottles(loginThrottleRepository, email.value, input.ip, now);
+    const emailKey = LoginThrottle.keyForEmail(email.value);
+    const ipKey = input.ip ? LoginThrottle.keyForIp(input.ip) : null;
+    const keys = ipKey ? [emailKey, ipKey] : [emailKey];
 
-    const blockedUntils = throttles
-      .map((throttle) => throttle.blockedUntilAt(now))
-      .filter((date): date is Date => date !== null);
-    if (blockedUntils.length > 0) {
-      const latest = new Date(Math.max(...blockedUntils.map((date) => date.getTime())));
-      const retryAfterSeconds = Math.ceil((latest.getTime() - now.getTime()) / MS_PER_SECOND);
-      return err(new LoginTemporarilyBlockedError(retryAfterSeconds));
-    }
+    // Cada llave reserva su intento ANTES de verificar la contraseña, bajo un row lock (H3):
+    // así una ráfaga concurrente no puede leer el mismo contador y perder incrementos, y el
+    // límite frena la ráfaga aunque nada haya llamado todavía a argon2.
+    const blocked = await this.reserveOrBlock(keys, now);
+    if (blocked) return err(blocked);
 
     const user = await userRepository.findByEmail(email.value);
     const valid = user
@@ -90,26 +96,22 @@ export class LogIn implements Command<LogInCommandInput, LogInOutput> {
     // La condición repite `!valid` a propósito (cuando no hay user, `valid` ya es false):
     // así TypeScript estrecha `user` a no-nulo en el resto del método sin usar `!`.
     if (!user || !valid) {
-      for (const throttle of throttles) throttle.registerFailure(now, loginThrottlePolicy);
-      await Promise.all(throttles.map((throttle) => loginThrottleRepository.save(throttle)));
+      // El intento ya quedó contado en la reserva de arriba (H3): nada más que escribir.
       return err(new InvalidCredentialsError());
     }
 
-    const emailThrottle = throttles.find(
-      (throttle) => throttle.id === LoginThrottle.keyForEmail(email.value),
-    );
-    if (emailThrottle) {
-      emailThrottle.clear(now);
-      await loginThrottleRepository.save(emailThrottle);
-    }
-    // El throttle de IP se deja como está a propósito: bloquear por IP protege contra
-    // fuerza bruta distribuida por correo, no debe resetearse por un login ajeno exitoso.
+    // Éxito: se limpia el throttle del correo entero, pero el de IP solo libera SU reserva de
+    // esta petición (no se limpia entero) — un login ajeno correcto no debe resetear el cupo de
+    // fuerza bruta de quien comparte la IP.
+    await this.clear(emailKey, now);
+    if (ipKey) await this.release(ipKey, now);
 
     const { token, tokenHash } = sessionTokens.issue();
     const client: SessionClient = input.client === 'web' ? 'WEB' : 'MOBILE';
 
-    // Sin transactionRunner: el throttle y la sesión son agregados independientes que
-    // toleran una actualización perdida entre sí (no comparten invariante transaccional).
+    // El throttle usa transactionRunner porque el row lock (`FOR UPDATE`) solo tiene sentido
+    // dentro de una transacción; la sesión sigue siendo un agregado independiente, sin
+    // transacción compartida con el throttle (tolera una actualización perdida entre sí).
     const session = Session.start({
       id: idGenerator.next() as SessionId,
       userId: user.id,
@@ -130,15 +132,67 @@ export class LogIn implements Command<LogInCommandInput, LogInOutput> {
     });
   }
 
-  private async loadThrottles(
-    repository: LoginThrottleRepository,
-    email: Email,
-    ip: string | null,
+  /**
+   * Reserva un intento por cada llave; si alguna ya estaba bloqueada, deshace las reservas que
+   * sí se alcanzaron a hacer en esta petición y devuelve el error a propagar (`null` si ninguna
+   * llave estaba bloqueada, y ya quedaron todas reservadas).
+   */
+  private async reserveOrBlock(
+    keys: string[],
     now: Date,
-  ): Promise<LoginThrottle[]> {
-    const keys = [LoginThrottle.keyForEmail(email), ...(ip ? [LoginThrottle.keyForIp(ip)] : [])];
-    return Promise.all(
-      keys.map(async (key) => (await repository.find(key)) ?? LoginThrottle.fresh(key, now)),
-    );
+  ): Promise<LoginTemporarilyBlockedError | null> {
+    const reservations: { key: string; outcome: ReservationOutcome }[] = [];
+    for (const key of keys)
+      reservations.push({ key, outcome: await this.reserveAttempt(key, now) });
+
+    const blockedUntils = reservations
+      .map((reservation) => reservation.outcome)
+      .filter((outcome): outcome is { reserved: false; blockedUntil: Date } => !outcome.reserved)
+      .map((outcome) => outcome.blockedUntil);
+    if (blockedUntils.length === 0) return null;
+
+    // El bloqueo solo pudo originarse en ESTA reserva (una llave ya bloqueada se rechaza antes
+    // de reservar), así que liberar lo reservado en esta misma petición es seguro.
+    for (const reservation of reservations) {
+      if (reservation.outcome.reserved) await this.release(reservation.key, now);
+    }
+    const latest = new Date(Math.max(...blockedUntils.map((date) => date.getTime())));
+    const retryAfterSeconds = Math.ceil((latest.getTime() - now.getTime()) / MS_PER_SECOND);
+    return new LoginTemporarilyBlockedError(retryAfterSeconds);
+  }
+
+  private async reserveAttempt(key: string, now: Date): Promise<ReservationOutcome> {
+    const { transactionRunner, loginThrottleRepository } = this.deps;
+    return transactionRunner.run(async () => {
+      const throttle = await loginThrottleRepository.lock(key, now);
+      const blockedUntil = throttle.blockedUntilAt(now);
+      if (blockedUntil) return { reserved: false, blockedUntil };
+      throttle.registerAttempt(now, this.policyFor(key));
+      await loginThrottleRepository.save(throttle);
+      return { reserved: true };
+    });
+  }
+
+  private async release(key: string, now: Date): Promise<void> {
+    const { transactionRunner, loginThrottleRepository } = this.deps;
+    await transactionRunner.run(async () => {
+      const throttle = await loginThrottleRepository.lock(key, now);
+      throttle.releaseAttempt(this.policyFor(key));
+      await loginThrottleRepository.save(throttle);
+    });
+  }
+
+  private async clear(key: string, now: Date): Promise<void> {
+    const { transactionRunner, loginThrottleRepository } = this.deps;
+    await transactionRunner.run(async () => {
+      const throttle = await loginThrottleRepository.lock(key, now);
+      throttle.clear(now);
+      await loginThrottleRepository.save(throttle);
+    });
+  }
+
+  private policyFor(key: string): LoginThrottlePolicy {
+    const { loginThrottlePolicies } = this.deps;
+    return key.startsWith('ip:') ? loginThrottlePolicies.ip : loginThrottlePolicies.email;
   }
 }

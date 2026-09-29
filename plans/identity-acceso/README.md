@@ -53,6 +53,14 @@ endpoint is open (`apps/api/src/http/app.ts:43-47` mounts module routers with no
    each is its own initiative.
 9. (2026-09-29) API only for now: no web or mobile screens until there is a UI design. Plans
    001-003 touch only `apps/api` and `packages/*`; plan 004 waits.
+10. (2026-09-29) A malformed email at login answers 400 `VALIDATION_ERROR` (contract), not 401:
+    it validates shape only and reveals nothing about accounts.
+11. (2026-09-29) Review round 1 of plan 001 (H2, H3) is fixed inside plan 001: session activity
+    writes only `last_seen_at` of non-revoked sessions, and each login attempt is reserved under
+    a row lock before the password is verified, so parallel bursts count every attempt.
+12. (2026-09-29) The IP throttle has its own limit, `LOGIN_IP_MAX_FAILURES` (default 50 per
+    15 min), separate from the email limit (5), and successful logins do not consume it — an
+    office or a reverse proxy behind one IP must not lock everyone out.
 
 ## Delivered
 
