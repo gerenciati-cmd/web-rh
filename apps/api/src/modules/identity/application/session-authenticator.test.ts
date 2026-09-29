@@ -127,6 +127,66 @@ describe('SessionAuthenticator', () => {
   });
 });
 
+// H2 (plan 001, paso 15): el guard vive en el repositorio, no en `SessionAuthenticator` — se
+// prueba directo sobre `InMemorySessionRepository.recordActivity` con dos instancias
+// independientes de la misma sesión (como dos requests reales que la leyeron cada una por su
+// cuenta), no con la misma referencia, para no enmascarar la carrera con una mutación compartida.
+describe('InMemorySessionRepository.recordActivity (H2)', () => {
+  let sessionRepository: InMemorySessionRepository;
+
+  beforeEach(() => {
+    sessionRepository = new InMemorySessionRepository();
+  });
+
+  function startSession(): Session {
+    const { tokenHash } = new CryptoSessionTokens().issue();
+    const session = Session.start({
+      id: 'session-race' as SessionId,
+      userId: USER_ID,
+      tokenHash,
+      client: 'WEB',
+      lifetime: { absoluteMs: 12 * 3_600_000, idleMs: 30 * 60_000 },
+      now,
+      ip: null,
+      userAgent: null,
+    });
+    sessionRepository.sessions.set(session.id, session);
+    return session;
+  }
+
+  it('no revive una sesión que un logout concurrente ya revocó', async () => {
+    const original = startSession();
+    const snapshot = original.snapshot;
+    // Dos copias independientes de la misma fila (Session.restore crea una instancia nueva).
+    const staleCopyHeldByRequestA = Session.restore(original.id, { ...snapshot });
+    const copyRevokedByRequestB = Session.restore(original.id, { ...snapshot });
+
+    // Petición B: logout concurrente, revoca y guarda antes que A.
+    copyRevokedByRequestB.revoke(new Date(now.getTime() + 30_000));
+    await sessionRepository.save(copyRevokedByRequestB);
+
+    // Petición A sigue con su copia vieja (revokedAt todavía null ahí) y llega tarde a tocar.
+    staleCopyHeldByRequestA.touch(new Date(now.getTime() + 61_000));
+    await sessionRepository.recordActivity(staleCopyHeldByRequestA);
+
+    const stored = sessionRepository.sessions.get(original.id);
+    expect(stored?.snapshot.revokedAt).not.toBeNull();
+    expect(stored?.snapshot.lastSeenAt).toEqual(copyRevokedByRequestB.snapshot.lastSeenAt);
+  });
+
+  it('actualiza lastSeenAt cuando la sesión sigue sin revocar', async () => {
+    const original = startSession();
+    const copy = Session.restore(original.id, { ...original.snapshot });
+    const later = new Date(now.getTime() + 61_000);
+    copy.touch(later);
+
+    await sessionRepository.recordActivity(copy);
+
+    expect(sessionRepository.sessions.get(original.id)?.snapshot.lastSeenAt).toEqual(later);
+    expect(sessionRepository.sessions.get(original.id)?.snapshot.revokedAt).toBeNull();
+  });
+});
+
 function mustEmail(raw: string) {
   const result = Email.create(raw);
   if (!result.ok) throw result.error;

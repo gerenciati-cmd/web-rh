@@ -129,4 +129,61 @@ describe('PrismaSessionRepository', () => {
 
     expect((await sessions.findById(session.id))?.snapshot.userAgent).toHaveLength(500);
   });
+
+  // recordActivity (H2, plan 001 paso 15): un `upsert` con el snapshot completo podía, en una
+  // carrera con un logout concurrente, volver a poner `revoked_at` en null. El `updateMany` con
+  // `revokedAt: null` en el WHERE debe no tocar nada si la fila ya está revocada en la BD.
+  describe('recordActivity', () => {
+    it('no revive una sesión que ya quedó revocada en la BD (logout concurrente)', async () => {
+      const userId = await seedUser('sesion6@aps.cl');
+      const session = Session.start({
+        id: ids.next() as SessionId,
+        userId,
+        tokenHash: 'g'.repeat(64),
+        client: 'WEB',
+        lifetime: { absoluteMs: 3_600_000, idleMs: 30 * 60_000 },
+        now: NOW,
+        ip: null,
+        userAgent: null,
+      });
+      await sessions.save(session);
+
+      // Otra "petición" carga su propia copia de la fila y la revoca (logout).
+      const loadedByLogout = await sessions.findById(session.id);
+      if (!loadedByLogout) throw new Error('fixture: sesión no encontrada');
+      loadedByLogout.revoke(new Date(NOW.getTime() + 30_000));
+      await sessions.save(loadedByLogout);
+
+      // La instancia original, todavía con `revokedAt: null` en memoria, llega tarde a tocar.
+      session.touch(new Date(NOW.getTime() + 61_000));
+      await sessions.recordActivity(session);
+
+      const found = await sessions.findById(session.id);
+      expect(found?.snapshot.revokedAt).toEqual(loadedByLogout.snapshot.revokedAt);
+      expect(found?.snapshot.lastSeenAt).toEqual(loadedByLogout.snapshot.lastSeenAt);
+    });
+
+    it('actualiza lastSeenAt cuando la sesión sigue activa', async () => {
+      const userId = await seedUser('sesion7@aps.cl');
+      const session = Session.start({
+        id: ids.next() as SessionId,
+        userId,
+        tokenHash: 'h'.repeat(64),
+        client: 'WEB',
+        lifetime: { absoluteMs: 3_600_000, idleMs: 30 * 60_000 },
+        now: NOW,
+        ip: null,
+        userAgent: null,
+      });
+      await sessions.save(session);
+
+      const later = new Date(NOW.getTime() + 61_000);
+      session.touch(later);
+      await sessions.recordActivity(session);
+
+      const found = await sessions.findById(session.id);
+      expect(found?.snapshot.lastSeenAt).toEqual(later);
+      expect(found?.snapshot.revokedAt).toBeNull();
+    });
+  });
 });

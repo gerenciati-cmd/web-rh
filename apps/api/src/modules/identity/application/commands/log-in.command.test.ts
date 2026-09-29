@@ -215,4 +215,43 @@ describe('LogIn', () => {
       new Date(now.getTime() + SESSION_POLICY.MOBILE.absoluteMs),
     );
   });
+
+  // M2 (plan 001, paso 15): el límite de la IP es independiente y más alto que el del correo,
+  // para que una IP compartida (oficina, reverse proxy) no bloquee a todo el mundo con el
+  // límite pensado para un solo atacante.
+  it('el límite de la IP es independiente y más alto que el del correo', async () => {
+    const separatePolicies: LoginThrottlePolicies = {
+      email: { maxFailures: 2, windowMs: 15 * 60_000, blockMs: 15 * 60_000 },
+      ip: { maxFailures: 4, windowMs: 15 * 60_000, blockMs: 15 * 60_000 },
+    };
+    const logInWithPolicies = new LogIn({
+      userRepository,
+      sessionRepository,
+      loginThrottleRepository: throttleRepository,
+      passwordHasher: hasher,
+      sessionTokens,
+      sessionPolicy: SESSION_POLICY,
+      loginThrottlePolicies: separatePolicies,
+      transactionRunner: new NoopTransactionRunner(),
+      idGenerator: new SequentialIdGenerator(),
+      clock: new FixedClock(now),
+      eventBus,
+    });
+    const attempt = (rawEmail: string) =>
+      logInWithPolicies.execute({ ...input, email: rawEmail, password: 'mala' });
+
+    // Dos fallos agotan el límite de 'uno@aps.cl' (maxFailures=2 para correo).
+    await attempt('uno@aps.cl');
+    await attempt('uno@aps.cl');
+    const blockedOwnEmail = await attempt('uno@aps.cl');
+    expect(!blockedOwnEmail.ok && blockedOwnEmail.error.code).toBe('LOGIN_TEMPORARILY_BLOCKED');
+
+    // Otro correo que comparte la misma IP todavía puede intentar: el límite de la IP (4) es
+    // más alto que el del correo y, con solo 2 fallos contados a la IP, no lo alcanzó.
+    const otherEmailSameIp = await attempt('otro@aps.cl');
+    expect(!otherEmailSameIp.ok && otherEmailSameIp.error.code).toBe('INVALID_CREDENTIALS');
+
+    const ipThrottle = throttleRepository.throttles.get(LoginThrottle.keyForIp(input.ip!));
+    expect(ipThrottle?.snapshot.failures).toBeLessThan(separatePolicies.ip.maxFailures);
+  });
 });

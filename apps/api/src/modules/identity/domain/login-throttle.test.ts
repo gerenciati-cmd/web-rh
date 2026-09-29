@@ -77,4 +77,38 @@ describe('LoginThrottle', () => {
     expect(throttle.snapshot).toEqual({ failures: 0, windowStartedAt: later, blockedUntil: null });
     expect(throttle.blockedUntilAt(later)).toBeNull();
   });
+
+  // releaseAttempt (H3/M2, plan 001 paso 15): deshace UNA reserva — la usa `LogIn` cuando la
+  // contraseña resultó correcta (no consumir el cupo de la IP por un login ajeno exitoso) o
+  // cuando otra llave de la misma petición terminó bloqueada.
+  describe('releaseAttempt', () => {
+    it('resta un intento reservado', () => {
+      const throttle = LoginThrottle.fresh('email:ana@aps.cl', now);
+      throttle.registerAttempt(now, POLICY);
+      throttle.registerAttempt(now, POLICY);
+
+      throttle.releaseAttempt(POLICY);
+
+      expect(throttle.snapshot.failures).toBe(1);
+    });
+
+    it('no baja de cero si se libera sin haber reservado nada', () => {
+      const throttle = LoginThrottle.fresh('email:ana@aps.cl', now);
+
+      throttle.releaseAttempt(POLICY);
+
+      expect(throttle.snapshot.failures).toBe(0);
+    });
+
+    it('levanta el bloqueo cuando, tras liberar, los fallos vuelven a estar bajo el máximo', () => {
+      const throttle = LoginThrottle.fresh('email:ana@aps.cl', now);
+      for (let i = 0; i < POLICY.maxFailures; i++) throttle.registerAttempt(now, POLICY);
+      expect(throttle.blockedUntilAt(now)).not.toBeNull();
+
+      throttle.releaseAttempt(POLICY);
+
+      expect(throttle.snapshot.failures).toBe(POLICY.maxFailures - 1);
+      expect(throttle.blockedUntilAt(now)).toBeNull();
+    });
+  });
 });

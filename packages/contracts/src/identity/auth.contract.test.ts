@@ -36,6 +36,23 @@ describe('LogInSchema', () => {
   it('acepta una password de exactamente 128 caracteres', () => {
     expect(LogInSchema.safeParse({ ...base, password: 'a'.repeat(128) }).success).toBe(true);
   });
+
+  // Regresión L1 (plan 001, paso 15): sin `.max(254)`, un email con formato válido pero
+  // larguísimo pasaba el contrato y hacía fallar el guardado del throttle en Postgres
+  // (`login_throttles.key VARCHAR(320)`, prefijo `email:`) con un 500 en vez de un 401.
+  it('acepta un email de exactamente 254 caracteres (mismo límite que users.email)', () => {
+    const email = `${'a'.repeat(242)}@example.com`;
+    expect(email).toHaveLength(254);
+
+    expect(LogInSchema.safeParse({ ...base, email }).success).toBe(true);
+  });
+
+  it('rechaza un email de 255 caracteres o más, aunque el formato sea válido', () => {
+    const email = `${'a'.repeat(243)}@example.com`;
+    expect(email).toHaveLength(255);
+
+    expect(LogInSchema.safeParse({ ...base, email }).success).toBe(false);
+  });
 });
 
 describe('LogInResponseSchema', () => {
