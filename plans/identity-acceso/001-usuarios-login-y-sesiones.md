@@ -1,5 +1,5 @@
 ---
-status: verify
+status: done
 module: identity
 min_implementer: mid
 depends_on: []
@@ -674,7 +674,7 @@ endpoint de registro en este plan) viven solo en el scratchpad de la sesión, nu
 - [x] `pnpm check`: verde completo (formato, typecheck, lint, tests, `arch:check` sin violaciones,
       `plans:lint`, `harness:check`, hooks, bootstrap, quality). `@rrhh/api`: 24 archivos/180 tests;
       `@rrhh/contracts`: 4 archivos/32 tests — coincide exactamente con lo que reporta `## Test
-  coverage` ronda 2.
+coverage` ronda 2.
 - [x] `pnpm test:integration`: verde, 6 archivos/39 tests — coincide con `## Test coverage`.
 
 ### Migración y esquema
