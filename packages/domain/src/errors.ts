@@ -31,3 +31,9 @@ export class BusinessRuleViolationError extends DomainError {
 export abstract class NotFoundError extends DomainError {}
 
 export abstract class ConflictError extends DomainError {}
+
+/** La identidad no se pudo comprobar (credenciales inválidas, sesión inexistente o expirada). */
+export abstract class AuthenticationError extends DomainError {}
+
+/** Demasiados intentos en poco tiempo; el llamador debe esperar antes de reintentar. */
+export abstract class TooManyRequestsError extends DomainError {}

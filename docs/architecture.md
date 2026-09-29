@@ -128,8 +128,8 @@ awilix en modo PROXY: cada clase recibe un objeto `deps` tipado con solo lo que 
 
 ## Pendiente (siguiente etapa)
 
-- Módulo `identity`: autenticación (access + refresh token, apto para mobile), usuarios, RBAC,
-  y contexto de request (usuario, empresa) propagado a los casos de uso.
+- Módulo `identity`: sesiones opacas revocables (ADR 0011), cookie en web y Bearer en mobile,
+  usuarios, RBAC, y contexto de request (usuario, empresa) propagado a los casos de uso.
 - Multi-tenancy: filtro por empresa en repositorios/queries + RLS en Postgres como segunda barrera.
 - Auditoría (quién cambió qué) como módulo transversal alimentado por eventos.
 - Outbox para eventos críticos. Observabilidad (OpenTelemetry).

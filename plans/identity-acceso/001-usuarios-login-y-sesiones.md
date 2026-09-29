@@ -1,5 +1,5 @@
 ---
-status: draft
+status: testing
 module: identity
 min_implementer: mid
 depends_on: []
@@ -239,6 +239,37 @@ None
 | e2e         | no      | (no e2e infrastructure yet)                                                                                                                                                                                                                       |
 
 ## Deviations
+
+- **Orden de ejecución del paso 10 antes que 8-9**: los mappers/repositorios Prisma del paso 8
+  importan tipos del cliente generado (`@/infrastructure/database/generated/client`), que solo
+  existen tras `pnpm db:generate`, y este a su vez requiere el schema y la migración del paso 10.
+  Se ejecutó primero `schema.prisma` + `pnpm db:migrate --name create_identity` + `pnpm db:generate`
+  (paso 10), y luego los pasos 8 y 9 con los tipos ya disponibles. Mismos archivos y contenido que
+  pide el plan; solo cambió la secuencia por una dependencia técnica dura, no de alcance ni diseño.
+- **`InMemoryUserQueries` (paso 9) no importa `InMemoryUserRepository`**: el plan dice "lee desde un
+  `InMemoryUserRepository` inyectado en el constructor", pero tipar el constructor con esa clase
+  concreta dispara la regla `no-test-code-in-production` de `arch:check` (cualquier archivo fuera de
+  `.test.ts`/`tests/` que importe algo bajo `/in-memory/` queda marcado, incluso otro archivo
+  `/in-memory/` hermano). En su lugar, `InMemoryUserQueries` depende de una interfaz estructural
+  mínima local `UserStore { readonly users: ReadonlyMap<string, User> }`, que `InMemoryUserRepository`
+  cumple sin necesidad de importarla. `apps/api/tests/test-app.ts` sigue pasando una instancia real
+  de `InMemoryUserRepository` en el constructor; el comportamiento en runtime es idéntico.
+- **Smoke test manual fuera del pipeline de tests**: además de `pnpm check` y `pnpm test:integration`
+  (verdes), se ejecutó un script ad hoc (no versionado, en el scratchpad) contra la base de
+  desarrollo real que recorrió `registerUser → logIn` (contraseña incorrecta y luego correcta) →
+  `requestAuthenticator.authenticate` → `getCurrentUser` → `logOut` → reintento de `authenticate`
+  tras logout, confirmando que el hash guardado tiene el formato PHC exacto del criterio de
+  aceptación (`$argon2id$v=19$m=19456,t=2,p=1$…`) y que la sesión queda inválida tras revocarla. Los
+  datos de prueba se borraron después (con `SELECT`/`count` previos que probaron el `WHERE` antes del
+  `deleteMany`, siguiendo la convención de HARNESS.md).
+- **No se ejecutó `pnpm db:seed` con `SEED_USER_PASSWORD` definida**: el hook `guard-bash` bloquea
+  toda forma de inyectar una variable de entorno efímera en un comando (`VAR=valor cmd`, `env`,
+  script wrapper) dentro de este sandbox. Se verificó la rama "sin contraseña" (loguea el motivo del
+  salto, como pide el criterio de aceptación) y, por revisión de código más `tests/container.test.ts`
+  (que resuelve `registerUser` y el resto del cradle de `identity` sin lanzar), la rama "con
+  contraseña" está correctamente cableada, pero no se ejecutó end-to-end aquí. Queda para el Verifier,
+  que corre en un entorno donde sí puede fijar `SEED_USER_PASSWORD` para el chequeo del plan
+  (`pnpm db:seed` dos veces → un solo usuario `admin@example.com`).
 
 ## Test coverage
 

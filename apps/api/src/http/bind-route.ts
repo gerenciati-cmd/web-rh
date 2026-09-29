@@ -3,16 +3,32 @@ import type { DomainError, Result } from '@rrhh/domain';
 import type { Router } from 'express';
 import type { z } from 'zod';
 
+import type { Actor } from '@/shared/application/actor';
+
+import type { RequestContext } from './request-context';
 import { RequestValidationError } from './request-validation-error';
+
+declare global {
+  // eslint-disable-next-line @typescript-eslint/no-namespace
+  namespace Express {
+    interface Locals {
+      /** Puesto por el middleware de autenticación (`src/http/authenticate.ts`) antes de esta capa. */
+      actor: Actor | null;
+    }
+  }
+}
 
 export type RouteHandler<R extends RouteDefinition> = (
   request: ParsedRequest<R>,
+  context: RequestContext,
 ) => Promise<RouteResponse<R>>;
+
+const COOKIE_OPTIONS = { httpOnly: true, secure: true, sameSite: 'lax' as const, path: '/' };
 
 /**
  * Enlaza una ruta del contrato con su handler. Centraliza (DRY) lo que todo endpoint
- * repetiría: validar params/query/body, responder con el status correcto y
- * (fuera de producción) verificar que la respuesta cumple el contrato.
+ * repetiría: validar params/query/body, armar el contexto de la petición, responder con el
+ * status correcto y (fuera de producción) verificar que la respuesta cumple el contrato.
  */
 export function bindRoute<R extends RouteDefinition>(
   router: Router,
@@ -28,7 +44,16 @@ export function bindRoute<R extends RouteDefinition>(
       body: parsePart(route.body, req.body, 'body'),
     } as ParsedRequest<R>;
 
-    const output = await handler(parsed);
+    const context: RequestContext = {
+      actor: res.locals.actor ?? null,
+      client: { ip: req.ip ?? null, userAgent: req.get('user-agent') ?? null },
+      cookies: {
+        set: (name, value, expires) => res.cookie(name, value, { ...COOKIE_OPTIONS, expires }),
+        clear: (name) => res.clearCookie(name, COOKIE_OPTIONS),
+      },
+    };
+
+    const output = await handler(parsed, context);
 
     if (process.env.NODE_ENV !== 'production') route.response.parse(output);
 

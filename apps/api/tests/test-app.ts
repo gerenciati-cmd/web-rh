@@ -6,6 +6,11 @@ import { createApp } from '@/http/app';
 import { createLogger } from '@/infrastructure/logging/pino-logger';
 import type { EmployeeQueries } from '@/modules/employees/application/queries/employee.queries';
 import { InMemoryEmployeeRepository } from '@/modules/employees/infrastructure/in-memory/in-memory-employee.repository';
+import { FakePasswordHasher } from '@/modules/identity/infrastructure/in-memory/fake-password-hasher';
+import { InMemoryLoginThrottleRepository } from '@/modules/identity/infrastructure/in-memory/in-memory-login-throttle.repository';
+import { InMemorySessionRepository } from '@/modules/identity/infrastructure/in-memory/in-memory-session.repository';
+import { InMemoryUserQueries } from '@/modules/identity/infrastructure/in-memory/in-memory-user.queries';
+import { InMemoryUserRepository } from '@/modules/identity/infrastructure/in-memory/in-memory-user.repository';
 import {
   InMemoryCompanyQueries,
   InMemoryCompanyRepository,
@@ -23,6 +28,7 @@ export function buildTestContainer() {
   const container = buildContainer(testEnv, createLogger(testEnv));
   const companies = new InMemoryCompanyStore();
   const employees = new InMemoryEmployeeRepository();
+  const users = new InMemoryUserRepository();
 
   const employeeQueries: EmployeeQueries = {
     listDirectory: ({ companyId, page, pageSize }) => {
@@ -49,6 +55,11 @@ export function buildTestContainer() {
     companyQueries: asValue(new InMemoryCompanyQueries(companies)),
     employeeRepository: asValue(employees),
     employeeQueries: asValue(employeeQueries),
+    userRepository: asValue(users),
+    sessionRepository: asValue(new InMemorySessionRepository()),
+    loginThrottleRepository: asValue(new InMemoryLoginThrottleRepository()),
+    userQueries: asValue(new InMemoryUserQueries({ userRepository: users })),
+    passwordHasher: asValue(new FakePasswordHasher()),
   });
 
   return container;

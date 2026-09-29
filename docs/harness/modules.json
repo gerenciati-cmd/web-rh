@@ -15,9 +15,9 @@
     },
     {
       "name": "identity",
-      "status": "planned",
+      "status": "active",
       "path": "apps/api/src/modules/identity",
-      "summary": "Auth (access + refresh tokens), users, RBAC, request context."
+      "summary": "Usuarios, login y sesiones opacas (ADR 0011); RBAC y contexto de request."
     },
     {
       "name": "attendance",

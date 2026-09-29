@@ -1,15 +1,18 @@
 import type { ApiErrorBody } from '@rrhh/contracts';
 import {
+  AuthenticationError,
   BusinessRuleViolationError,
   ConflictError,
   DomainError,
   InvalidValueError,
   NotFoundError,
+  TooManyRequestsError,
 } from '@rrhh/domain';
 import type { ErrorRequestHandler, RequestHandler } from 'express';
 
 import type { Logger } from '@/shared/application/ports';
 
+import { AuthenticationRequiredError } from './request-context';
 import { RequestValidationError } from './request-validation-error';
 
 /**
@@ -24,6 +27,8 @@ const STATUS_BY_CATEGORY: readonly (readonly [
   [ConflictError, 409],
   [InvalidValueError, 422],
   [BusinessRuleViolationError, 422],
+  [AuthenticationError, 401],
+  [TooManyRequestsError, 429],
 ];
 
 function statusFor(error: DomainError): number {
@@ -42,12 +47,24 @@ export function errorHandler(logger: Logger): ErrorRequestHandler {
       return;
     }
 
+    if (error instanceof AuthenticationRequiredError) {
+      const body: ApiErrorBody = { code: error.code, message: error.message };
+      res.status(401).json(body);
+      return;
+    }
+
     if (error instanceof DomainError) {
       const body: ApiErrorBody = {
         code: error.code,
         message: error.message,
         ...(error.details ? { details: { ...error.details } } : {}),
       };
+      if (
+        error instanceof TooManyRequestsError &&
+        typeof error.details?.retryAfterSeconds === 'number'
+      ) {
+        res.set('Retry-After', String(error.details.retryAfterSeconds));
+      }
       res.status(statusFor(error)).json(body);
       return;
     }
