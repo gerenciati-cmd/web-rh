@@ -20,12 +20,12 @@ const NOW = new Date('2026-01-15T12:00:00Z');
 
 function employee(input: {
   companyId?: string;
-  rut: string;
+  curp: string;
   firstName: string;
   lastName: string;
   hireDate?: string;
 }): Employee {
-  const nationalId = NationalId.create('CL', input.rut);
+  const nationalId = NationalId.create('MX', input.curp);
   const email = Email.create(`${input.firstName}.${input.lastName}@aps.cl`);
   if (!nationalId.ok || !email.ok) throw new Error('fixture inválido');
   const hired = Employee.hire({
@@ -44,18 +44,18 @@ function employee(input: {
 
 describe('PrismaEmployeeRepository', () => {
   it('guarda y rehidrata sin correr la fecha de contratación (columna DATE)', async () => {
-    const ana = employee({ rut: '12.345.678-5', firstName: 'Ana', lastName: 'Rojas' });
+    const ana = employee({ curp: 'GOMA850101HQRRRN04', firstName: 'Ana', lastName: 'Rojas' });
     await repository.save(ana);
 
     const found = await repository.findById(ana.id);
 
     expect(found?.snapshot.hireDate.toISOString()).toBe('2026-01-10T00:00:00.000Z');
-    expect(found?.snapshot.nationalId.value).toBe('123456785');
+    expect(found?.snapshot.nationalId.value).toBe('GOMA850101HQRRRN04');
     expect(found?.snapshot.status).toBe('ACTIVE');
   });
 
   it('persiste la desvinculación', async () => {
-    const ana = employee({ rut: '12.345.678-5', firstName: 'Ana', lastName: 'Rojas' });
+    const ana = employee({ curp: 'GOMA850101HQRRRN04', firstName: 'Ana', lastName: 'Rojas' });
     await repository.save(ana);
     ana.terminate(new Date('2026-02-01T00:00:00Z'), NOW);
     await repository.save(ana);
@@ -64,22 +64,26 @@ describe('PrismaEmployeeRepository', () => {
   });
 
   it('existsInCompany está acotado a la empresa', async () => {
-    await repository.save(employee({ rut: '12.345.678-5', firstName: 'Ana', lastName: 'Rojas' }));
-    const rut = NationalId.create('CL', '12345678-5');
-    if (!rut.ok) throw rut.error;
+    await repository.save(
+      employee({ curp: 'GOMA850101HQRRRN04', firstName: 'Ana', lastName: 'Rojas' }),
+    );
+    const sameCurp = NationalId.create('MX', 'goma850101hqrrrn04');
+    if (!sameCurp.ok) throw sameCurp.error;
 
-    expect(await repository.existsInCompany(COMPANY_A, rut.value)).toBe(true);
-    expect(await repository.existsInCompany(COMPANY_B, rut.value)).toBe(false);
+    expect(await repository.existsInCompany(COMPANY_A, sameCurp.value)).toBe(true);
+    expect(await repository.existsInCompany(COMPANY_B, sameCurp.value)).toBe(false);
   });
 
-  it('el mismo RUT puede existir en otra empresa del holding', async () => {
-    await repository.save(employee({ rut: '12.345.678-5', firstName: 'Ana', lastName: 'Rojas' }));
+  it('la misma CURP puede existir en otra empresa del holding', async () => {
+    await repository.save(
+      employee({ curp: 'GOMA850101HQRRRN04', firstName: 'Ana', lastName: 'Rojas' }),
+    );
 
     await expect(
       repository.save(
         employee({
           companyId: COMPANY_B,
-          rut: '12.345.678-5',
+          curp: 'GOMA850101HQRRRN04',
           firstName: 'Ana',
           lastName: 'Rojas',
         }),
@@ -88,18 +92,26 @@ describe('PrismaEmployeeRepository', () => {
   });
 
   it('traduce la violación del índice único (carrera) al conflicto de dominio', async () => {
-    await repository.save(employee({ rut: '12.345.678-5', firstName: 'Ana', lastName: 'Rojas' }));
+    await repository.save(
+      employee({ curp: 'GOMA850101HQRRRN04', firstName: 'Ana', lastName: 'Rojas' }),
+    );
 
     await expect(
-      repository.save(employee({ rut: '12.345.678-5', firstName: 'Otra', lastName: 'Persona' })),
+      repository.save(
+        employee({ curp: 'GOMA850101HQRRRN04', firstName: 'Otra', lastName: 'Persona' }),
+      ),
     ).resolves.toMatchObject({ ok: false, error: expect.any(EmployeeAlreadyExistsError) });
   });
 });
 
 it('dos saves concurrentes conservan una fila por empresa y documento', async () => {
   const results = await Promise.all([
-    repository.save(employee({ rut: '12.345.678-5', firstName: 'Fixture', lastName: 'Uno' })),
-    repository.save(employee({ rut: '12.345.678-5', firstName: 'Fixture', lastName: 'Dos' })),
+    repository.save(
+      employee({ curp: 'GOMA850101HQRRRN04', firstName: 'Fixture', lastName: 'Uno' }),
+    ),
+    repository.save(
+      employee({ curp: 'GOMA850101HQRRRN04', firstName: 'Fixture', lastName: 'Dos' }),
+    ),
   ]);
   expect(results.filter((result) => result.ok)).toHaveLength(1);
   expect(results.filter((result) => !result.ok).map((result) => result.error.code)).toEqual([
@@ -112,11 +124,18 @@ it('dos saves concurrentes conservan una fila por empresa y documento', async ()
 
 describe('PrismaEmployeeQueries.listDirectory', () => {
   async function seed() {
-    const pedro = employee({ rut: '7.654.321-6', firstName: 'Pedro', lastName: 'Soto' });
-    await repository.save(employee({ rut: '12.345.678-5', firstName: 'Ana', lastName: 'Rojas' }));
+    const pedro = employee({ curp: 'PEXL900215MDFRPR07', firstName: 'Pedro', lastName: 'Soto' });
+    await repository.save(
+      employee({ curp: 'GOMA850101HQRRRN04', firstName: 'Ana', lastName: 'Rojas' }),
+    );
     await repository.save(pedro);
     await repository.save(
-      employee({ companyId: COMPANY_B, rut: '10.000.013-K', firstName: 'Luis', lastName: 'Araya' }),
+      employee({
+        companyId: COMPANY_B,
+        curp: 'ROSA010305HQRDNLA3',
+        firstName: 'Luis',
+        lastName: 'Araya',
+      }),
     );
     pedro.terminate(new Date('2026-02-01T00:00:00Z'), NOW);
     await repository.save(pedro);
@@ -131,7 +150,10 @@ describe('PrismaEmployeeQueries.listDirectory', () => {
 
     expect(result.total).toBe(2);
     expect(result.items.map((e) => e.fullName)).toEqual(['Ana Rojas', 'Pedro Soto']);
-    expect(result.items[0]).toMatchObject({ nationalId: '12.345.678-5', hireDate: '2026-01-10' });
+    expect(result.items[0]).toMatchObject({
+      nationalId: 'GOMA850101HQRRRN04',
+      hireDate: '2026-01-10',
+    });
   });
 
   it('filtra por estado', async () => {
@@ -146,18 +168,18 @@ describe('PrismaEmployeeQueries.listDirectory', () => {
     expect(result.items.map((e) => e.fullName)).toEqual(['Pedro Soto']);
   });
 
-  it('busca sin distinguir mayúsculas y por RUT con puntos', async () => {
+  it('busca sin distinguir mayúsculas por nombre y por CURP', async () => {
     await seed();
 
     const byName = await queries.listDirectory({ ...page, companyId: COMPANY_A, search: 'ROJ' });
-    const byRut = await queries.listDirectory({
+    const byCurp = await queries.listDirectory({
       ...page,
       companyId: COMPANY_A,
-      search: '7.654.321',
+      search: 'pexl900215',
     });
 
     expect(byName.items.map((e) => e.fullName)).toEqual(['Ana Rojas']);
-    expect(byRut.items.map((e) => e.fullName)).toEqual(['Pedro Soto']);
+    expect(byCurp.items.map((e) => e.fullName)).toEqual(['Pedro Soto']);
   });
 
   it('pagina y reporta el total del filtro', async () => {

@@ -11,8 +11,8 @@ command, query, puerto hacia otro módulo). Ábrelo y replica su forma. No inven
 ## 0. Antes de empezar
 
 - Confirma con el usuario el **lenguaje del dominio**: nombres de agregados, estados, reglas.
-  En RRHH las reglas legales importan (p. ej. asistencia en Chile tiene requisitos de la
-  Dirección del Trabajo): si hay una regla legal, pregúntala; no la inventes.
+  En RRHH las reglas legales importan (p. ej. asistencia en México se rige por la Ley Federal
+  del Trabajo): si hay una regla legal, pregúntala; no la inventes.
 - Nombre del módulo en inglés, singular o plural según el dominio (`attendance`, `leave`, `payroll`).
 
 ## 1. Contratos (`packages/contracts/src/<modulo>/<entidad>.contract.ts`)

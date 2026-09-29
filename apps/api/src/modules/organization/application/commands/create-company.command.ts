@@ -1,4 +1,4 @@
-import { err, NationalId, ok, type CountryCode, type DomainError } from '@rrhh/domain';
+import { err, ok, TaxId, type CountryCode, type DomainError } from '@rrhh/domain';
 
 import type { Clock, EventBus, IdGenerator } from '@/shared/application/ports';
 import type { Command } from '@/shared/application/use-case';
@@ -28,7 +28,7 @@ export class CreateCompany implements Command<CreateCompanyInput, { id: CompanyI
   constructor(private readonly deps: Deps) {}
 
   async execute(input: CreateCompanyInput) {
-    const taxId = NationalId.create(input.country, input.taxId);
+    const taxId = TaxId.create(input.country, input.taxId);
     if (!taxId.ok) return taxId;
 
     if (await this.deps.companyRepository.existsByTaxId(taxId.value)) {

@@ -91,7 +91,7 @@ does not list them, but the reviewer still checks the change is append-only.
 
 - Never read, copy or quote `.env*` contents (except `.env.example`) into code, plans, tests,
   commits or chat. Refer to configuration by variable name (`DATABASE_URL`).
-- Never commit secrets, keys, dumps or real personal data (RUTs, salaries) — fixtures use
+- Never commit secrets, keys, dumps or real personal data (CURP, RFC, salaries) — fixtures use
   synthetic data.
 - Tests that touch a database use the **test database** (`DATABASE_URL_TEST`, name ends in
   `_test`); the integration harness refuses to run otherwise.

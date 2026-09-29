@@ -39,7 +39,7 @@ describe('createApiClient', () => {
     });
 
     const result = await client.organization.createCompany({
-      body: { legalName: 'APS Holding', taxId: '76.086.428-5', country: 'CL' },
+      body: { legalName: 'APS Holding', taxId: 'EKU9003173C9', country: 'MX' },
     });
 
     expect(result.id).toBe(COMPANY_ID);

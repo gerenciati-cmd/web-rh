@@ -13,8 +13,8 @@ const empty: Page<CompanyDto> = { items: [], page: 1, pageSize: 50, total: 0 };
 const company: CompanyDto = {
   id: '00000000-0000-4000-8000-000000000001',
   legalName: 'Empresa de prueba',
-  country: 'CL',
-  taxId: '76.086.428-5',
+  country: 'MX',
+  taxId: 'EKU9003173C9',
   active: true,
   createdAt: '2026-01-01T00:00:00Z',
 };

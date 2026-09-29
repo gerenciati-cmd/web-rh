@@ -5,7 +5,7 @@ import {
   InvalidValueError,
   ok,
   type Id,
-  type NationalId,
+  type TaxId,
   type Result,
 } from '@rrhh/domain';
 
@@ -13,7 +13,7 @@ export type CompanyId = Id<'Company'>;
 
 export interface CompanyProps {
   legalName: string;
-  taxId: NationalId;
+  taxId: TaxId;
   active: boolean;
   createdAt: Date;
 }
@@ -36,7 +36,7 @@ export class Company extends AggregateRoot<CompanyId> {
   static create(input: {
     id: CompanyId;
     legalName: string;
-    taxId: NationalId;
+    taxId: TaxId;
     now: Date;
   }): Result<Company, InvalidValueError> {
     const legalName = input.legalName.trim();
@@ -69,7 +69,7 @@ export class Company extends AggregateRoot<CompanyId> {
     return this.props.legalName;
   }
 
-  get taxId(): NationalId {
+  get taxId(): TaxId {
     return this.props.taxId;
   }
 

@@ -6,7 +6,7 @@ import { Employee, EMPLOYEE_HIRED, EMPLOYEE_TERMINATED, type EmployeeId } from '
 const now = new Date('2026-01-15T12:00:00Z');
 
 function hire(overrides: Partial<Parameters<typeof Employee.hire>[0]> = {}) {
-  const nationalId = NationalId.create('CL', '12.345.678-5');
+  const nationalId = NationalId.create('MX', 'GOMA850101HQRRRN04');
   const email = Email.create('ana@aps.cl');
   if (!nationalId.ok || !email.ok) throw new Error('fixture inválido');
 

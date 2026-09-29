@@ -1,4 +1,4 @@
-import { NationalId } from '@rrhh/domain';
+import { TaxId } from '@rrhh/domain';
 import { z } from 'zod';
 
 import { CountrySchema, CreatedSchema, PageQuerySchema, pageOf } from '../common';
@@ -23,7 +23,7 @@ export const CreateCompanySchema = z
     country: CountrySchema,
   })
   // La MISMA regla del dominio: el formulario falla igual que fallaría el backend.
-  .refine((input) => NationalId.isValid(input.country, input.taxId), {
+  .refine((input) => TaxId.isValid(input.country, input.taxId), {
     path: ['taxId'],
     message: 'Identificador tributario inválido',
   });

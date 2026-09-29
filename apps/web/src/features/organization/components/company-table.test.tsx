@@ -8,8 +8,8 @@ afterEach(cleanup);
 const company: CompanyDto = {
   id: '00000000-0000-4000-8000-000000000001',
   legalName: 'Empresa de prueba',
-  taxId: '76.086.428-5',
-  country: 'CL',
+  taxId: 'EKU9003173C9',
+  country: 'MX',
   active: true,
   createdAt: '2026-01-01T00:00:00Z',
 };
@@ -40,7 +40,7 @@ describe('CompanyTable', () => {
     if (!active || !inactive) throw new Error('Faltan filas');
     expect(within(active).getByText(company.legalName)).toBeTruthy();
     expect(within(active).getByText(company.taxId)).toBeTruthy();
-    expect(within(active).getByText('CL')).toBeTruthy();
+    expect(within(active).getByText('MX')).toBeTruthy();
     expect(within(active).getByText('Activa')).toBeTruthy();
     expect(within(inactive).getByText('Inactiva')).toBeTruthy();
   });

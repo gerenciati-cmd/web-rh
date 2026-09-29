@@ -32,8 +32,8 @@ describe('CreateCompany', () => {
 
   const validInput = {
     legalName: 'APS Holding SpA',
-    taxId: '76.086.428-5',
-    country: 'CL' as const,
+    taxId: 'EKU9003173C9',
+    country: 'MX' as const,
   };
 
   it('crea la empresa y publica COMPANY_CREATED', async () => {
@@ -45,22 +45,24 @@ describe('CreateCompany', () => {
   });
 
   it('rechaza un identificador tributario inválido sin persistir', async () => {
-    const result = await createCompany.execute({ ...validInput, taxId: '76.086.428-0' });
+    const result = await createCompany.execute({ ...validInput, taxId: 'EKU900317' });
 
     expect(result.ok).toBe(false);
     expect(!result.ok && result.error.code).toBe('INVALID_VALUE');
     expect(store.companies.size).toBe(0);
   });
 
-  it('rechaza duplicados aunque el RUT venga con otro formato', async () => {
+  it('rechaza duplicados aunque el RFC venga en minúsculas', async () => {
     await createCompany.execute(validInput);
-    const result = await createCompany.execute({ ...validInput, taxId: '760864285' });
+    const result = await createCompany.execute({ ...validInput, taxId: 'eku9003173c9' });
 
     expect(!result.ok && result.error.code).toBe('COMPANY_ALREADY_EXISTS');
   });
 
   it('propaga conflicto de save sin publicar evento', async () => {
-    vi.spyOn(repository, 'save').mockResolvedValue(err(new CompanyAlreadyExistsError('123456785')));
+    vi.spyOn(repository, 'save').mockResolvedValue(
+      err(new CompanyAlreadyExistsError('EKU9003173C9')),
+    );
     const result = await createCompany.execute(validInput);
     expect(!result.ok && result.error.code).toBe('COMPANY_ALREADY_EXISTS');
     expect(eventBus.names()).toEqual([]);

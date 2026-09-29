@@ -1,5 +1,5 @@
 import type { CompanyDto, Page, PageQuery } from '@rrhh/contracts';
-import { err, ok, type NationalId, type Result } from '@rrhh/domain';
+import { err, ok, type Result, type TaxId } from '@rrhh/domain';
 
 import type { CompanyQueries } from '../../application/queries/company.queries';
 import type { Company, CompanyId } from '../../domain/company';
@@ -22,7 +22,7 @@ export class InMemoryCompanyRepository implements CompanyRepository {
     return Promise.resolve(this.store.companies.get(id) ?? null);
   }
 
-  existsByTaxId(taxId: NationalId): Promise<boolean> {
+  existsByTaxId(taxId: TaxId): Promise<boolean> {
     const companies = [...this.store.companies.values()];
     return Promise.resolve(companies.some((company) => company.taxId.equals(taxId)));
   }

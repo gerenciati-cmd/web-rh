@@ -17,8 +17,10 @@ Cada clase tiene una razón para cambiar.
 
 Extender sin modificar lo existente.
 
-- `packages/domain/src/national-id/validators.ts`: un país nuevo = un validador nuevo en el mapa;
-  `NationalId` no se toca.
+- `packages/domain/src/country.ts`: un país nuevo = agregarlo a `SUPPORTED_COUNTRIES` y registrar
+  sus dos validadores, el de empresa en `TAX_ID_VALIDATORS` (`tax-id/validators.ts`) y el de
+  persona en `NATIONAL_ID_VALIDATORS` (`national-id/validators.ts`); `TaxId` y `NationalId` no se
+  tocan (ADR 0009).
 - `apps/api/src/http/error-handler.ts`: `STATUS_BY_CATEGORY` es una tabla; una categoría nueva
   es una fila.
 - `apps/api/src/container.ts`: un módulo nuevo se agrega a `modules`; `createApp` y el worker lo
@@ -54,8 +56,8 @@ Lo de alto nivel depende de abstracciones; los detalles se inyectan.
   (tipos + cliente) lo derivan. Nunca redeclarar tipos de request/response. Excepción: rutas
   de equipos físicos con protocolo propio (`deviceRouter`,
   [ADR 0008](adr/0008-endpoints-de-dispositivos-fuera-de-contratos.md)).
-- **Validación compartida**: `CreateCompanySchema` usa `NationalId.isValid` del dominio: el
-  formulario y el backend fallan con la misma regla.
+- **Validación compartida**: `CreateCompanySchema` usa `TaxId.isValid` y `RegisterEmployeeSchema`
+  usa `NationalId.isValid` del dominio: el formulario y el backend fallan con la misma regla.
 - **`bindRoute`**: validación de entrada, status y verificación de respuesta en un solo lugar.
 - **`pageOf(schema)` / `PageQuerySchema`**: toda paginación tiene la misma forma.
 - **pnpm `catalog:`**: una versión por dependencia compartida en todo el monorepo.
@@ -98,7 +100,7 @@ tercera repetición real antes de abstraer.
 
 ## Tests
 
-- Nombres de test en español describiendo comportamiento: `'rechaza duplicados aunque el RUT venga con otro formato'`.
+- Nombres de test en español describiendo comportamiento: `'rechaza duplicados aunque la CURP venga en minúsculas'`.
 - Arrange-Act-Assert, un comportamiento por test, sin lógica condicional en los tests.
 - Deterministas: `FixedClock`, `SequentialIdGenerator`, nada de `Date.now()`/red/BD en unit tests.
 

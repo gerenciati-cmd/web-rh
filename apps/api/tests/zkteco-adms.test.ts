@@ -242,7 +242,7 @@ describe('ADMS /iclock', () => {
     await request(app).get('/health/live').expect(200, { status: 'ok' });
     await request(app)
       .post('/api/v1/companies')
-      .send({ legalName: 'APS Holding SpA', taxId: '76.086.428-5', country: 'CL' })
+      .send({ legalName: 'APS Holding SpA', taxId: 'EKU9003173C9', country: 'MX' })
       .expect(201);
   });
 });

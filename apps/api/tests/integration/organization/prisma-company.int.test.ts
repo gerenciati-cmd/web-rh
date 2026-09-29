@@ -1,4 +1,4 @@
-import { NationalId } from '@rrhh/domain';
+import { TaxId } from '@rrhh/domain';
 import { describe, expect, it } from 'vitest';
 
 import { Company, type CompanyId } from '@/modules/organization/domain/company';
@@ -14,8 +14,8 @@ const repository = new PrismaCompanyRepository({ database });
 const queries = new PrismaCompanyQueries({ database });
 const ids = new SequentialIdGenerator();
 
-function company(legalName: string, rut: string): Company {
-  const taxId = NationalId.create('CL', rut);
+function company(legalName: string, rfc: string): Company {
+  const taxId = TaxId.create('MX', rfc);
   if (!taxId.ok) throw taxId.error;
   const created = Company.create({
     id: ids.next() as CompanyId,
@@ -28,22 +28,22 @@ function company(legalName: string, rut: string): Company {
 }
 
 describe('PrismaCompanyRepository', () => {
-  it('guarda y rehidrata la empresa con su RUT normalizado', async () => {
-    const aps = company('APS Holding SpA', '76.086.428-5');
+  it('guarda y rehidrata la empresa con su RFC normalizado', async () => {
+    const aps = company('APS Holding SpA', 'EKU9003173C9');
     await repository.save(aps);
 
     const found = await repository.findById(aps.id);
 
     expect(found?.legalName).toBe('APS Holding SpA');
-    expect(found?.taxId.value).toBe('760864285');
+    expect(found?.taxId.value).toBe('EKU9003173C9');
     expect(found?.active).toBe(true);
   });
 
-  it('existsByTaxId distingue RUTs registrados de los que no', async () => {
-    await repository.save(company('APS Holding SpA', '76.086.428-5'));
+  it('existsByTaxId distingue RFCs registrados de los que no', async () => {
+    await repository.save(company('APS Holding SpA', 'EKU9003173C9'));
 
-    const registered = NationalId.create('CL', '760864285');
-    const other = NationalId.create('CL', '12.345.678-5');
+    const registered = TaxId.create('MX', 'eku9003173c9');
+    const other = TaxId.create('MX', 'AAA010101AAA');
     if (!registered.ok || !other.ok) throw new Error('fixture inválido');
 
     expect(await repository.existsByTaxId(registered.value)).toBe(true);
@@ -51,17 +51,17 @@ describe('PrismaCompanyRepository', () => {
   });
 
   it('traduce la violación del índice único (carrera) al conflicto de dominio', async () => {
-    await repository.save(company('APS Holding SpA', '76.086.428-5'));
+    await repository.save(company('APS Holding SpA', 'EKU9003173C9'));
 
-    const result = await repository.save(company('Duplicada', '76.086.428-5'));
+    const result = await repository.save(company('Duplicada', 'EKU9003173C9'));
     expect(!result.ok && result.error).toBeInstanceOf(CompanyAlreadyExistsError);
   });
 });
 
 it('dos saves concurrentes conservan una fila y devuelven un conflicto', async () => {
   const results = await Promise.all([
-    repository.save(company('Fixture Uno', '76.086.428-5')),
-    repository.save(company('Fixture Dos', '76.086.428-5')),
+    repository.save(company('Fixture Uno', 'EKU9003173C9')),
+    repository.save(company('Fixture Dos', 'EKU9003173C9')),
   ]);
   expect(results.filter((result) => result.ok)).toHaveLength(1);
   expect(results.filter((result) => !result.ok).map((result) => result.error.code)).toEqual([
@@ -71,17 +71,17 @@ it('dos saves concurrentes conservan una fila y devuelven un conflicto', async (
 });
 
 describe('PrismaCompanyQueries', () => {
-  it('lista ordenado por razón social, paginado y con el RUT formateado', async () => {
-    await repository.save(company('Zeta Ltda.', '12.345.678-5'));
-    await repository.save(company('APS Holding SpA', '76.086.428-5'));
-    await repository.save(company('Mu SpA', '7.654.321-6'));
+  it('lista ordenado por razón social, paginado y con el RFC normalizado', async () => {
+    await repository.save(company('Zeta Ltda.', 'AAA010101AAA'));
+    await repository.save(company('APS Holding SpA', 'EKU9003173C9'));
+    await repository.save(company('Mu SpA', 'BBB020202BB2'));
 
     const firstPage = await queries.list({ page: 1, pageSize: 2 });
     const secondPage = await queries.list({ page: 2, pageSize: 2 });
 
     expect(firstPage.total).toBe(3);
     expect(firstPage.items.map((c) => c.legalName)).toEqual(['APS Holding SpA', 'Mu SpA']);
-    expect(firstPage.items[0]?.taxId).toBe('76.086.428-5');
+    expect(firstPage.items[0]?.taxId).toBe('EKU9003173C9');
     expect(secondPage.items.map((c) => c.legalName)).toEqual(['Zeta Ltda.']);
   });
 
