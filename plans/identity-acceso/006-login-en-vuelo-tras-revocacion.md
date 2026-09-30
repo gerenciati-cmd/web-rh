@@ -1,5 +1,5 @@
 ---
-status: testing
+status: review
 module: identity
 min_implementer: mid
 depends_on: ['005']
@@ -120,6 +120,28 @@ This follows the lock-and-re-read shape of `ResetPassword`
 None.
 
 ## Test coverage
+
+Baseline (`pnpm check`): green before writing tests (api 516 passed, 3 skipped). Closing: `pnpm check`
+green (api 519 passed, 3 skipped) and `pnpm test:integration` green (11 files, 115 tests).
+
+| Behavior (from plan / code)                                                                                            | Source (`file:line`)                | Layer       | Test                                                                                      | State     |
+| ---------------------------------------------------------------------------------------------------------------------- | ----------------------------------- | ----------- | ----------------------------------------------------------------------------------------- | --------- |
+| Password changed after verification: `INVALID_CREDENTIALS`, no session, no event, email and IP throttles not cleared   | `log-in.command.ts:121-122,161-163` | application | `log-in.command.test.ts › la contraseña cambió: …`                                        | CONFIRMED |
+| User became `DISABLED` after verification: same outcome                                                                | `log-in.command.ts:161`             | application | `log-in.command.test.ts › el usuario quedó DISABLED: …`                                   | CONFIRMED |
+| User missing on re-read: same outcome                                                                                  | `log-in.command.ts:161`             | application | `log-in.command.test.ts › el usuario ya no existe: …`                                     | CONFIRMED |
+| Success path still clears email throttle, saves session, publishes event (unchanged flow)                              | `log-in.command.ts:124-130`         | application | existing `login exitoso: …`                                                               | CONFIRMED |
+| Real `ResetPassword` commits while login is held after verifying the old hash: login rejected, zero sessions           | `log-in.command.ts:158-165`         | integration | `log-in-race.int.test.ts › ResetPassword confirma durante la verificación: …`             | CONFIRMED |
+| Real `DisableTerminatedEmployee` commits while login is held after verifying: login rejected, zero sessions            | `log-in.command.ts:158-165`         | integration | `log-in-race.int.test.ts › DisableTerminatedEmployee confirma durante la verificación: …` | CONFIRMED |
+| Login holds the user lock first, `ResetPassword` waits, then revokes the login's session (row exists, `revokedAt` set) | `log-in.command.ts:159-164`         | integration | `log-in-race.int.test.ts › ResetPassword espera al login y luego revoca …`                | CONFIRMED |
+| Login holds the user lock first, `DisableTerminatedEmployee` waits, then revokes the login's session                   | `log-in.command.ts:159-164`         | integration | `log-in-race.int.test.ts › DisableTerminatedEmployee espera al login y luego revoca …`    | CONFIRMED |
+| Normal login without a race leaves one active session (real Postgres)                                                  | `log-in.command.ts:158-165`         | integration | `log-in-race.int.test.ts › sin carrera: …`                                                | CONFIRMED |
+| HTTP flows unchanged (200 with session, 401 wrong password / disabled, throttle)                                       | —                                   | http        | existing `tests/auth.test.ts` (green in both runs); no new test, per plan                 | CONFIRMED |
+
+Counts: application 3 new (log-in file 11 to 14), integration 5 new. Races are made deterministic
+with promise gates (no sleeps): a hasher that holds after `verify`, and a user repository that holds
+after `lock`. No product code was changed and no GAP or NOT CONFIRMED items arose. Note: the tests
+were not run against a pre-fix build (no baseline mutation allowed), so their ability to fail
+without the fix is argued from the gates, not demonstrated.
 
 ## Review findings
 
