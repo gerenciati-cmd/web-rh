@@ -1,11 +1,13 @@
-import { Email } from '@rrhh/domain';
+import { Email, PERMISSIONS, type Role } from '@rrhh/domain';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { FixedClock } from '@/shared/testing/fakes';
 
+import { RoleAssignment, type RoleAssignmentId } from '../domain/role-assignment';
 import { Session, type SessionId } from '../domain/session';
 import { User, type UserId } from '../domain/user';
 import { CryptoSessionTokens } from '../infrastructure/crypto-session-tokens';
+import { InMemoryRoleAssignmentRepository } from '../infrastructure/in-memory/in-memory-role-assignment.repository';
 import { InMemorySessionRepository } from '../infrastructure/in-memory/in-memory-session.repository';
 import { InMemoryUserRepository } from '../infrastructure/in-memory/in-memory-user.repository';
 
@@ -19,6 +21,7 @@ describe('SessionAuthenticator', () => {
   let sessionRepository: InMemorySessionRepository;
   let sessionTokens: CryptoSessionTokens;
   let clock: FixedClock;
+  let roleAssignmentRepository: InMemoryRoleAssignmentRepository;
   let authenticator: SessionAuthenticator;
 
   beforeEach(() => {
@@ -26,9 +29,11 @@ describe('SessionAuthenticator', () => {
     sessionRepository = new InMemorySessionRepository();
     sessionTokens = new CryptoSessionTokens();
     clock = new FixedClock(now);
+    roleAssignmentRepository = new InMemoryRoleAssignmentRepository({ userRepository });
     authenticator = new SessionAuthenticator({
       sessionRepository,
       userRepository,
+      roleAssignmentRepository,
       sessionTokens,
       clock,
     });
@@ -107,8 +112,65 @@ describe('SessionAuthenticator', () => {
 
     const actor = await authenticator.authenticate(token);
 
-    expect(actor).toEqual({ userId: USER_ID, sessionId: session.id });
+    expect(actor).toEqual({ userId: USER_ID, sessionId: session.id, grants: [] });
     expect(recordActivitySpy).not.toHaveBeenCalled();
+  });
+
+  function assignRole(id: string, role: Role, companyId: string | null, userId: UserId = USER_ID) {
+    const result = RoleAssignment.assign({
+      id: id as RoleAssignmentId,
+      userId,
+      role,
+      companyId,
+      assignedBy: null,
+      now,
+    });
+    if (!result.ok) throw result.error;
+    roleAssignmentRepository.assignments.set(id, result.value);
+    return result.value;
+  }
+
+  it('expande las asignaciones activas del usuario a concesiones en el actor', async () => {
+    const { token } = issueSession();
+    assignRole('a1', 'HR', 'company-a');
+
+    const actor = await authenticator.authenticate(token);
+
+    expect(actor?.grants).toHaveLength(3);
+    expect(actor?.grants).toContainEqual({ permission: 'employees:read', companyId: 'company-a' });
+    expect(actor?.grants.map((grant) => grant.permission)).not.toContain(
+      'organization.companies:create',
+    );
+  });
+
+  it('HOLDING_ADMIN: una concesión de holding (companyId null) por cada permiso', async () => {
+    const { token } = issueSession();
+    assignRole('a1', 'HOLDING_ADMIN', null);
+
+    const actor = await authenticator.authenticate(token);
+
+    expect(actor?.grants).toHaveLength(PERMISSIONS.length);
+    expect(actor?.grants.every((grant) => grant.companyId === null)).toBe(true);
+  });
+
+  it('ignora asignaciones revocadas y las de otros usuarios', async () => {
+    const { token } = issueSession();
+    assignRole('a1', 'HR', 'company-a').revoke(USER_ID, now);
+    assignRole('a2', 'HOLDING_ADMIN', null, 'user-2' as UserId);
+
+    const actor = await authenticator.authenticate(token);
+
+    expect(actor?.grants).toEqual([]);
+  });
+
+  it('revocar el rol surte efecto en la siguiente autenticación con el mismo token', async () => {
+    const { token } = issueSession();
+    const assignment = assignRole('a1', 'HR', 'company-a');
+    expect((await authenticator.authenticate(token))?.grants).toHaveLength(3);
+
+    assignment.revoke(USER_ID, now);
+
+    expect((await authenticator.authenticate(token))?.grants).toEqual([]);
   });
 
   it('sesión activa pero con lastSeenAt viejo: hace touch y registra la actividad (no `save`, H2)', async () => {
@@ -120,7 +182,7 @@ describe('SessionAuthenticator', () => {
 
     const actor = await authenticator.authenticate(token);
 
-    expect(actor).toEqual({ userId: USER_ID, sessionId: session.id });
+    expect(actor).toEqual({ userId: USER_ID, sessionId: session.id, grants: [] });
     expect(recordActivitySpy).toHaveBeenCalledTimes(1);
     expect(saveSpy).not.toHaveBeenCalled();
     expect(sessionRepository.sessions.get(session.id)?.snapshot.lastSeenAt).toEqual(clock.now());

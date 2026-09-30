@@ -1,0 +1,591 @@
+---
+status: done
+module: identity
+min_implementer: mid
+depends_on: ['001']
+---
+
+# 002 — Roles, permisos y protección de endpoints
+
+## Context
+
+**Today (after plan 001, `done`).** Every request gets an `Actor` (`{ userId, sessionId }`,
+`apps/api/src/shared/application/actor.ts:2-5`) resolved by the global middleware
+(`apps/api/src/http/authenticate.ts:20-54`), and `bindRoute` hands a `RequestContext` to each
+handler (`apps/api/src/http/bind-route.ts:33-64`). Only `/auth/logout` and `/auth/me` require a
+session (`requireActor`, `apps/api/src/http/request-context.ts:26-29`). The five business routes are
+still open to anyone: `listCompanies`, `getCompany`, `createCompany`
+(`packages/contracts/src/organization/company.contract.ts:36-52`) and `listEmployees`,
+`registerEmployee` (`packages/contracts/src/employees/employee.contract.ts:46-56`).
+`RouteDefinition` has no notion of access (`packages/contracts/src/http.ts:9-19`). The OpenAPI
+document declares both session schemes plus `{}` globally, i.e. "auth optional"
+(`packages/contracts/src/openapi.ts:46`), and its generic error response lists 400/401/404/409/500
+but not 403 (`openapi.ts:52-55`); `openapi.json` is regenerated with
+`pnpm --filter @rrhh/contracts openapi` (`packages/contracts/package.json:15`, snapshot at
+`packages/contracts/src/openapi.test.ts:12`). The identity schema has `User`, `Session`,
+`LoginThrottle` (`apps/api/prisma/schema.prisma:68-125`); there is no role data anywhere. The
+companies read model lists every company with no filter (`apps/api/src/modules/organization/infrastructure/prisma-company.queries.ts:21-33`,
+port `application/queries/company.queries.ts:7-10`, use case `list-companies.query.ts:7-13`,
+in-memory `infrastructure/in-memory/in-memory-company.store.ts:41-56`). The seed creates
+`admin@example.com` only (`apps/api/prisma/seed.ts:61-70`). The HTTP test container wires
+in-memory identity adapters (`apps/api/tests/test-app.ts:39-79`); `tests/http.test.ts` calls the
+business routes without credentials. The web page `apps/web/src/app/empresas/page.tsx` and the
+mobile hook `apps/mobile/src/features/organization/hooks/use-companies.ts` call `listCompanies`
+without a session.
+
+**What we need.** README decisions 6, 13-16: a fixed role catalog with atomic permissions,
+`(user, role, scope)` assignments managed by Admin holding over HTTP, every route declaring its
+access in the contract (deny by default), 403 for missing permission, company-scoped routes
+checked against the `:companyId` param, and `listCompanies` filtered to the caller's companies.
+Only the holding and company scopes are enforced now (decision 13). Also the deferred finding
+`plans/hallazgos/identity-throttle-reserva-ip.md` (decision 16).
+
+**Approach.** Compared (a) checks written by hand inside each handler/use case and (b) access
+declared in the contract and enforced once in `bindRoute`. Chose (b): it is the same DRY move
+`bindRoute` already makes for validation (`bind-route.ts:28-32`), it makes an unprotected route a
+type error (the field is required), and the same declaration feeds OpenAPI. Permissions are
+resolved **once per request** at authentication: `SessionAuthenticator` loads the user's active
+assignments and expands them through the role catalog into `grants` on the `Actor`, so revoking a
+role takes effect on the next request. Pure helpers in `shared/application/actor.ts` answer "may
+this actor do P (in company C)?". Row filtering is done by the use case that owns the read model
+(`ListCompanies` receives the actor). The permission and role vocabulary is shared by contracts and
+API, so it lives in `@rrhh/domain` as pure constants, like `EMPLOYEE_STATUSES`
+(`packages/domain/src/employees/employee-status.ts:1-3`, ADR 0007); the role → permissions mapping
+is identity's business rule and lives in `identity/domain/`.
+
+**Imitated files.** Aggregate/repository/errors/command/mapper/Prisma/in-memory shapes: the
+identity module of plan 001 (`apps/api/src/modules/identity/domain/session.ts`,
+`domain/session.repository.ts`, `domain/errors.ts`, `application/commands/log-out.command.ts`,
+`infrastructure/session.mapper.ts`, `infrastructure/prisma-session.repository.ts`,
+`infrastructure/in-memory/in-memory-session.repository.ts`). Cross-module port + adapter:
+`apps/api/src/modules/employees/application/ports/employer-directory.ts:10-18` and
+`infrastructure/organization-employer-directory.ts:10-17` (ADR 0010 rule 2). Contract:
+`packages/contracts/src/identity/auth.contract.ts`. Adapter HTTP error:
+`apps/api/src/http/request-context.ts:16-24`, handled at `apps/api/src/http/error-handler.ts:50`.
+
+## Out of scope
+
+- Enforcing the **Jefe directo** (team) and **Colaborador** (self) scopes: they exist in the
+  catalog but grant nothing and cannot be assigned yet (decision 13). No `managerId`, no
+  `User.employeeId`.
+- Creating/disabling users over HTTP, invitations, password reset (plan 003).
+- Web and mobile login (plan 004, deferred by decision 9). **Consequence accepted**: after this
+  plan `apps/web/src/app/empresas/page.tsx` and the mobile companies hook get 401 at runtime until
+  plan 004; they must still compile.
+- Configurable roles/permissions from a UI; a Nómina role.
+- Field-level filtering of sensitive data (no sensitive fields exist yet).
+- Audit log of assignment changes beyond `assigned_by`/`revoked_by` columns.
+- Protecting `/health/*`, `/docs`, `/openapi.json` (non-production only) and `/iclock/*`
+  (ADR 0008): they are not contract routes and stay as they are.
+- Postgres RLS / multi-tenancy.
+
+## Dependencies
+
+- `identity-acceso/001` (`done`): `Actor`, `RequestAuthenticator`, `SessionAuthenticator`,
+  `RequestContext`/`requireActor`, `AuthenticationRequiredError`, the `identity` schema and module.
+
+## Steps
+
+1. **Shared vocabulary: permissions and roles**
+   - Files: `packages/domain/src/identity/access.ts` (create), `packages/domain/src/index.ts` (modify)
+   - Do: pure constants with a Spanish doc comment naming identity as owner (ADR 0007):
+     - `PERMISSIONS = ['organization.companies:read', 'organization.companies:create', 'employees:read', 'employees:register', 'identity.users:read', 'identity.roles:manage'] as const`, `type Permission`.
+     - `ROLES = ['HOLDING_ADMIN', 'HR', 'DIRECT_MANAGER', 'EMPLOYEE'] as const`, `type Role`.
+     - `ROLE_SCOPES = ['HOLDING', 'COMPANY', 'TEAM', 'SELF'] as const`, `type RoleScope`.
+     - Export from `index.ts` (`export * from './identity/access';`).
+   - Observable result: `pnpm --filter @rrhh/domain typecheck` passes.
+
+2. **Contracts: route access, role assignment and user routes**
+   - Files: `packages/contracts/src/http.ts` (modify), `packages/contracts/src/organization/company.contract.ts` (modify), `packages/contracts/src/employees/employee.contract.ts` (modify), `packages/contracts/src/identity/auth.contract.ts` (modify), `packages/contracts/src/identity/access.contract.ts` (create), `packages/contracts/src/index.ts` (modify)
+   - Do:
+     - `http.ts`: `export type RouteAccess = { readonly kind: 'public' } | { readonly kind: 'authenticated' } | { readonly kind: 'permission'; readonly permission: Permission; readonly companyParam?: string }` (import `Permission` from `@rrhh/domain`), plus helpers `publicAccess`, `authenticated` and `requires(permission, options?: { companyParam: string })` returning those literals. Add **required** `readonly access: RouteAccess` to `RouteDefinition` with a doc: "negado por defecto: toda ruta declara quién la puede llamar; `companyParam` nombra el parámetro de path cuya empresa debe estar en el alcance del actor".
+     - Declare access on every existing route: `logIn` → public; `logOut`, `me` → authenticated; `listCompanies` → `requires('organization.companies:read')`; `getCompany` → `requires('organization.companies:read', { companyParam: 'companyId' })`; `createCompany` → `requires('organization.companies:create')`; `listEmployees` → `requires('employees:read', { companyParam: 'companyId' })`; `registerEmployee` → `requires('employees:register', { companyParam: 'companyId' })`.
+     - `access.contract.ts` (group `accessRoutes`), all with `requires(...)`:
+       - `listUsers` `GET /users` — `identity.users:read`; query `PageQuerySchema.extend({ search: z.string().trim().min(1).optional() })`; response `pageOf(UserListItemSchema)` with `UserListItemSchema = z.object({ id: z.uuid(), email: z.email(), status: z.enum(['ACTIVE', 'DISABLED']) }).meta({ id: 'UserListItem' })`.
+       - `listRoleAssignments` `GET /users/:userId/role-assignments` — `identity.roles:manage`; response `z.array(RoleAssignmentSchema)` with `RoleAssignmentSchema = z.object({ id: z.uuid(), role: z.enum(ROLES), companyId: z.uuid().nullable(), assignedAt: z.iso.datetime() }).meta({ id: 'RoleAssignment' })` (active only).
+       - `assignRole` `POST /users/:userId/role-assignments` — `identity.roles:manage`; body `z.object({ role: z.enum(ROLES), companyId: z.uuid().optional() })`; response `CreatedSchema`, 201.
+       - `revokeRoleAssignment` `DELETE /users/:userId/role-assignments/:assignmentId` — `identity.roles:manage`; response `z.undefined()`, 204.
+       - Params schemas without `.meta({ id })` (`openapi.ts` rejects that, lines 124-129).
+     - `index.ts`: export the new file and add `access: accessRoutes` to `apiRoutes`.
+   - Observable result: `pnpm --filter @rrhh/contracts typecheck` passes; removing `access` from any route is a type error.
+
+3. **OpenAPI: per-operation security and 403**
+   - Files: `packages/contracts/src/openapi.ts` (modify), `packages/contracts/src/openapi.test.ts` (modify), `packages/contracts/openapi.json` (modify)
+   - Do: global `security` becomes `[{ bearerAuth: [] }, { cookieAuth: [] }]` (no `{}`); in `operationFor`, public routes get `security: []`; permission routes get `'x-permission': route.access.permission` and, if `companyParam`, `'x-company-param'`; the `Error` response description adds "403 sin permiso". Adjust only the existing assertions in `openapi.test.ts` that pin the old global `security`; then regenerate the snapshot with `pnpm --filter @rrhh/contracts openapi`.
+   - Observable result: `pnpm --filter @rrhh/contracts test` green; `openapi.json` shows `security: []` on `/auth/login` and `x-permission` on business routes.
+
+4. **Domain: role catalog, RoleAssignment, errors**
+   - Files: `apps/api/src/modules/identity/domain/role-catalog.ts` (create), `apps/api/src/modules/identity/domain/role-assignment.ts` (create), `apps/api/src/modules/identity/domain/role-assignment.repository.ts` (create), `apps/api/src/modules/identity/domain/errors.ts` (modify)
+   - Do:
+     - `role-catalog.ts`: `ROLE_DEFINITIONS: Readonly<Record<Role, { scope: RoleScope; permissions: readonly Permission[]; assignable: boolean }>>` — `HOLDING_ADMIN`: scope `HOLDING`, all `PERMISSIONS`, assignable; `HR`: scope `COMPANY`, `['organization.companies:read', 'employees:read', 'employees:register']`, assignable (README decision 6: "everything about colaboradores"); `DIRECT_MANAGER`: `TEAM`, `[]`, not assignable; `EMPLOYEE`: `SELF`, `[]`, not assignable (decision 13). Comment why the last two are inert. Export `Grant = { permission: Permission; companyId: string | null }` (null = whole holding) and `grantsFor(assignments: readonly { role: Role; companyId: string | null }[]): Grant[]`.
+     - `role-assignment.ts`: `RoleAssignmentId = Id<'RoleAssignment'>`; props `{ userId: UserId; role: Role; companyId: string | null; assignedAt: Date; assignedBy: UserId | null; revokedAt: Date | null; revokedBy: UserId | null }` (`assignedBy` null = seed/system). `static assign({ id, userId, role, companyId, assignedBy, now }): Result<RoleAssignment, RoleNotAssignableError | InvalidRoleScopeError>`: role must be `assignable`; `HOLDING` roles require `companyId === null`, `COMPANY` roles require a `companyId`. Records `ROLE_ASSIGNED = 'identity.role.assigned'`. `revoke(by, now)`: sets `revokedAt/revokedBy`, records `ROLE_REVOKED = 'identity.role.revoked'`, no-op if already revoked. `isActive` getter, `restore`, `snapshot`. No delete (ADR 0010 rule 1: kept for history).
+     - `role-assignment.repository.ts`: `findById(id)`, `findActiveByUser(userId): Promise<RoleAssignment[]>`, `countActiveByRole(role): Promise<number>`, `save(assignment): Promise<void>`.
+     - `errors.ts` add: `RoleNotAssignableError extends BusinessRuleViolationError` (`ROLE_NOT_ASSIGNABLE`, "Ese rol todavía no se puede asignar"); `InvalidRoleScopeError extends InvalidValueError` (`INVALID_ROLE_SCOPE`, "HOLDING_ADMIN no lleva empresa; HR requiere una empresa"); `RoleAlreadyAssignedError extends ConflictError` (`ROLE_ALREADY_ASSIGNED`); `RoleAssignmentNotFoundError extends NotFoundError` (`ROLE_ASSIGNMENT_NOT_FOUND`); `UserNotFoundError extends NotFoundError` (`USER_NOT_FOUND`); `LastHoldingAdminError extends BusinessRuleViolationError` (`LAST_HOLDING_ADMIN`, "No se puede quitar el último administrador del holding"); `AssignmentCompanyNotFoundError extends NotFoundError` (`COMPANY_NOT_FOUND`) and `AssignmentCompanyInactiveError extends BusinessRuleViolationError` (`COMPANY_INACTIVE`) — same codes as `apps/api/src/modules/employees/domain/errors.ts:11-25`.
+   - Observable result: typecheck and `pnpm arch:check` (domain purity) pass.
+
+5. **Actor grants and authorization helpers**
+   - Files: `apps/api/src/shared/application/actor.ts` (modify)
+   - Do: `Actor` gains `grants: readonly Grant[]` with `Grant = { permission: Permission; companyId: string | null }` defined here (shared; identity's `role-catalog.ts` imports this type instead of declaring its own). Pure helpers with Spanish docs: `hasPermission(actor, permission, companyId?: string): boolean` — without `companyId`: any grant with that permission; with it: a grant with that permission and `companyId === null || === companyId`. `companiesWith(actor, permission): 'ALL' | readonly string[]` — `'ALL'` if a holding-wide grant exists, else the distinct company ids.
+   - Observable result: typecheck passes (every place building an `Actor` must now pass `grants`).
+
+6. **Application: authenticator grants, assignment commands, user list**
+   - Files: `apps/api/src/modules/identity/application/session-authenticator.ts` (modify), `apps/api/src/modules/identity/application/ports/company-directory.ts` (create), `apps/api/src/modules/identity/application/commands/assign-role.command.ts` (create), `apps/api/src/modules/identity/application/commands/revoke-role-assignment.command.ts` (create), `apps/api/src/modules/identity/application/queries/user.queries.ts` (modify), `apps/api/src/modules/identity/application/queries/list-users.query.ts` (create), `apps/api/src/modules/identity/application/queries/list-role-assignments.query.ts` (create)
+   - Do:
+     - `SessionAuthenticator`: add `roleAssignmentRepository` to deps; after the user check, `grantsFor(await findActiveByUser(user.id))` and return `{ userId, sessionId, grants }`.
+     - `company-directory.ts`: `interface AssignableCompany { id: string; active: boolean }`, `interface CompanyDirectory { find(companyId: string): Promise<AssignableCompany | null> }` (shape of `employer-directory.ts:10-18`).
+     - `AssignRole implements Command<{ userId; role: Role; companyId: string | null; assignedBy: string | null }, { id }>`; deps `userRepository, roleAssignmentRepository, companyDirectory, idGenerator, clock, eventBus`. Flow: user exists → else `UserNotFoundError`; `RoleAssignment.assign(...)` (propagate err); if `companyId` → directory: null → `AssignmentCompanyNotFoundError`, inactive → `AssignmentCompanyInactiveError`; an active assignment with same role+companyId → `RoleAlreadyAssignedError`; save; publish; `ok({ id })`.
+     - `RevokeRoleAssignment implements Command<{ userId; assignmentId; revokedBy: string }, void>`; deps `roleAssignmentRepository, transactionRunner, clock, eventBus`. Inside `transactionRunner.run`: find → missing, other user's, or already revoked → `RoleAssignmentNotFoundError`; if role is `HOLDING_ADMIN` and `countActiveByRole('HOLDING_ADMIN') <= 1` → `LastHoldingAdminError`; revoke; save. Publish after. Comment: the count and the write share a transaction; two admins revoking each other concurrently is accepted as residual risk (documented, no lock).
+     - `user.queries.ts`: add `listUsers(filters: PageQuery & { search?: string }): Promise<Page<UserListItem>>` and `listActiveRoleAssignments(userId: string): Promise<RoleAssignmentDto[] | null>` (null = user does not exist). `ListUsers` and `ListRoleAssignments` thin use cases (shape of `get-current-user.query.ts`); `ListRoleAssignments` returns `Result<RoleAssignmentDto[], UserNotFoundError>`.
+   - Observable result: typecheck and `pnpm arch:check` pass.
+
+7. **Organization: companies list filtered by the actor**
+   - Files: `apps/api/src/modules/organization/application/queries/company.queries.ts` (modify), `apps/api/src/modules/organization/application/queries/list-companies.query.ts` (modify), `apps/api/src/modules/organization/infrastructure/prisma-company.queries.ts` (modify), `apps/api/src/modules/organization/infrastructure/in-memory/in-memory-company.store.ts` (modify), `apps/api/src/modules/organization/http/organization.router.ts` (modify)
+   - Do: `CompanyQueries.list(page, visible: 'ALL' | readonly string[])`; Prisma adds `where: visible === 'ALL' ? {} : { id: { in: [...visible] } }` to both `findMany` and `count`; in-memory filters the same way. `ListCompanies.execute({ page, pageSize, actor })` computes `companiesWith(actor, 'organization.companies:read')`. Router: `bindRoute(router, routes.listCompanies, ({ query }, ctx) => deps.listCompanies.execute({ ...query, actor: requireActor(ctx) }))`. The other two organization routes stay as they are (bindRoute enforces them).
+   - Observable result: typecheck passes.
+
+8. **Infrastructure and migration**
+   - Files: `apps/api/prisma/schema.prisma` (modify), `apps/api/prisma/migrations/20260930150447_create_role_assignments/migration.sql` (create), `apps/api/src/modules/identity/infrastructure/role-assignment.mapper.ts` (create), `apps/api/src/modules/identity/infrastructure/prisma-role-assignment.repository.ts` (create), `apps/api/src/modules/identity/infrastructure/prisma-user.queries.ts` (modify), `apps/api/src/modules/identity/infrastructure/organization-company-directory.ts` (create), `apps/api/src/modules/identity/infrastructure/in-memory/in-memory-role-assignment.repository.ts` (create), `apps/api/src/modules/identity/infrastructure/in-memory/in-memory-user.queries.ts` (modify)
+   - Do (skill `db-change`):
+     - `enum IdentityRole { HOLDING_ADMIN HR DIRECT_MANAGER EMPLOYEE @@schema("identity") }`; `model RoleAssignment { id Uuid @id; userId @map("user_id") Uuid; user User @relation(...); role IdentityRole; companyId String? @map("company_id") @db.Uuid /// referencia por id a organization, sin FK (ADR 0010); assignedAt @map("assigned_at") Timestamptz(3); assignedBy String? @map("assigned_by") @db.Uuid; revokedAt DateTime? @map("revoked_at") Timestamptz(3); revokedBy String? @map("revoked_by") @db.Uuid; @@index([userId, revokedAt]) @@index([role, revokedAt]) @@map("role_assignments") @@schema("identity") }`; add `roleAssignments RoleAssignment[]` to `User`. `pnpm db:migrate --name create_role_assignments`, then `pnpm db:generate`. Replace `<timestamp>` in this plan's Files line with the real directory (record it in Deviations).
+     - Mapper and Prisma repository like `session.mapper.ts` / `prisma-session.repository.ts` (`save` = upsert; `findActiveByUser` / `countActiveByRole` filter `revokedAt: null`).
+     - `PrismaUserQueries.listUsers` (order by email, `search` → `email contains, mode insensitive`), `listActiveRoleAssignments` (null if the user row is missing; `assignedAt` as ISO).
+     - `OrganizationCompanyDirectory` over `OrganizationApi.findCompany` (like `organization-employer-directory.ts:10-17`).
+     - In-memory repository (Map) and in-memory `listUsers`/`listActiveRoleAssignments` (the in-memory user queries receive the in-memory role assignment store through the same structural-interface trick recorded in plan 001's Deviations).
+   - Observable result: migration adds only the enum, table and indexes (no DROP); `pnpm test:integration` green.
+
+9. **HTTP enforcement: 403 and access in bindRoute**
+   - Files: `apps/api/src/http/request-context.ts` (modify), `apps/api/src/http/bind-route.ts` (modify), `apps/api/src/http/error-handler.ts` (modify)
+   - Do:
+     - `request-context.ts`: `class PermissionDeniedError extends Error` (adapter error, `code = 'FORBIDDEN'`, message `'No tienes permiso para esta acción'`).
+     - `bind-route.ts`: after parsing and building the context, before calling the handler, `authorize(route.access, parsed.params, context)`: `public` → nothing; `authenticated` → `requireActor`; `permission` → `requireActor`, then if `companyParam` read that key from the parsed params (must be a string; a contract that names a missing param is a programming error → throw `Error`) and check `hasPermission(actor, permission, companyId)`, else `hasPermission(actor, permission)`; false → throw `PermissionDeniedError`. Comment: 403 even when the company does not exist, so a caller without scope cannot probe which companies exist.
+     - `error-handler.ts`: handle `PermissionDeniedError` → 403 `{ code, message }`, next to `AuthenticationRequiredError` (line 50).
+   - Observable result: typecheck passes; an unauthenticated `GET /api/v1/companies` → 401; `POST /api/v1/auth/login` still public.
+
+10. **Router, module registration, seed**
+    - Files: `apps/api/src/modules/identity/http/access.router.ts` (create), `apps/api/src/modules/identity/identity.module.ts` (modify), `apps/api/src/modules/identity/index.ts` (modify), `apps/api/prisma/seed.ts` (modify)
+    - Do:
+      - `access.router.ts` `createAccessRouter(deps: { listUsers; listRoleAssignments; assignRole; revokeRoleAssignment })` with `accessRoutes`: `assignRole` passes `companyId: body.companyId ?? null` and `assignedBy: requireActor(ctx).userId`; `revokeRoleAssignment` passes `revokedBy`; queries unwrap/return as in `employees.router.ts`.
+      - `AppModule.router` is a single function (`apps/api/src/shared/app-module.ts:17`): make `identity.module.ts` `router` return one `Router` that mounts both `createIdentityRouter(cradle)` and `createAccessRouter(cradle)`. Register `roleAssignmentRepository` (Prisma), `companyDirectory` (`OrganizationCompanyDirectory`), `assignRole`, `revokeRoleAssignment`, `listUsers`, `listRoleAssignments`; extend `IdentityCradle`.
+      - `index.ts`: also export `ROLE_ASSIGNED`, `ROLE_REVOKED`.
+      - `seed.ts`: after creating/finding `admin@example.com` (on `USER_ALREADY_EXISTS`, find its id with `listUsers.execute({ page: 1, pageSize: 1, search: 'admin@example.com' })`), `assignRole` `HOLDING_ADMIN` with `companyId: null`, `assignedBy: null`. Also create `rrhh@example.com` with the same `SEED_USER_PASSWORD` and assign `HR` on the "APS Holding S.A. de C.V." company (`holding.id`, `seed.ts:30`). Ignore `USER_ALREADY_EXISTS` and `ROLE_ALREADY_ASSIGNED`; throw anything else. Both only when `SEED_USER_PASSWORD` is set.
+    - Observable result: `tests/container.test.ts` green; `pnpm db:seed` twice leaves exactly one active assignment per seeded user.
+
+11. **Throttle finding (decision 16)**
+    - Files: `apps/api/src/modules/identity/application/commands/log-in.command.ts` (modify), `apps/api/src/modules/identity/domain/login-throttle.ts` (modify), `plans/hallazgos/identity-throttle-reserva-ip.md` (modify)
+    - Do: in `reserveOrBlock` (`log-in.command.ts:140-162`) stop at the first blocked key: do not reserve the remaining keys, release only those already reserved. Fix the two comments the finding cites (I4): a block may also have been set by a concurrent reservation; releasing ours stays correct because `releaseAttempt` only lifts the block when failures drop below the limit. Finding frontmatter → `status: planned`, `plan: identity-acceso/002`. I5 stays documented as not reproduced (no change).
+    - Observable result: typecheck passes.
+
+12. **Existing tests adapted to protected routes**
+    - Files: `apps/api/tests/test-app.ts` (modify), `apps/api/tests/http.test.ts` (modify)
+    - Do: `test-app.ts` registers `roleAssignmentRepository` (in-memory) and a fake `companyDirectory` backed by the same `InMemoryCompanyStore`, and exports `signInAs(app/container, { role, companyId? }): Promise<string>` that registers a user through `registerUser`, assigns the role through `assignRole` (`assignedBy: null`) and logs in with `client: 'mobile'`, returning the Bearer token. `http.test.ts`: send `Authorization: Bearer <HOLDING_ADMIN token>` on the existing business-route calls — mechanical change, no new scenarios (the tester adds them).
+    - Observable result: `pnpm --filter @rrhh/api test` green.
+
+13. **Documentation**
+    - Files: `docs/architecture.md` (modify), `docs/adr/0012-autorizacion-declarada-en-contratos.md` (create), `docs/adr/README.md` (modify), `plans/identity-acceso/README.md` (modify)
+    - Do: ADR 0012 (Spanish, from `docs/adr/0000-plantilla.md`): access declared per route in contracts (deny by default), enforced in `bindRoute`, grants expanded once per request, fixed role catalog, row filtering in use cases, 403 without probing; alternatives: checks inside each handler; permissions in a JWT. Index row. `architecture.md`: request-flow section adds the authorization step and "Pendiente" drops RBAC except team/self scopes. README: plan 002 row title without "(TBD)".
+    - Observable result: `pnpm check` passes.
+
+14. **Test files of this plan** (declared for `pnpm plans:scope`; written by the tester)
+    - Files: `packages/contracts/src/identity/access.contract.test.ts` (create), `apps/api/src/shared/application/actor.test.ts` (create), `apps/api/src/modules/identity/domain/role-catalog.test.ts` (create), `apps/api/src/modules/identity/domain/role-assignment.test.ts` (create), `apps/api/src/modules/identity/application/commands/assign-role.command.test.ts` (create), `apps/api/src/modules/identity/application/commands/revoke-role-assignment.command.test.ts` (create), `apps/api/src/modules/identity/application/session-authenticator.test.ts` (modify), `apps/api/src/modules/identity/application/commands/log-in.command.test.ts` (modify), `apps/api/src/modules/organization/application/queries/list-companies.query.test.ts` (create), `apps/api/tests/authorization.test.ts` (create), `apps/api/tests/integration/identity/prisma-role-assignment.int.test.ts` (create), `apps/api/tests/integration/identity/prisma-user.queries.int.test.ts` (create), `apps/api/tests/integration/organization/prisma-company.int.test.ts` (modify)
+    - Do: nothing for the implementer.
+    - Observable result: test suites green.
+
+15. **Review round 1 repairs** (added 2026-09-30 by the main session; R1 and R4 approach chosen by the user, README decisions 17-18)
+    - Files: `apps/api/src/http/bind-route.ts` (modify), `docs/adr/0012-autorizacion-declarada-en-contratos.md` (modify), `docs/architecture.md` (modify), `apps/api/src/modules/identity/infrastructure/prisma-role-assignment.repository.ts` (modify), `apps/api/src/modules/identity/domain/role-assignment.repository.ts` (modify), `apps/api/src/modules/identity/infrastructure/in-memory/in-memory-role-assignment.repository.ts` (modify), `apps/api/src/modules/identity/application/commands/assign-role.command.ts` (modify), `apps/api/prisma/seed.ts` (modify), `.claude/skills/new-use-case/SKILL.md` (modify), `.claude/skills/new-module/SKILL.md` (modify)
+    - Do:
+      - **R1 (authorize before validating input)**: in `bindRoute` parse `params` first (the company comes from there), then run `authorize(route.access, parsed.params, context)`, and only then parse `query` and `body`. Keep the context construction before `authorize`. An anonymous request with any query/body now gets 401, and a caller without permission gets 403, before any schema error is revealed. An invalid **path param** still answers 400 before auth (needed to read `companyParam`); state that in the comment and in ADR 0012. Update ADR 0012 and the request-flow paragraph in `docs/architecture.md` to this order.
+      - **R4 (no duplicate active assignments) — revised 2026-09-30, README decision 18**: no migration and no schema change (the partial-index route was blocked: Prisma 7.10 has no partial indexes and the migration guard refuses hand-written SQL; deviation 9). Serialize assignments per user with a row lock instead: add `lockUser(userId: UserId): Promise<boolean>` to `RoleAssignmentRepository` (doc: "debe llamarse dentro de `transactionRunner.run`; bloquea la fila de `identity.users` hasta el fin de la transacción; `false` si el usuario no existe"). Prisma: `$queryRaw` `SELECT id FROM identity.users WHERE id = ${userId}::uuid FOR UPDATE` (same technique as `prisma-login-throttle.repository.ts` `lock`). In-memory: returns whether the user id is known to it (constructor receives the in-memory user store through a structural interface, as `in-memory-user.queries.ts` does). `AssignRole` gains `transactionRunner` in `Deps`; the user check, the duplicate check and `save` run inside `transactionRunner.run(async () => { if (!(await lockUser(userId))) return err(UserNotFoundError); ...; })`; the company-directory lookup (another module) stays **outside** the transaction, before it. Publish events after the transaction. `save` keeps its current signature.
+      - **R5**: in `seed.ts` `seedUser`, find the existing user by exact email among the search results with `pageSize: 100` (or a dedicated exact lookup if one already exists in `UserQueries`); throw only if no exact match.
+      - **R3**: `new-use-case` recipe (line 52 says permission checks go in the use case): replace with "declare `access` in the contract (`publicAccess` / `authenticated` / `requires(permission, { companyParam })`), add new permissions to `PERMISSIONS` in `packages/domain/src/identity/access.ts` and to `ROLE_DEFINITIONS` in `identity/domain/role-catalog.ts`; row filtering goes in the use case with `companiesWith(actor, permission)` (ADR 0012)". Add the same pointer to the contracts step of the `new-module` recipe. These two SKILL files are hand-written recipes (CLAUDE.md), not generated adapters.
+    - Observable result: `pnpm check` and `pnpm test:integration` green; anonymous `POST /api/v1/companies` with `{}` → 401.
+
+16. **Test files touched by repairs and deviation 5** (declared for `pnpm plans:scope`, R2)
+    - Files: `apps/api/src/modules/identity/application/queries/get-current-user.query.test.ts` (modify), `apps/api/tests/zkteco-adms.test.ts` (modify), `apps/api/tests/authorization.test.ts` (modify), `apps/api/src/modules/identity/application/commands/assign-role.command.test.ts` (modify), `apps/api/tests/integration/identity/prisma-role-assignment.int.test.ts` (modify)
+    - Do: nothing for the implementer beyond mechanical compile fixes; the tester turns the two `it.fails` GAP tests into 401 assertions and adds regressions for R4 (row lock: concurrent identical assignments → one active row and `ROLE_ALREADY_ASSIGNED`, also against Postgres; wording fixed after review R6).
+    - Observable result: test suites green, no `it.fails` left.
+
+## Acceptance criteria
+
+- [ ] `pnpm check` and `pnpm test:integration` pass; web and mobile typecheck.
+- [ ] Migration `*_create_role_assignments` adds `identity.role_assignments` and enum `IdentityRole`, no DROP; `company_id` has no FK.
+- [ ] Without a session, every business route (`GET/POST /companies`, `GET /companies/:id`, `GET/POST /companies/:id/employees`, `GET /users`, role-assignment routes) → 401 `AUTHENTICATION_REQUIRED`; `POST /auth/login` stays public; `/health/live` and `/iclock/*` unchanged.
+- [ ] After `pnpm db:seed`, `admin@example.com` (HOLDING_ADMIN) can call every route; `GET /companies` returns all companies.
+- [ ] `rrhh@example.com` (HR on APS Holding S.A. de C.V.): `GET /companies` returns only that company; `GET /companies/:id` and `GET/POST /companies/:id/employees` work for it and return 403 `FORBIDDEN` for another company (including a non-existent id); `POST /companies`, `GET /users` and role routes → 403.
+- [ ] A user with no assignments gets 403 on every business route and 200 on `/auth/me`.
+- [ ] `POST /users/:id/role-assignments`: HR with an active `companyId` → 201; HR without `companyId` or HOLDING_ADMIN with one → 422 `INVALID_ROLE_SCOPE`; `DIRECT_MANAGER`/`EMPLOYEE` → 422 `ROLE_NOT_ASSIGNABLE`; unknown company → 404 `COMPANY_NOT_FOUND`; inactive company → 422 `COMPANY_INACTIVE`; unknown user → 404 `USER_NOT_FOUND`; duplicate active → 409 `ROLE_ALREADY_ASSIGNED`.
+- [ ] `DELETE .../role-assignments/:id` → 204 and the next request of that user reflects the loss (403); the only active HOLDING_ADMIN cannot be revoked → 422 `LAST_HOLDING_ADMIN`; a revoked or foreign id → 404 `ROLE_ASSIGNMENT_NOT_FOUND`; the row keeps `revoked_at`/`revoked_by`.
+- [ ] `GET /openapi.json` (non-production): `/auth/login` has `security: []`; business operations carry `x-permission`; the Error response mentions 403.
+- [ ] Login throttle: a login whose email key is blocked does not reserve the IP key (finding L3) — checked in tests; the finding is `planned`.
+- [ ] Anonymous requests with an invalid query or body get 401 (not 400); a caller without permission gets 403 before any body validation (step 15, R1).
+- [ ] Two identical active assignments cannot coexist, even when requested concurrently: the second gets 409 `ROLE_ALREADY_ASSIGNED` (step 15, R4, row lock on the user); no migration is added by the repair (wording fixed after review R6).
+
+## Test layers required
+
+| Layer       | Applies | Focus                                                                                                                                                                 |
+| ----------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| domain      | yes     | role catalog (scopes, inert roles, `grantsFor`), `RoleAssignment.assign` scope rules and revoke idempotence                                                           |
+| application | yes     | `hasPermission`/`companiesWith`; `AssignRole` and `RevokeRoleAssignment` every error; `SessionAuthenticator` grants; `ListCompanies` filtering; `LogIn` L3 regression |
+| contract    | yes     | every route declares `access`; access routes shapes; OpenAPI security/x-permission snapshot                                                                           |
+| http        | yes     | 401/403/200 matrix per role for every business route, company param probing, assignment/revocation effects on the next request, last admin                            |
+| integration | yes     | Prisma role assignment repository (active filters, count), user queries (search, assignments), companies list filtered by ids                                         |
+| e2e         | no      | (no e2e infrastructure yet)                                                                                                                                           |
+
+## Deviations
+
+Todas cosméticas (fix forward); ninguna cambia diseño ni alcance.
+
+1. **Nombre de la migración (paso 8)**: el directorio real es
+   `apps/api/prisma/migrations/20260930150447_create_role_assignments/` (SQL revisado: solo enum,
+   tabla, dos índices y la FK a `users`; sin DROP; `company_id` sin FK).
+2. **`Grant` vive en `@rrhh/domain`, no en `shared/application/actor.ts` (pasos 1, 4, 5)**:
+   `arch:check` (`domain-is-pure`) prohíbe que `identity/domain/role-catalog.ts` importe de
+   `src/shared/application/`. Se declaró `Grant` en `packages/domain/src/identity/access.ts` y
+   `actor.ts` lo importa y lo re-exporta (`export type { Grant }`).
+3. **`openapi.test.ts` (paso 3)**: además de la aserción del `security` global, los fixtures de
+   `defineRoute` de ese archivo necesitaron el campo `access` (ahora obligatorio) para compilar, y
+   el conteo de operaciones pasó de 8 a 12 (`toHaveLength(12)`) por las 4 rutas nuevas.
+4. **`seed.ts` (paso 10)**: `ListCompanies` ahora exige un actor; el seed usa un `Actor` de
+   sistema con `organization.companies:read` de todo el holding para localizar la empresa.
+5. **Tests existentes tocados fuera de la lista de archivos del plan (paso 12)**, solo para que
+   compilen/pasen con las rutas protegidas y los puertos nuevos (mecánico, sin escenarios nuevos):
+   `apps/api/src/modules/identity/application/queries/get-current-user.query.test.ts` (el stub de
+   `UserQueries` cumple los dos métodos nuevos) y `apps/api/tests/zkteco-adms.test.ts` (su último
+   test crea una empresa y ahora inicia sesión como HOLDING_ADMIN). En archivos que sí están en la
+   lista (paso 14, del tester) se hicieron solo ajustes mecánicos: `session-authenticator.test.ts`
+   (nueva dependencia y `grants: []` esperado) y `prisma-company.int.test.ts` (segundo argumento
+   `'ALL'`).
+6. **`plans/identity-acceso/README.md` (paso 13)**: la fila del plan 002 ya no lleva "(TBD)"; no
+   hubo nada que cambiar.
+7. `plans:scope` marca `plans/platform-openapi/001-documento-y-referencia-scalar.md` como fuera de
+   alcance: ya estaba modificado antes de empezar (estado inicial del árbol), no lo toqué.
+
+8. **Repair round 1 (2026-09-30, main session)**: review round 1 found R1 (Medium) and R2-R5
+   (Low). The user chose to authorize before validating query/body (R1) and to add a partial
+   unique index now (R4) — README decisions 17-18. R2, R3, R5 fixed within scope. Added steps
+   15-16 and acceptance criteria; the migration placeholder of step 8 was replaced. Status
+   review → implementing. Earlier test/review evidence is superseded for the repaired code.
+
+9. **BLOCKED en el paso 15 (R4), implementer, 2026-09-30**: Prisma 7.10 no soporta índices
+   parciales (sin rastro de `partialIndexes` en su build) ni `NULLS NOT DISTINCT`, así que se siguió
+   la ruta `--create-only`. `pnpm db:migrate --name role_assignments_active_unique --create-only`
+   creó `apps/api/prisma/migrations/20260930154816_role_assignments_active_unique/migration.sql`
+   (sin aplicar, contiene solo `-- This is an empty migration.`). Escribir el SQL en ella lo
+   bloquean `guard-files` (Write) y `guard-bash` (printf/redirect) con "Migración existente: crea
+   una nueva": los hooks no distinguen una migración aún no aplicada. No se intentó rodearlos.
+   No se aplicó nada, no se tocó ningún otro archivo del paso 15 (R1, R4 código, R5, R3 pendientes).
+   Decisión que necesita el usuario: (a) que escriba él el SQL del paso 15 en esa migración vacía
+   (o autorice al hook), o (b) borrar ese directorio vacío que creé y repetir el flujo tras ajustar
+   el hook. SQL previsto:
+   `CREATE UNIQUE INDEX "role_assignments_active_key" ON "identity"."role_assignments" ("user_id", "role", "company_id") NULLS NOT DISTINCT WHERE "revoked_at" IS NULL;`
+10. **Resolution of deviation 9 (2026-09-30, main session)**: the user chose to drop the partial
+    index and serialize `AssignRole` with a row lock on the user (README decision 18 revised);
+    step 15's R4 text and Files line were rewritten, no migration is added by this repair. The
+    user removes the empty `20260930154816_role_assignments_active_unique` directory (the guard
+    does not let agents delete it). Status blocked → implementing.
+
+11. **Paso 15 ejecutado (implementer, 2026-09-30, ronda de reparación 1)**: R1 (`bindRoute` valida
+    `params`, autoriza, luego valida `query`/`body`), R4 (bloqueo de fila: `lockUser` en el puerto,
+    en Prisma con `SELECT … FOR UPDATE` y en memoria; `AssignRole` lleva `transactionRunner`,
+    comprobación de usuario/duplicado/`save` dentro de la transacción y la consulta a
+    `CompanyDirectory` fuera), R5 (`pageSize: 100`), R3 (recetas) y ADR 0012 / `architecture.md`
+    al nuevo orden. Sin migración. Cosmético, dentro del paso 16 (arreglos de compilación): el
+    constructor de `InMemoryRoleAssignmentRepository` ahora recibe `{ userRepository }`
+    (estructura mínima) y se actualizaron `test-app.ts` y tres tests de identity; `assign-role`
+    test recibe `NoopTransactionRunner`. Además convertí a aserción normal el `it.fails` GAP de
+    body inválido en `tests/authorization.test.ts` (pasó a 401 y dejaba `pnpm check` en rojo);
+    queda el `it.fails` de `:userId` inválido anónimo, que sigue en 400 por diseño (param de path
+    inválido responde 400 antes de autenticar, ADR 0012): el tester debe reescribirlo como 400
+    y añadir los tests de R4 (paso 16). Los tests previos de evidencia quedan superseded por esta
+    reparación.
+
+Verificación de la fase: `pnpm check` verde; `pnpm test:integration` verde (6 archivos, 39 tests);
+`pnpm db:seed` dos veces (la segunda no crea nada: `ROLE_ALREADY_ASSIGNED` ignorado). No se
+ejercitaron los criterios HTTP de aceptación contra la app corriendo (fase de verify).
+
+## Test coverage
+
+Tester, 2026-09-30. Línea base: `pnpm check` verde y `pnpm test:integration` verde (6 archivos,
+39 tests) antes de escribir nada. Todo derivado de código real (`archivo:línea` por función) o de
+ejecución local; nada asumido del plan sin confirmar en el código.
+
+| Comportamiento                                                                                                                                          | Fuente                                                   | Capa        | Test                                                              | Estado                             |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- | ----------- | ----------------------------------------------------------------- | ---------------------------------- |
+| `hasPermission`: sin empresa basta cualquier concesión; con empresa, holding o esa empresa                                                              | `shared/application/actor.ts` `hasPermission`            | application | `actor.test.ts › hasPermission` (6)                               | CONFIRMED                          |
+| `companiesWith`: `'ALL'` / ids distintos / vacío                                                                                                        | `actor.ts` `companiesWith`                               | application | `actor.test.ts › companiesWith` (3)                               | CONFIRMED                          |
+| Catálogo: alcances, permisos por rol, roles inertes no asignables                                                                                       | `role-catalog.ts` `ROLE_DEFINITIONS`                     | domain      | `role-catalog.test.ts › ROLE_DEFINITIONS` (4)                     | CONFIRMED                          |
+| `grantsFor` expande por empresa/holding, acumula, inertes no aportan                                                                                    | `role-catalog.ts` `grantsFor`                            | domain      | `role-catalog.test.ts › grantsFor` (5)                            | CONFIRMED                          |
+| `RoleAssignment.assign`: alcance válido, `ROLE_NOT_ASSIGNABLE` antes que `INVALID_ROLE_SCOPE`, evento                                                   | `role-assignment.ts` `assign`                            | domain      | `role-assignment.test.ts › assign` (7)                            | CONFIRMED                          |
+| `revoke` registra quién/cuándo, evento, idempotente; `restore`                                                                                          | `role-assignment.ts` `revoke`/`restore`                  | domain      | `role-assignment.test.ts › revoke`, `restore` (3)                 | CONFIRMED                          |
+| `AssignRole`: feliz, `USER_NOT_FOUND`, alcance/no asignable, `COMPANY_NOT_FOUND`, `COMPANY_INACTIVE`, `ROLE_ALREADY_ASSIGNED` (revocada no cuenta)      | `assign-role.command.ts`                                 | application | `assign-role.command.test.ts` (11)                                | CONFIRMED                          |
+| `RevokeRoleAssignment`: feliz, no encontrada / ajena / ya revocada, `LAST_HOLDING_ADMIN` (con y sin segundo admin, revocado no cuenta)                  | `revoke-role-assignment.command.ts`                      | application | `revoke-role-assignment.command.test.ts` (8)                      | CONFIRMED                          |
+| `SessionAuthenticator` expande grants, ignora revocadas/ajenas, revocar rige de inmediato                                                               | `session-authenticator.ts`                               | application | `session-authenticator.test.ts` (+4)                              | CONFIRMED                          |
+| `ListCompanies` filtra por concesión (holding / una / varias / ninguna)                                                                                 | `list-companies.query.ts`, `in-memory-company.store.ts`  | application | `list-companies.query.test.ts` (5)                                | CONFIRMED                          |
+| `LogIn` L3: correo bloqueado no reserva la IP; I6: IP bloqueada libera el correo                                                                        | `log-in.command.ts` `reserveOrBlock`                     | application | `log-in.command.test.ts` (+2)                                     | CONFIRMED                          |
+| Toda ruta declara `access`; solo `logIn` pública; `companyParam` existe en el path                                                                      | `http.ts`, contratos                                     | contract    | `access.contract.test.ts › access de cada ruta` (16)              | CONFIRMED                          |
+| Rutas de acceso: forma, `AssignRoleSchema`, `ListUsersQuerySchema`, DTOs                                                                                | `access.contract.ts`                                     | contract    | `access.contract.test.ts` (resto)                                 | CONFIRMED                          |
+| OpenAPI: `security: []` en login, `x-permission`/`x-company-param`, 403 en Error                                                                        | `openapi.ts:46-107`                                      | contract    | `access.contract.test.ts › OpenAPI: seguridad por operación` (5)  | CONFIRMED                          |
+| Sin sesión: 401 `AUTHENTICATION_REQUIRED` en las 9 rutas de negocio + me/logout, token falso; login y `/health/live` abiertos                           | `bind-route.ts authorize`, `error-handler.ts`            | http        | `authorization.test.ts › sin sesión`                              | CONFIRMED                          |
+| Sin asignaciones: 403 `FORBIDDEN` en las 9 rutas, 200 en `/auth/me`                                                                                     | `bind-route.ts`                                          | http        | `authorization.test.ts › usuario sin asignaciones` (10)           | CONFIRMED                          |
+| HR de A: lista solo A; A ok; B y empresa inexistente 403 (no se sondea); rutas de admin 403                                                             | `bind-route.ts`, `list-companies.query.ts`               | http        | `authorization.test.ts › HR de la empresa A`                      | CONFIRMED                          |
+| HOLDING_ADMIN ve todo; empresa inexistente es 404 solo con alcance                                                                                      | `bind-route.ts`                                          | http        | `authorization.test.ts › HOLDING_ADMIN` (3)                       | CONFIRMED                          |
+| `GET /users` lista y filtra por `search`                                                                                                                | `access.router.ts`, `in-memory-user.queries.ts`          | http        | `authorization.test.ts › GET /users`                              | CONFIRMED                          |
+| Asignar: 201, efecto en la siguiente petición, 422/404/409/400 con su `code`                                                                            | `assign-role.command.ts`, `error-handler.ts`             | http        | `authorization.test.ts › asignación de roles`                     | CONFIRMED                          |
+| Revocar: 204, efecto inmediato (403), historial `revokedAt/By`, `LAST_HOLDING_ADMIN`, 404 ya revocada/ajena                                             | `revoke-role-assignment.command.ts`                      | http        | `authorization.test.ts › revocación de roles` (6)                 | CONFIRMED                          |
+| `/openapi.json` servido: login sin seguridad, `x-permission`, 403                                                                                       | `openapi.ts`                                             | http        | `authorization.test.ts › OpenAPI`                                 | CONFIRMED                          |
+| Repo Prisma: roundtrip (companyId/assignedBy nulos), upsert de revocación, `findActiveByUser`, `countActiveByRole`                                      | `prisma-role-assignment.repository.ts`                   | integration | `prisma-role-assignment.int.test.ts` (7)                          | CONFIRMED                          |
+| `PrismaUserQueries.listUsers` (orden, paginación, `search` insensible) y `listActiveRoleAssignments` (null / vacío / activas ISO ordenadas)             | `prisma-user.queries.ts`                                 | integration | `prisma-user.queries.int.test.ts` (7)                             | CONFIRMED                          |
+| `PrismaCompanyQueries.list` con ids: filtra items y total, pagina, vacío/inexistente                                                                    | `prisma-company.queries.ts`                              | integration | `prisma-company.int.test.ts` (+2)                                 | CONFIRMED                          |
+| ~~Anónimo con body/param inválido recibe 401 (criterio de aceptación 3)~~ **SUPERSEDED por la ronda de reparación 1 (ver más abajo)**                   | `bind-route.ts:52-60` (parsea antes de `authorize`)      | http        | ~~`it.fails('GAP: …')` (2)~~ ya no existen                        | ~~GAP~~ superseded                 |
+| **Ronda de reparación 1 (2026-09-30)**: R1, anónimo con body inválido: 401 `AUTHENTICATION_REQUIRED` (antes GAP)                                        | `bind-route.ts` (params → authorize → query/body)        | http        | `authorization.test.ts › sin sesión` (body)                       | CONFIRMED                          |
+| R1, anónimo con query inválida (`/users?page=0`): 401                                                                                                   | `bind-route.ts`                                          | http        | `authorization.test.ts › sin sesión` (query)                      | CONFIRMED                          |
+| R1, anónimo con `:userId` no uuid: 400 `VALIDATION_ERROR` (el param de path se valida antes de autenticar; ADR 0012). Sustituye al `it.fails` GAP       | `bind-route.ts` `parsePart(params)` antes de `authorize` | http        | `authorization.test.ts › sin sesión` (param)                      | CONFIRMED (diseño, no GAP)         |
+| R1, HR con body/query inválidos: 403, no 400 (incl. otra empresa)                                                                                       | `bind-route.ts`                                          | http        | `authorization.test.ts › HR de la empresa A`                      | CONFIRMED                          |
+| R1, con permiso body/query inválidos siguen siendo 400 `VALIDATION_ERROR`                                                                               | `bind-route.ts`                                          | http        | `authorization.test.ts › HOLDING_ADMIN`                           | CONFIRMED                          |
+| R4, `AssignRole`: directorio fuera de la transacción; `lockUser` + duplicado + `save` dentro; duplicado sin evento; `lockUser` false → `USER_NOT_FOUND` | `assign-role.command.ts`                                 | application | `assign-role.command.test.ts › serialización por usuario` (3)     | CONFIRMED                          |
+| R4, `PrismaRoleAssignmentRepository.lockUser`: true si existe, false si no                                                                              | `prisma-role-assignment.repository.ts` `lockUser`        | integration | `prisma-role-assignment.int.test.ts › lockUser` (1)               | CONFIRMED                          |
+| R4, dos `AssignRole` idénticos en paralelo contra Postgres: una fila activa, la otra `ROLE_ALREADY_ASSIGNED`; distintos ok; usuario inexistente         | `assign-role.command.ts` + `FOR UPDATE`                  | integration | `prisma-role-assignment.int.test.ts › AssignRole concurrente` (3) | CONFIRMED                          |
+| Criterios HTTP contra la app corriendo, seed doble, migración sin DROP                                                                                  | —                                                        | —           | no se ejercitan aquí (fase verify)                                | NOT CONFIRMED (no es capa de test) |
+
+**GAP 1 (SUPERSEDED, resuelto por R1 en la ronda de reparación 1)**: el GAP original (`bindRoute`
+validaba todo antes de autorizar y un anónimo con body inválido recibía 400) quedó cerrado por el
+paso 15: ahora se parsean `params`, se autoriza y luego se validan `query`/`body`. Ya no queda
+ningún `it.fails`. El único caso que sigue en 400 para un anónimo es un `:userId` no uuid, por
+diseño (ADR 0012: la empresa sale de los params, así que se validan antes de autenticar); se
+afirma como 400, no como GAP.
+
+**Ronda de reparación 1 (tester, 2026-09-30, paso 16)**. Línea base: `pnpm check` verde (304
+pasan + 1 `it.fails` en api) antes de tocar nada. Cambios: `authorization.test.ts` (GAP -> 400 por
+diseño, comentario obsoleto reemplazado por el de R1, +query anónima 401, +HR 403 con input
+inválido, +admin 400), `assign-role.command.test.ts` (+3 de serialización),
+`prisma-role-assignment.int.test.ts` (+4: `lockUser` y 3 de concurrencia con Postgres real).
+Prueba de que el test de carrera detecta el defecto: con `lockUser` sustituido temporalmente por
+`true` (sin bloqueo) y una pausa tras leer, el test falla con dos filas activas; con el bloqueo
+real pasa. La sonda se revirtió; la pausa de 100 ms tras leer se conserva para ensanchar la
+ventana. No se añadió test HTTP concurrente: en memoria no hay bloqueo real y pasaría sin probar
+nada. Los conteos y el estado de "Tests nuevos por capa (cierre)" de la primera pasada quedan
+superseded por esta ronda. Cierre: `pnpm check` verde (api 311 pasan, 0 `it.fails`) y
+`pnpm test:integration` verde (8 archivos, 59 tests); la primera pasada de cierre falló solo por un
+error de lint en mi test (corregido y repetido). Conteos: http 60 -> 63 (todos verdes, sin `it.fails`), application +3 en
+`assign-role`, integration +4.
+
+Tests nuevos por capa (cierre): domain 19 (`role-catalog` 9, `role-assignment` 10),
+application 39 (`actor` 9, `assign-role` 11, `revoke` 8,
+`session-authenticator` +4, `list-companies` 5, `log-in` +2), contract 35, http 60 (58 verdes +
+2 `it.fails`), integration 16 nuevos. `pnpm check` verde; `pnpm test:integration` verde.
+
+## Review findings
+
+Reviewer, 2026-09-30. Diff `main...HEAD` (commits 07f4b0f, a0361c3) más el árbol de trabajo. El
+cambio sin commitear en `plans/platform-openapi/001-documento-y-referencia-scalar.md` es del
+usuario y ajeno a este plan: se ignora.
+
+### Checklist (11/13)
+
+- [ ] **`pnpm plans:scope`: FALLA** (exit 1). "Declarados sin cambios":
+      `apps/api/prisma/migrations/<timestamp>_create_role_assignments/migration.sql`; "Fuera de
+      alcance": `get-current-user.query.test.ts` y `apps/api/tests/zkteco-adms.test.ts` (y el
+      archivo del usuario, que no cuenta). Hot files (`schema.prisma`, `test-app.ts`,
+      `contracts/src/index.ts`) revisados: los cambios no puramente aditivos están en la lista del
+      plan y son los pedidos (relación en `User`, línea de `userQueries`). Ver R2.
+- [x] `pnpm check` verde (19/19 tareas turbo, `arch:check` sin violaciones, plans/harness/quality ok).
+- [x] `pnpm test:integration` verde (8 archivos, 55 tests), ejecutado en vivo en esta revisión.
+- [x] Reglas de negocio en `domain/` (catálogo, alcance y revocación en `RoleAssignment`); el
+      conteo del último admin y el duplicado viven en los commands porque necesitan el repositorio.
+- [x] CQRS: commands → agregado → `RoleAssignmentRepository` → `Result`; lecturas por
+      `UserQueries`/`CompanyQueries` con DTOs de contrato; el repositorio no tiene métodos de pantalla.
+- [x] Tipos de request/response desde `@rrhh/contracts`.
+- [x] Errores esperados como `Result` + errores de dominio con `code` estable; 403 como error de adaptador.
+- [x] Fechas UTC (`Timestamptz`), tiempo e ids por `Clock`/`IdGenerator`; sin dinero.
+- [x] Migración nueva `20260930150447_create_role_assignments`: solo enum, tabla, dos índices y FK a
+      `identity.users` (mismo schema); sin DROP; `company_id` sin FK.
+- [x] DI: registros nuevos resuelven (`tests/container.test.ts` verde); módulo registrado una vez.
+- [x] Sin secretos ni datos personales reales (seed referencia `SEED_USER_PASSWORD` por nombre).
+- [x] Deviations honestas: comprobadas la 2 (`Grant` en `packages/domain/src/identity/access.ts`,
+      re-exportado en `actor.ts`), la 3 (`toHaveLength(12)`, `openapi.test.ts:49`) y la 5 (los dos
+      tests tocados son mecánicos).
+- [ ] **Docs existentes al día: FALLA**. Ver R3.
+
+### Hallazgos
+
+**Medium**
+
+- **R1 — Se valida antes de autorizar: un anónimo recibe 400 con el detalle del esquema, no 401**
+  (`apps/api/src/http/bind-route.ts:42-44` parsea, `:56` autoriza). Escenario: `POST
+/api/v1/companies` sin sesión y con `{}` → 400 `VALIDATION_ERROR` con los issues de Zod;
+  `GET /users/no-es-uuid/role-assignments` anónimo → 400. Contradice el criterio de aceptación 3
+  ("sin sesión, toda ruta de negocio → 401") y en producción (donde `/openapi.json` no se sirve)
+  revela la forma de las entradas a quien no tiene sesión. El paso 9 y ADR 0012 ("después de
+  validar") piden justamente este orden, así que es un conflicto interno del plan, no un error
+  del implementer: **requiere decisión del usuario** entre (a) autorizar antes de parsear
+  query/body (con `companyParam`, validar solo `params` primero; 401 siempre antes que 400) y
+  ajustar ADR 0012, `docs/architecture.md` (diagrama del flujo) y los dos `it.fails` del tester
+  (`apps/api/tests/authorization.test.ts:135,142`); o (b) enmendar el criterio 3 a "con entrada
+  válida" y que el tester convierta los `it.fails` en aserciones del 400. Ya lo reportó el tester
+  como GAP 1.
+
+**Low**
+
+- **R2 — Lista de archivos del plan desactualizada** (plan, paso 8 `Files`; pasos 12/14).
+  El paso 8 pedía reemplazar `<timestamp>` por el directorio real y solo se anotó en Deviations 1;
+  `get-current-user.query.test.ts` y `zkteco-adms.test.ts` se tocaron (Deviation 5, cambios
+  mecánicos y correctos) sin estar declarados. Consecuencia: `plans:scope` sale con 1. Arreglo:
+  poner `20260930150447_create_role_assignments` en el paso 8 y añadir los dos tests al paso 12.
+- **R3 — Receta desactualizada** (`.claude/skills/new-use-case/SKILL.md:52`: "aquí irán luego los
+  chequeos de permisos" en el caso de uso; `:15`/`:41` y `.claude/skills/new-module/SKILL.md:20,61,72`
+  no mencionan `access`). Escenario: quien agregue un endpoint siguiendo la receta no sabe que debe
+  declarar `access` con `requires(...)`, añadir el permiso a `PERMISSIONS`
+  (`packages/domain/src/identity/access.ts`) y a `ROLE_DEFINITIONS`, ni probar 401/403 con
+  `signInAs`; y pondría el chequeo en el caso de uso contra ADR 0012. El paso 13 no listó las
+  recetas: añadirlas al plan (son escritas a mano, no generadas) y actualizarlas.
+- **R4 — Doble asignación concurrente** (`assign-role.command.ts:69-73`): el duplicado se comprueba
+  leyendo y luego insertando, sin índice único parcial. Dos `POST .../role-assignments` idénticos
+  simultáneos crean dos asignaciones activas iguales; revocar una deja el rol vigente (el admin ve
+  que "sigue" teniéndolo y debe revocar otra vez). No da privilegios de más ni rompe
+  `LAST_HOLDING_ADMIN`. No lo exigía el plan; no bloquea. Opción: aceptarlo como riesgo residual en
+  ADR 0012 (como el de la revocación mutua) o, en un plan posterior, índice único parcial
+  `WHERE revoked_at IS NULL` mapeado a `ROLE_ALREADY_ASSIGNED`.
+- **R5 — (incierto, solo seed) búsqueda del usuario existente con `pageSize: 1`**
+  (`apps/api/prisma/seed.ts:81`): `search` es `contains`, así que si existiera un correo que
+  contenga `admin@example.com` y ordene antes (p. ej. `a.admin@example.com`), el único resultado no
+  es el buscado y el seed lanza "No se encontró el usuario ya existente". Solo en datos de
+  desarrollo y el plan fijó `pageSize: 1`; no bloquea (subir `pageSize` lo evitaría).
+
+**Nota para el plan 003 (no es hallazgo hoy)**: `countActiveByRole('HOLDING_ADMIN')`
+(`revoke-role-assignment.command.ts:42`) cuenta asignaciones sin mirar el estado del usuario. Hoy no
+hay forma de deshabilitar usuarios por HTTP; cuando exista, un admin DISABLED contaría como
+"otro administrador" y se podría revocar al último activo.
+
+Recorridos sin hallazgos: `hasPermission`/`companiesWith` (niega por defecto, `in: []` vacío no
+filtra de más), sondeo de empresas (403 antes del caso de uso), revocación inmediata vía
+`SessionAuthenticator`, transacción de la revocación (los repositorios usan `database.client`, que
+toma la transacción de AsyncLocalStorage), L3 del throttle (se detiene en la primera llave
+bloqueada y libera solo lo reservado), OpenAPI (`security: []`, `x-permission`, 403).
+
+**Resultado**: el estado sigue en `review`. R1 necesita decisión del usuario; R2 y R3 son cambios
+del plan/docs; R4 y R5 no bloquean.
+
+_Ronda 1 conservada como historia; superseded por la ronda 2 para el código reparado._
+
+### Ronda 2 (reviewer, 2026-09-30)
+
+Diff `5ff4521..HEAD` (fix 004b287, tests 3134c5d) y `main...HEAD` completo. El cambio sin
+commitear en `plans/platform-openapi/001-documento-y-referencia-scalar.md` es del usuario: se ignora.
+
+#### Checklist (13/13)
+
+- [x] `pnpm plans:scope`: el único "fuera de alcance" es el archivo del usuario (sale con 1 solo por
+      él). 69 declarados / 71 cambiados; ya no hay "declarados sin cambios". Hot files: el cambio
+      de `test-app.ts` en la reparación (argumento del constructor) está declarado en el paso 12.
+- [x] `pnpm check` verde, ejecutado en vivo (turbo 19/19, `arch:check` sin violaciones, plans/harness/quality ok).
+- [x] `pnpm test:integration` verde en vivo (8 archivos, 59 tests).
+- [x] Reglas de negocio en `domain/`; el bloqueo y el duplicado siguen en el command (necesitan repositorio).
+- [x] CQRS: `lockUser` es un método de consistencia de escritura, no de pantalla.
+- [x] Tipos desde `@rrhh/contracts`.
+- [x] Errores esperados como `Result`; `lockUser` false → `UserNotFoundError`.
+- [x] Fechas/ids por `Clock`/`IdGenerator`; sin dinero.
+- [x] Sin migración nueva en la reparación; el directorio vacío `20260930154816_…` ya no existe.
+- [x] DI: `transactionRunner` se resuelve (Prisma en `container.ts:79`, noop en `test-app.ts:90`); `container.test.ts` verde.
+- [x] Sin secretos ni datos personales reales.
+- [x] Deviations honestas: comprobada la 11 (`InMemoryRoleAssignmentRepository({ userRepository })`,
+      `NoopTransactionRunner` en `assign-role.command.test.ts`, directorio fuera de la transacción).
+- [x] Docs al día: ADR 0012 y `docs/architecture.md` describen params → autorizar → query/body;
+      recetas `new-use-case`/`new-module` apuntan a `access` (R3); README decisiones 17-18.
+
+#### Verificación de R1-R5
+
+- **R1 resuelto** (`apps/api/src/http/bind-route.ts:44-61`): `params` → contexto → `authorize` →
+  `query`/`body`. Rutas públicas (`logIn`) y `authenticated` sin cambio de comportamiento; con
+  permiso, un body/query inválido sigue siendo 400. Tests: anónimo body/query → 401, HR → 403,
+  admin → 400, `:userId` inválido anónimo → 400 (por diseño, ADR 0012).
+- **R2 resuelto**: paso 8 con el directorio real; tests tocados declarados en el paso 16.
+- **R3 resuelto**: ambas recetas actualizadas.
+- **R4 resuelto (bloqueo de fila)** (`assign-role.command.ts:73-88`,
+  `prisma-role-assignment.repository.ts` `lockUser`): `lockUser`, lectura de duplicados y `save`
+  dentro de `transactionRunner.run`; los repos usan `database.client`, que toma la transacción de
+  AsyncLocalStorage (`prisma-database.ts:25-33`), así que el `FOR UPDATE` y la lectura van en la
+  misma transacción. En READ COMMITTED, la segunda transacción lee tras obtener el bloqueo y ve la
+  fila ya confirmada. Riesgo de deadlock revisado: solo se bloquea una fila de `users`; el INSERT
+  con FK toma `FOR KEY SHARE` sobre la misma fila en la misma transacción (compatible). Eventos se
+  publican tras el commit. El test de integración concurrente es real (dos transacciones Prisma,
+  pausa de 100 ms) y el tester documentó que falla sin el bloqueo.
+- **R5 resuelto** (`apps/api/prisma/seed.ts:81-83`): `pageSize: 100` (máximo del contrato) y coincidencia exacta.
+
+#### Hallazgos
+
+**Low (solo texto del plan, sin cambio de código)**
+
+- **R6 — Texto del plan desactualizado tras la revisión de la decisión 18**: el criterio de
+  aceptación de la línea 220 dice "the index migration has no DROP" y el paso 16 (línea 204) habla
+  de "unique violation → `ROLE_ALREADY_ASSIGNED`"; ya no hay índice ni migración (deviations 9-10).
+  Escenario: el verifier busca una migración de índice que no existe. Arreglo de la sesión
+  principal: reescribir ambas frases al bloqueo de fila. No bloquea verify.
+
+Recorridos sin hallazgos: orden de `bindRoute` (401/403 antes que 400; `companyParam` sin
+`params` sigue siendo 500 de programación, igual que antes), `saved` cortocircuita sin publicar
+evento, `lockUser` false tras un borrado concurrente → `USER_NOT_FOUND` sin fila, consulta al
+directorio de organization fuera de la transacción, seed doble (la transacción anidada se une a la
+externa si la hubiera).
+
+**Resultado ronda 2**: sin hallazgos que requieran código. Estado → `verify`.
+
+## Verification
+
+**Verifier inline (sesión principal), 2026-09-30. Resultado: PASS.** Cubre el código tras la
+reparación de la ronda 1 (commits `004b287`, `3134c5d`, `5728523`).
+
+**Suites (una corrida cada una)**
+
+- `pnpm check`: verde. `@rrhh/api` 32 archivos / 311 tests; `@rrhh/contracts` 83; turbo 19/19;
+  `arch:check` "no dependency violations found (177 modules, 604 dependencies cruised)".
+- `pnpm test:integration`: 8 archivos / 59 tests passed.
+- `pnpm --filter @rrhh/api db:deploy` en `rrhh`: "3 migrations found … No pending migrations".
+  `20260930150447_create_role_assignments/migration.sql`: 0 ocurrencias de `DROP`; la única FK de
+  `identity.role_assignments` es `user_id → identity.users(id)`; `company_id UUID` sin FK.
+- `pnpm db:seed` dos veces: ambas terminan en "seed completado", sin errores.
+  `identity.role_assignments` queda con exactamente una asignación activa por usuario sembrado:
+  `admin@example.com` HOLDING_ADMIN sin empresa y `rrhh@example.com` HR con empresa, ambas con
+  `assigned_by` nulo (sistema).
+
+**App corriendo** (`pnpm dev:api`, `fetch` desde scripts del scratchpad). No se leyó `.env`, así
+que se crearon por los casos de uso reales tres usuarios de verificación: `verif-admin`
+(HOLDING_ADMIN), `verif-hr` (HR en APS Holding) y `verif-none` (sin rol), todos en
+`@example.test`.
+
+| Caso                                                                                                                   | Observado                                                                                                                                                                                         |
+| ---------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Anónimo en `GET/POST /companies`, `GET /companies/:id`, `GET/POST …/employees`, `GET /users`, `GET …/role-assignments` | 401 `AUTHENTICATION_REQUIRED` en las 8                                                                                                                                                            |
+| Anónimo `POST /companies {}` y `GET /users?page=0` (R1)                                                                | 401, no 400                                                                                                                                                                                       |
+| Anónimo `GET /users/no-uuid/role-assignments`                                                                          | 400 `VALIDATION_ERROR` en `params` (por diseño, ADR 0012)                                                                                                                                         |
+| `POST /auth/login` anónimo / `GET /health/live`                                                                        | público (401 `INVALID_CREDENTIALS` con credenciales malas) / 200                                                                                                                                  |
+| Sin rol: `/auth/me` · rutas de negocio y `/users`                                                                      | 200 · 403 `FORBIDDEN`                                                                                                                                                                             |
+| HR: `GET /companies`                                                                                                   | 200, solo APS Holding                                                                                                                                                                             |
+| HR: su empresa (`GET /companies/:id`, `GET …/employees`)                                                               | 200                                                                                                                                                                                               |
+| HR: otra empresa, empresa inexistente, `POST` a otra empresa con `{}`                                                  | 403 (el `POST {}` a otra empresa da 403 antes de validar)                                                                                                                                         |
+| HR: `POST …/employees {}` en su empresa                                                                                | 400 `VALIDATION_ERROR` (con permiso sí valida)                                                                                                                                                    |
+| HR: `POST /companies`, `GET /users`, rutas de roles                                                                    | 403                                                                                                                                                                                               |
+| Admin: `GET /companies` · otra empresa · `GET /users?search=verif` · `POST /companies {}`                              | total 3 · 200 · 200 · 400                                                                                                                                                                         |
+| Asignar HR sin empresa / HOLDING_ADMIN con empresa                                                                     | 422 `INVALID_ROLE_SCOPE`                                                                                                                                                                          |
+| Asignar DIRECT_MANAGER / EMPLOYEE                                                                                      | 422 `ROLE_NOT_ASSIGNABLE`                                                                                                                                                                         |
+| Empresa inexistente / usuario inexistente                                                                              | 404 `COMPANY_NOT_FOUND` / 404 `USER_NOT_FOUND`                                                                                                                                                    |
+| Asignar HR (otra empresa) a `verif-none` → duplicado                                                                   | 201 → 409 `ROLE_ALREADY_ASSIGNED`                                                                                                                                                                 |
+| Efecto en la siguiente petición                                                                                        | `verif-none` pasa a 200 en la otra empresa y sigue con 403 en APS Holding                                                                                                                         |
+| Revocar → reuso                                                                                                        | 204 → la siguiente petición da 403; la fila conserva `revoked_at` y `revoked_by`                                                                                                                  |
+| Revocar de nuevo / por la ruta de otro usuario                                                                         | 404 `ROLE_ASSIGNMENT_NOT_FOUND`                                                                                                                                                                   |
+| R4: dos `POST` idénticos en paralelo                                                                                   | `201` + `409`; el listado muestra una sola asignación activa                                                                                                                                      |
+| `GET /api/v1/openapi.json`                                                                                             | global `[bearerAuth, cookieAuth]`; `/auth/login` `security: []`; `x-permission` en `/companies` (read/create) y en employees; `x-company-param: companyId`; la descripción del Error menciona 403 |
+| Revocarse su propio HOLDING_ADMIN (queda el de `admin@example.com`)                                                    | 204, y la siguiente petición a `GET /users` da 403                                                                                                                                                |
+
+**Criterios de aceptación**: todos confirmados en la app, con estas salvedades:
+
+- `LAST_HOLDING_ADMIN` (criterio 8): **NOT VERIFIED en vivo**. Probarlo exigía revocar el
+  HOLDING_ADMIN de `admin@example.com`, que es dato del usuario. Está cubierto por los tests HTTP e
+  integración (ver `## Test coverage`).
+- Throttle L3 (criterio 10): por tests, como pide el criterio; el hallazgo está `planned`.
+- Web y mobile: solo typecheck (dentro de `pnpm check`). Las pantallas reciben 401 hasta el plan
+  004, consecuencia aceptada en Out of scope.
+
+**Datos que quedaron en la base de desarrollo**: el hook bloquea `DELETE` por SQL, así que la
+limpieza se hizo por API. Se revocaron todas las asignaciones de los tres usuarios de verificación
+y se cerraron sus sesiones. Los tres usuarios `verif-*@example.test` siguen existiendo, sin
+ningún rol activo. Sus filas de asignación revocadas se conservan como historial (ADR 0010). No se
+tocaron `admin@example.com`, `rrhh@example.com` ni sus asignaciones.

@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { defineRoute } from '../http';
+import { authenticated, defineRoute, publicAccess } from '../http';
 
 export const SessionClientSchema = z.enum(['web', 'mobile']);
 export type SessionClient = z.infer<typeof SessionClientSchema>;
@@ -40,6 +40,7 @@ export const authRoutes = {
     method: 'POST',
     path: '/auth/login',
     summary: 'Inicia sesión con correo y contraseña',
+    access: publicAccess,
     body: LogInSchema,
     response: LogInResponseSchema,
   }),
@@ -47,6 +48,7 @@ export const authRoutes = {
     method: 'POST',
     path: '/auth/logout',
     summary: 'Cierra la sesión actual',
+    access: authenticated,
     response: z.undefined(),
     successStatus: 204,
   }),
@@ -54,6 +56,7 @@ export const authRoutes = {
     method: 'GET',
     path: '/auth/me',
     summary: 'Usuario de la sesión actual',
+    access: authenticated,
     response: SessionUserSchema,
   }),
 };

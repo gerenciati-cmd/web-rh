@@ -4,14 +4,25 @@
  *
  *   pnpm db:seed
  */
+import type { Role } from '@rrhh/domain';
+
 import { loadEnv } from '@/config/env';
 import { buildContainer } from '@/container';
 import { createLogger } from '@/infrastructure/logging/pino-logger';
+import type { Actor } from '@/shared/application/actor';
 
 const env = loadEnv();
 const logger = createLogger(env);
 const container = buildContainer(env, logger);
-const { createCompany, registerEmployee, listCompanies, registerUser } = container.cradle;
+const { createCompany, registerEmployee, listCompanies, registerUser, listUsers, assignRole } =
+  container.cradle;
+
+// El seed corre sin sesión: actúa como el sistema, con lectura de todo el holding.
+const seedActor: Actor = {
+  userId: 'seed',
+  sessionId: 'seed',
+  grants: [{ permission: 'organization.companies:read', companyId: null }],
+};
 
 // Identificadores sintéticos válidos (uno por país soportado, ADR 0009).
 const companies = [
@@ -26,7 +37,7 @@ for (const company of companies) {
   else if (result.error.code !== 'COMPANY_ALREADY_EXISTS') throw result.error;
 }
 
-const { items } = await listCompanies.execute({ page: 1, pageSize: 10 });
+const { items } = await listCompanies.execute({ page: 1, pageSize: 10, actor: seedActor });
 const holding = items.find((company) => company.legalName === 'APS Holding S.A. de C.V.');
 
 if (holding) {
@@ -58,13 +69,35 @@ if (holding) {
   }
 }
 
+/** Crea el usuario (o lo reutiliza si ya existe) y devuelve su id. */
+async function seedUser(email: string, password: string): Promise<string> {
+  const result = await registerUser.execute({ email, password });
+  if (result.ok) {
+    logger.info({ email }, 'usuario creado');
+    return result.value.id;
+  }
+  if (result.error.code !== 'USER_ALREADY_EXISTS') throw result.error;
+
+  const found = await listUsers.execute({ page: 1, pageSize: 100, search: email });
+  const existing = found.items.find((user) => user.email === email);
+  if (!existing) throw new Error(`No se encontró el usuario ya existente ${email}`);
+  return existing.id;
+}
+
+async function seedRole(userId: string, role: Role, companyId: string | null): Promise<void> {
+  const result = await assignRole.execute({ userId, role, companyId, assignedBy: null });
+  if (result.ok) logger.info({ role, companyId }, 'rol asignado');
+  else if (result.error.code !== 'ROLE_ALREADY_ASSIGNED') throw result.error;
+}
+
 if (env.SEED_USER_PASSWORD) {
-  const result = await registerUser.execute({
-    email: 'admin@example.com',
-    password: env.SEED_USER_PASSWORD,
-  });
-  if (result.ok) logger.info({ email: 'admin@example.com' }, 'usuario creado');
-  else if (result.error.code !== 'USER_ALREADY_EXISTS') throw result.error;
+  const adminId = await seedUser('admin@example.com', env.SEED_USER_PASSWORD);
+  await seedRole(adminId, 'HOLDING_ADMIN', null);
+
+  if (holding) {
+    const hrId = await seedUser('rrhh@example.com', env.SEED_USER_PASSWORD);
+    await seedRole(hrId, 'HR', holding.id);
+  }
 } else {
   logger.info('SEED_USER_PASSWORD no está definida: se omite la creación del usuario admin');
 }

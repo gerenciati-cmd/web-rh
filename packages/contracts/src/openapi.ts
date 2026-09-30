@@ -43,14 +43,16 @@ export function buildOpenApiDocument(routes: RouteCatalogue): JsonSchema {
     openapi: '3.1.0',
     info: { title: 'API RRHH APS Holding', version: '1' },
     servers: [{ url: '/api/v1' }],
-    security: [{ bearerAuth: [] }, { cookieAuth: [] }, {}],
+    // Sin `{}`: la sesión es obligatoria salvo en las rutas públicas, que la excluyen con
+    // `security: []` a nivel de operación.
+    security: [{ bearerAuth: [] }, { cookieAuth: [] }],
     paths,
     components: {
       schemas: sortedByKey(schemas),
       responses: {
         Error: {
           description:
-            'Error con forma `ApiError`: 400 validación, 401 sin sesión, 404 no encontrado, 409 conflicto, 500 inesperado.',
+            'Error con forma `ApiError`: 400 validación, 401 sin sesión, 403 sin permiso, 404 no encontrado, 409 conflicto, 500 inesperado.',
           content: { 'application/json': { schema: apiError } },
         },
       },
@@ -98,6 +100,13 @@ function operationFor(
     operationId,
     summary: route.summary,
     tags: [module],
+    ...(route.access.kind === 'public' ? { security: [] } : {}),
+    ...(route.access.kind === 'permission'
+      ? {
+          'x-permission': route.access.permission,
+          ...(route.access.companyParam ? { 'x-company-param': route.access.companyParam } : {}),
+        }
+      : {}),
     ...(parameters.length > 0 ? { parameters } : {}),
     ...(route.body
       ? {

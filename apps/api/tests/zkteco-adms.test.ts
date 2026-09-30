@@ -7,7 +7,7 @@ import { RecordDeviceContact } from '@/modules/attendance/application/commands/r
 import { RecordDevicePush } from '@/modules/attendance/application/commands/record-device-push.command';
 import { RecordingLogger } from '@/shared/testing/fakes';
 
-import { buildTestContainer } from './test-app';
+import { buildTestContainer, signInAs } from './test-app';
 
 /**
  * Tests de integración del router de dispositivos ZKTeco ADMS: fuera de /api/v1 y de los
@@ -240,8 +240,12 @@ describe('ADMS /iclock', () => {
 
   it('el resto de /api/v1 y /health sigue funcionando sin cambios', async () => {
     await request(app).get('/health/live').expect(200, { status: 'ok' });
-    await request(app)
+    // /api/v1 exige sesión desde el plan 002: contenedor propio para poder iniciar una.
+    const container = buildTestContainer();
+    const token = await signInAs(container, { role: 'HOLDING_ADMIN' });
+    await request(createApp(container))
       .post('/api/v1/companies')
+      .set('Authorization', `Bearer ${token}`)
       .send({ legalName: 'APS Holding SpA', taxId: 'EKU9003173C9', country: 'MX' })
       .expect(201);
   });

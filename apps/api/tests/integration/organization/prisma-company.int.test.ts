@@ -67,7 +67,7 @@ it('dos saves concurrentes conservan una fila y devuelven un conflicto', async (
   expect(results.filter((result) => !result.ok).map((result) => result.error.code)).toEqual([
     'COMPANY_ALREADY_EXISTS',
   ]);
-  expect((await queries.list({ page: 1, pageSize: 20 })).total).toBe(1);
+  expect((await queries.list({ page: 1, pageSize: 20 }, 'ALL')).total).toBe(1);
 });
 
 describe('PrismaCompanyQueries', () => {
@@ -76,13 +76,39 @@ describe('PrismaCompanyQueries', () => {
     await repository.save(company('APS Holding SpA', 'EKU9003173C9'));
     await repository.save(company('Mu SpA', 'BBB020202BB2'));
 
-    const firstPage = await queries.list({ page: 1, pageSize: 2 });
-    const secondPage = await queries.list({ page: 2, pageSize: 2 });
+    const firstPage = await queries.list({ page: 1, pageSize: 2 }, 'ALL');
+    const secondPage = await queries.list({ page: 2, pageSize: 2 }, 'ALL');
 
     expect(firstPage.total).toBe(3);
     expect(firstPage.items.map((c) => c.legalName)).toEqual(['APS Holding SpA', 'Mu SpA']);
     expect(firstPage.items[0]?.taxId).toBe('EKU9003173C9');
     expect(secondPage.items.map((c) => c.legalName)).toEqual(['Zeta Ltda.']);
+  });
+
+  it('visible con ids: filtra items y total a esas empresas, y pagina sobre lo visible', async () => {
+    const zeta = company('Zeta Ltda.', 'AAA010101AAA');
+    const aps = company('APS Holding SpA', 'EKU9003173C9');
+    const mu = company('Mu SpA', 'BBB020202BB2');
+    for (const c of [zeta, aps, mu]) await repository.save(c);
+
+    const first = await queries.list({ page: 1, pageSize: 1 }, [zeta.id, aps.id]);
+    const second = await queries.list({ page: 2, pageSize: 1 }, [zeta.id, aps.id]);
+
+    expect(first.total).toBe(2);
+    expect(first.items.map((c) => c.id)).toEqual([aps.id]);
+    expect(second.items.map((c) => c.id)).toEqual([zeta.id]);
+  });
+
+  it('visible vacío: ninguna empresa; un id inexistente tampoco trae nada', async () => {
+    await repository.save(company('APS Holding SpA', 'EKU9003173C9'));
+
+    expect(await queries.list({ page: 1, pageSize: 20 }, [])).toMatchObject({
+      items: [],
+      total: 0,
+    });
+    expect(
+      await queries.list({ page: 1, pageSize: 20 }, ['00000000-0000-4000-8000-999999999999']),
+    ).toMatchObject({ items: [], total: 0 });
   });
 
   it('findById devuelve null si no existe', async () => {

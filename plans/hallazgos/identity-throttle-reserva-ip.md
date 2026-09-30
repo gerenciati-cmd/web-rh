@@ -1,7 +1,8 @@
 ---
-status: deferred
+status: planned
 module: identity
 found: 2026-09-29
+plan: identity-acceso/002
 ---
 
 # Hallazgo: la reserva del cupo por IP ocurre aunque el correo ya esté bloqueado

@@ -41,8 +41,12 @@ export class InMemoryCompanyRepository implements CompanyRepository {
 export class InMemoryCompanyQueries implements CompanyQueries {
   constructor(private readonly store: InMemoryCompanyStore) {}
 
-  list({ page, pageSize }: PageQuery): Promise<Page<CompanyDto>> {
+  list(
+    { page, pageSize }: PageQuery,
+    visible: 'ALL' | readonly string[],
+  ): Promise<Page<CompanyDto>> {
     const all = [...this.store.companies.values()]
+      .filter((company) => visible === 'ALL' || visible.includes(company.id))
       .sort((a, b) => a.legalName.localeCompare(b.legalName))
       .map(toDto);
     const items = all.slice((page - 1) * pageSize, page * pageSize);

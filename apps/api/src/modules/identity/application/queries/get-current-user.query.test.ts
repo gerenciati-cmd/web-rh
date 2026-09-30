@@ -7,6 +7,15 @@ import type { UserQueries } from './user.queries';
 class StubUserQueries implements UserQueries {
   constructor(private readonly users: Map<string, SessionUser>) {}
 
+  // Fuera de lo que ejercita este test (plan 002): el puerto creció, el stub solo lo cumple.
+  listUsers(): ReturnType<UserQueries['listUsers']> {
+    return Promise.reject(new Error('no usado en este test'));
+  }
+
+  listActiveRoleAssignments(): ReturnType<UserQueries['listActiveRoleAssignments']> {
+    return Promise.reject(new Error('no usado en este test'));
+  }
+
   findSessionUser(userId: string): Promise<SessionUser | null> {
     return Promise.resolve(this.users.get(userId) ?? null);
   }

@@ -1,6 +1,27 @@
+import type { Permission } from '@rrhh/domain';
 import type { z } from 'zod';
 
 export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+
+/** Quién puede llamar a una ruta. Ver `RouteDefinition.access`. */
+export type RouteAccess =
+  | { readonly kind: 'public' }
+  | { readonly kind: 'authenticated' }
+  | {
+      readonly kind: 'permission';
+      readonly permission: Permission;
+      readonly companyParam?: string;
+    };
+
+export const publicAccess: RouteAccess = { kind: 'public' };
+export const authenticated: RouteAccess = { kind: 'authenticated' };
+export const requires = (
+  permission: Permission,
+  options?: { companyParam: string },
+): RouteAccess =>
+  options
+    ? { kind: 'permission', permission, companyParam: options.companyParam }
+    : { kind: 'permission', permission };
 
 /**
  * Definición declarativa de un endpoint. El API la usa para validar la entrada,
@@ -11,6 +32,11 @@ export interface RouteDefinition {
   /** Estilo Express: `/companies/:companyId/employees` */
   readonly path: string;
   readonly summary: string;
+  /**
+   * Negado por defecto: toda ruta declara quién la puede llamar. `companyParam` nombra el
+   * parámetro de path cuya empresa debe estar en el alcance del actor.
+   */
+  readonly access: RouteAccess;
   readonly params?: z.ZodType;
   readonly query?: z.ZodType;
   readonly body?: z.ZodType;

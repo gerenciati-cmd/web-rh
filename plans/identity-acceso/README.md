@@ -13,12 +13,12 @@ endpoint is open (`apps/api/src/http/app.ts:43-47` mounts module routers with no
 
 ## Plans
 
-| Plan | Title                                           | Depends on | Purpose                                                                                                                  |
-| ---- | ----------------------------------------------- | ---------- | ------------------------------------------------------------------------------------------------------------------------ |
-| 001  | Módulo identity: usuarios, login y sesiones     | —          | `User`, argon2id, `identity.sessions`, login/logout/me, request `Actor`, throttle, ADR 0011                              |
-| 002  | Roles, permisos y protección de endpoints (TBD) | 001        | Role catalog, `(user, role, scope)` assignments, route permissions, row filtering, 403                                   |
-| 003  | Invitación, activación y reseteo (TBD)          | 002        | RRHH invites a colaborador (links `User.employeeId`), set/reset password by email, revoke on baja                        |
-| 004  | Login en web y mobile (TBD, deferred)           | 001        | Login screens, cookie handling in Next, `expo-secure-store` token in mobile — not before a UI design exists (decision 9) |
+| Plan | Title                                       | Depends on | Purpose                                                                                                                  |
+| ---- | ------------------------------------------- | ---------- | ------------------------------------------------------------------------------------------------------------------------ |
+| 001  | Módulo identity: usuarios, login y sesiones | —          | `User`, argon2id, `identity.sessions`, login/logout/me, request `Actor`, throttle, ADR 0011                              |
+| 002  | Roles, permisos y protección de endpoints   | 001        | Role catalog, `(user, role, scope)` assignments, route access in contracts, row filtering, 403, ADR 0012                 |
+| 003  | Invitación, activación y reseteo (TBD)      | 002        | RRHH invites a colaborador (links `User.employeeId`), set/reset password by email, revoke on baja                        |
+| 004  | Login en web y mobile (TBD, deferred)       | 001        | Login screens, cookie handling in Next, `expo-secure-store` token in mobile — not before a UI design exists (decision 9) |
 
 ## Dependency notes
 
@@ -61,6 +61,23 @@ endpoint is open (`apps/api/src/http/app.ts:43-47` mounts module routers with no
 12. (2026-09-29) The IP throttle has its own limit, `LOGIN_IP_MAX_FAILURES` (default 50 per
     15 min), separate from the email limit (5), and successful logins do not consume it — an
     office or a reverse proxy behind one IP must not lock everyone out.
+13. (2026-09-30) Plan 002 enforces only the **holding** and **company** scopes (Admin holding,
+    RRHH). Jefe directo and Colaborador stay in the catalog but grant nothing and cannot be
+    assigned until their data exists (manager relation; `User.employeeId` in plan 003).
+14. (2026-09-30) Only Admin holding creates companies; RRHH sees only the companies it is
+    assigned to.
+15. (2026-09-30) Role assignments are managed over HTTP by Admin holding (assign, list, revoke);
+    the seed makes `admin@example.com` Admin holding. Creating users over HTTP stays in plan 003.
+16. (2026-09-30) The deferred throttle finding (`plans/hallazgos/identity-throttle-reserva-ip.md`,
+    L3/I4/I6) is fixed in plan 002.
+17. (2026-09-30) Authorization runs before validating query and body: an anonymous or
+    unauthorized caller never sees schema errors (401/403 first). Path params are still validated
+    first because the company scope comes from them (plan 002 review R1).
+18. (2026-09-30) Duplicate active role assignments are prevented by serializing `AssignRole` per
+    user with a row lock (`SELECT … FOR UPDATE` on the user) — revised the same day: a partial
+    unique index was the first choice, but Prisma 7.10 cannot declare partial indexes and a
+    hand-written one risks being dropped by a later migration (plan 002 review R4, deviation 9).
+    Note for plan 003: once users can be disabled, the last-admin rule must ignore disabled admins.
 
 ## Delivered
 

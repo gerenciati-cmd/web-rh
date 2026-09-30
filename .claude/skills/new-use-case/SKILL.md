@@ -49,7 +49,11 @@ Primero decide: **¿cambia estado?**
 2. **Puerto**: agrega el método a `XxxQueries` devolviendo el DTO del contrato.
 3. **Adaptador Prisma** `prisma-<entidad>.queries.ts`: `select` SOLO de las columnas necesarias,
    paginación con `skip/take` + `count` en `Promise.all`. Fechas → ISO string.
-4. **Caso de uso** `<accion>.query.ts` delgado (aquí irán luego los chequeos de permisos).
+4. **Caso de uso** `<accion>.query.ts` delgado (sin chequeos de permiso aquí: el acceso se declara en el contrato con
+   `access`: `publicAccess` / `authenticated` / `requires(permission, { companyParam })`; permisos nuevos
+   van en `PERMISSIONS` de `packages/domain/src/identity/access.ts` y en `ROLE_DEFINITIONS` de
+   `identity/domain/role-catalog.ts`; el filtrado de filas va en el caso de uso con
+   `companiesWith(actor, permission)`, ADR 0012).
 5. Ruta, registro y test HTTP igual que en el command.
 
 ## No hagas

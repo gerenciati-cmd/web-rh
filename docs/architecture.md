@@ -82,9 +82,16 @@ con eso un `RequestContext` (`actor`, `client.ip/userAgent`, `cookies`) y lo pas
 argumento al handler; `requireActor(context)` lo exige donde el endpoint no admite anónimos (ver
 ADR 0011).
 
+Cada ruta declara su acceso en el contrato (`access`: pública, autenticada o con un permiso, con
+`companyParam` si el permiso se comprueba contra una empresa del path). `bindRoute` lo hace cumplir
+antes del handler contra los `grants` del actor (expandidos por petición desde sus asignaciones de
+rol): 401 sin sesión, 403 sin permiso (ADR 0012).
+
 ```
 POST /api/v1/companies/:id/employees
- → bindRoute: valida params/body con el schema de @rrhh/contracts (400 si falla)
+ → bindRoute: valida params con el schema de @rrhh/contracts (400 si falla)
+ → bindRoute: autoriza según route.access (401 sin sesión · 403 sin permiso/alcance)
+ → bindRoute: valida query/body (400 si falla; un anónimo nunca llega aquí)
  → RegisterEmployee.execute(input)
      → EmployerDirectory.find()  ──(adaptador)──▶ OrganizationApi.findCompany()
      → NationalId.create / Email.create        (value objects, Result)
@@ -105,6 +112,7 @@ POST /api/v1/companies/:id/employees
 - **Sin sesión válida** (o token desconocido/vencido) → 401 `AUTHENTICATION_REQUIRED`: error de
   adaptador (`src/http/request-context.ts`), igual que `RequestValidationError`, no una categoría
   de dominio.
+- **Sin permiso o fuera de alcance** → 403 `FORBIDDEN`: también error de adaptador (`PermissionDeniedError`).
 - **Inesperados** → se loguean completos y el cliente recibe 500 `INTERNAL_ERROR` sin detalles.
 - Los clientes reciben siempre `{ code, message, details? }` (`ApiErrorSchema`) y usan `code` para i18n.
 
@@ -139,9 +147,9 @@ awilix en modo PROXY: cada clase recibe un objeto `deps` tipado con solo lo que 
 
 ## Pendiente (siguiente etapa)
 
-- Módulo `identity`: RBAC (roles, permisos y scopes) y contexto de request (empresa) propagado a
-  los casos de uso (plan 002). Usuarios, login/logout, sesiones opacas y throttling ya existen
-  (ADR 0011).
+- Módulo `identity`: alcances de equipo (Jefe directo) y propio (Colaborador) del RBAC; los de
+  holding y empresa ya se aplican (ADR 0012). Usuarios, login/logout, sesiones opacas y
+  throttling ya existen (ADR 0011).
 - Multi-tenancy: filtro por empresa en repositorios/queries + RLS en Postgres como segunda barrera.
 - Auditoría (quién cambió qué) como módulo transversal alimentado por eventos.
 - Outbox para eventos críticos. Observabilidad (OpenTelemetry).

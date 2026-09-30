@@ -5,6 +5,7 @@ import type { CompanyDto, Page, PageQuery } from '@rrhh/contracts';
  * sin pasar por el agregado. El adaptador puede optimizar libremente (select, joins, vistas).
  */
 export interface CompanyQueries {
-  list(page: PageQuery): Promise<Page<CompanyDto>>;
+  /** `visible`: `'ALL'` o los ids de empresa que el actor puede ver. */
+  list(page: PageQuery, visible: 'ALL' | readonly string[]): Promise<Page<CompanyDto>>;
   findById(id: string): Promise<CompanyDto | null>;
 }

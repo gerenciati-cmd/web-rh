@@ -18,6 +18,9 @@ command, query, puerto hacia otro módulo). Ábrelo y replica su forma. No inven
 ## 1. Contratos (`packages/contracts/src/<modulo>/<entidad>.contract.ts`)
 
 - Schemas Zod de lectura (DTOs) y de entrada, rutas con `defineRoute(...)`.
+- Cada ruta declara `access` (`publicAccess` / `authenticated` / `requires(permission, { companyParam })`);
+  permisos nuevos en `PERMISSIONS` (`packages/domain/src/identity/access.ts`) y en `ROLE_DEFINITIONS`
+  (`identity/domain/role-catalog.ts`); filtrado de filas en el caso de uso con `companiesWith` (ADR 0012).
 - Reusar `PageQuerySchema`, `pageOf`, `CreatedSchema`, `CountrySchema` de `common.ts` (DRY).
 - Validaciones que también existen en el dominio: reusar la función del dominio (`NationalId.isValid`).
 - Exportar en `packages/contracts/src/index.ts` y agregar el grupo a `apiRoutes`.

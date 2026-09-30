@@ -2,6 +2,7 @@ import { organizationRoutes as routes } from '@rrhh/contracts';
 import { Router } from 'express';
 
 import { bindRoute, unwrap } from '@/http/bind-route';
+import { requireActor } from '@/http/request-context';
 
 import type { CreateCompany } from '../application/commands/create-company.command';
 import type { GetCompany } from '../application/queries/get-company.query';
@@ -18,7 +19,9 @@ export function createOrganizationRouter(deps: {
 }): Router {
   const router = Router();
 
-  bindRoute(router, routes.listCompanies, ({ query }) => deps.listCompanies.execute(query));
+  bindRoute(router, routes.listCompanies, ({ query }, ctx) =>
+    deps.listCompanies.execute({ ...query, actor: requireActor(ctx) }),
+  );
 
   bindRoute(router, routes.getCompany, async ({ params }) =>
     unwrap(await deps.getCompany.execute(params)),
