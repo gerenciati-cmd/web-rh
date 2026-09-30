@@ -1,5 +1,5 @@
 ---
-status: review
+status: verify
 module: identity
 min_implementer: mid
 depends_on: ['001']
@@ -201,7 +201,7 @@ identity module of plan 001 (`apps/api/src/modules/identity/domain/session.ts`,
 
 16. **Test files touched by repairs and deviation 5** (declared for `pnpm plans:scope`, R2)
     - Files: `apps/api/src/modules/identity/application/queries/get-current-user.query.test.ts` (modify), `apps/api/tests/zkteco-adms.test.ts` (modify), `apps/api/tests/authorization.test.ts` (modify), `apps/api/src/modules/identity/application/commands/assign-role.command.test.ts` (modify), `apps/api/tests/integration/identity/prisma-role-assignment.int.test.ts` (modify)
-    - Do: nothing for the implementer beyond mechanical compile fixes; the tester turns the two `it.fails` GAP tests into 401 assertions and adds regressions for R4 (unique violation → `ROLE_ALREADY_ASSIGNED`, also against Postgres).
+    - Do: nothing for the implementer beyond mechanical compile fixes; the tester turns the two `it.fails` GAP tests into 401 assertions and adds regressions for R4 (row lock: concurrent identical assignments → one active row and `ROLE_ALREADY_ASSIGNED`, also against Postgres; wording fixed after review R6).
     - Observable result: test suites green, no `it.fails` left.
 
 ## Acceptance criteria
@@ -217,7 +217,7 @@ identity module of plan 001 (`apps/api/src/modules/identity/domain/session.ts`,
 - [ ] `GET /openapi.json` (non-production): `/auth/login` has `security: []`; business operations carry `x-permission`; the Error response mentions 403.
 - [ ] Login throttle: a login whose email key is blocked does not reserve the IP key (finding L3) — checked in tests; the finding is `planned`.
 - [ ] Anonymous requests with an invalid query or body get 401 (not 400); a caller without permission gets 403 before any body validation (step 15, R1).
-- [ ] Two identical active assignments cannot coexist, even when requested concurrently: the second gets 409 `ROLE_ALREADY_ASSIGNED` (step 15, R4); the index migration has no DROP.
+- [ ] Two identical active assignments cannot coexist, even when requested concurrently: the second gets 409 `ROLE_ALREADY_ASSIGNED` (step 15, R4, row lock on the user); no migration is added by the repair (wording fixed after review R6).
 
 ## Test layers required
 
@@ -463,5 +463,69 @@ bloqueada y libera solo lo reservado), OpenAPI (`security: []`, `x-permission`, 
 
 **Resultado**: el estado sigue en `review`. R1 necesita decisión del usuario; R2 y R3 son cambios
 del plan/docs; R4 y R5 no bloquean.
+
+_Ronda 1 conservada como historia; superseded por la ronda 2 para el código reparado._
+
+### Ronda 2 (reviewer, 2026-09-30)
+
+Diff `5ff4521..HEAD` (fix 004b287, tests 3134c5d) y `main...HEAD` completo. El cambio sin
+commitear en `plans/platform-openapi/001-documento-y-referencia-scalar.md` es del usuario: se ignora.
+
+#### Checklist (13/13)
+
+- [x] `pnpm plans:scope`: el único "fuera de alcance" es el archivo del usuario (sale con 1 solo por
+      él). 69 declarados / 71 cambiados; ya no hay "declarados sin cambios". Hot files: el cambio
+      de `test-app.ts` en la reparación (argumento del constructor) está declarado en el paso 12.
+- [x] `pnpm check` verde, ejecutado en vivo (turbo 19/19, `arch:check` sin violaciones, plans/harness/quality ok).
+- [x] `pnpm test:integration` verde en vivo (8 archivos, 59 tests).
+- [x] Reglas de negocio en `domain/`; el bloqueo y el duplicado siguen en el command (necesitan repositorio).
+- [x] CQRS: `lockUser` es un método de consistencia de escritura, no de pantalla.
+- [x] Tipos desde `@rrhh/contracts`.
+- [x] Errores esperados como `Result`; `lockUser` false → `UserNotFoundError`.
+- [x] Fechas/ids por `Clock`/`IdGenerator`; sin dinero.
+- [x] Sin migración nueva en la reparación; el directorio vacío `20260930154816_…` ya no existe.
+- [x] DI: `transactionRunner` se resuelve (Prisma en `container.ts:79`, noop en `test-app.ts:90`); `container.test.ts` verde.
+- [x] Sin secretos ni datos personales reales.
+- [x] Deviations honestas: comprobada la 11 (`InMemoryRoleAssignmentRepository({ userRepository })`,
+      `NoopTransactionRunner` en `assign-role.command.test.ts`, directorio fuera de la transacción).
+- [x] Docs al día: ADR 0012 y `docs/architecture.md` describen params → autorizar → query/body;
+      recetas `new-use-case`/`new-module` apuntan a `access` (R3); README decisiones 17-18.
+
+#### Verificación de R1-R5
+
+- **R1 resuelto** (`apps/api/src/http/bind-route.ts:44-61`): `params` → contexto → `authorize` →
+  `query`/`body`. Rutas públicas (`logIn`) y `authenticated` sin cambio de comportamiento; con
+  permiso, un body/query inválido sigue siendo 400. Tests: anónimo body/query → 401, HR → 403,
+  admin → 400, `:userId` inválido anónimo → 400 (por diseño, ADR 0012).
+- **R2 resuelto**: paso 8 con el directorio real; tests tocados declarados en el paso 16.
+- **R3 resuelto**: ambas recetas actualizadas.
+- **R4 resuelto (bloqueo de fila)** (`assign-role.command.ts:73-88`,
+  `prisma-role-assignment.repository.ts` `lockUser`): `lockUser`, lectura de duplicados y `save`
+  dentro de `transactionRunner.run`; los repos usan `database.client`, que toma la transacción de
+  AsyncLocalStorage (`prisma-database.ts:25-33`), así que el `FOR UPDATE` y la lectura van en la
+  misma transacción. En READ COMMITTED, la segunda transacción lee tras obtener el bloqueo y ve la
+  fila ya confirmada. Riesgo de deadlock revisado: solo se bloquea una fila de `users`; el INSERT
+  con FK toma `FOR KEY SHARE` sobre la misma fila en la misma transacción (compatible). Eventos se
+  publican tras el commit. El test de integración concurrente es real (dos transacciones Prisma,
+  pausa de 100 ms) y el tester documentó que falla sin el bloqueo.
+- **R5 resuelto** (`apps/api/prisma/seed.ts:81-83`): `pageSize: 100` (máximo del contrato) y coincidencia exacta.
+
+#### Hallazgos
+
+**Low (solo texto del plan, sin cambio de código)**
+
+- **R6 — Texto del plan desactualizado tras la revisión de la decisión 18**: el criterio de
+  aceptación de la línea 220 dice "the index migration has no DROP" y el paso 16 (línea 204) habla
+  de "unique violation → `ROLE_ALREADY_ASSIGNED`"; ya no hay índice ni migración (deviations 9-10).
+  Escenario: el verifier busca una migración de índice que no existe. Arreglo de la sesión
+  principal: reescribir ambas frases al bloqueo de fila. No bloquea verify.
+
+Recorridos sin hallazgos: orden de `bindRoute` (401/403 antes que 400; `companyParam` sin
+`params` sigue siendo 500 de programación, igual que antes), `saved` cortocircuita sin publicar
+evento, `lockUser` false tras un borrado concurrente → `USER_NOT_FOUND` sin fila, consulta al
+directorio de organization fuera de la transacción, seed doble (la transacción anidada se une a la
+externa si la hubiera).
+
+**Resultado ronda 2**: sin hallazgos que requieran código. Estado → `verify`.
 
 ## Verification
