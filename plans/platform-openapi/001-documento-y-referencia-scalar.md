@@ -1,5 +1,5 @@
 ---
-status: review
+status: verify
 module: platform
 min_implementer: mid
 depends_on: []
@@ -484,6 +484,94 @@ path params required, no stray `$ref`/`$defs` besides `ApiError`.
    publish the API map. Plus Deviation 6: the unpinned CDN bundle runs on the API origin, which
    the development `CORS_ORIGINS` now trusts for cookie-authenticated mutations (dev-only,
    accepted in the plan).
+
+No findings require code changes. Plan to `verify`.
+
+### Review — repair round 1 (2026-09-30)
+
+Reviewer subagent. Scope: commits `dc07837` (fix) and `4bca49c` (tests) against step 6 and
+"### Repair round 1" in Deviations. The review above is history and does not cover this code.
+Working tree clean at `4bca49c`.
+
+#### Pass 1 — Checklist: 13/13
+
+- [x] `pnpm plans:scope … --base origin/main` reports all changes in scope
+      (17 declared, 20 changed). The only hot file is `packages/contracts/src/index.ts`,
+      and its change is still the single appended `export * from './openapi'`. Previous Low 1
+      (procedural) is closed: `.prettierignore` and `apps/api/tests/docs.test.ts` are now listed
+      in step 6.
+- [x] `pnpm check`: `Tasks: 19 successful, 19 total`. `@rrhh/contracts` 47 tests
+      (`openapi.test.ts` 15). `@rrhh/api` 186 tests (`docs.test.ts` 6). Arch
+      `no dependency violations found (156 modules)`. Harness 161/161, bootstrap 17/17,
+      quality 9/9, `plans:lint` clean. Web and mobile typecheck green, which matters because
+      the contracts changed.
+- [x] `infrastructure/`: not touched. Integration N/A.
+- [x] No business rules added. `.meta({ id })` only adds documentation metadata.
+- [x] CQRS-lite: N/A.
+- [x] Types come from contracts. The named models are the contract schemas themselves.
+- [x] Errors: N/A for endpoints. The builder throws only on invalid catalogues, which are
+      programmer errors at build or test time, so an exception is correct there.
+- [x] Money, dates, Clock, IdGenerator: N/A.
+- [x] No schema change.
+- [x] No DI registrations. `tests/container.test.ts` green.
+- [x] No secrets or personal data.
+- [x] Deviations are honest. Spot-checked three claims. `openapi.json` is 713 lines now and
+      was 1119 at `dc07837^`. `docs.router.ts:15,48` pins the CDN to
+      `…/@scalar/api-reference@1.72.2`. In installed `@scalar/client-side-rendering@0.4.5`
+      (`html-rendering.js:183,196`), passing `cdn` selects the UMD
+      `<script src="${cdn}"${nonce}>`, so the nonce and CSP path is unchanged.
+- [x] Docs: `docs/conventions.md` has the model-naming rule, and the README has decision 6.
+      Nothing is stale.
+
+#### Pass 2 — Bug hunt
+
+No Critical, High or Medium findings. I checked these points:
+
+- **Flow.** `.meta({ id })` goes into Zod's `globalRegistry`, then `z.toJSONSchema`, which
+  puts a root `$ref` and `$defs` in the output. `toSchema` (`openapi.ts:145-171`) hoists the
+  defs and rewrites refs recursively inside both the defs and the rest. The committed file
+  has no `$defs`, no `#/$defs/` and no `__schema`. Every `$ref` points to an existing
+  `components.schemas` or `components.responses` key.
+- **io.** `CreateCompanyInput`, `RegisterEmployeeInput` and `LogInInput` are used only as
+  input. They correctly lack `additionalProperties: false`, unlike the output models. No
+  named model is used in both input and output, so the collision guard does not fire on the
+  real catalogue.
+- **Registry side effects.** In Zod 4.6.5, `$ZodRegistry.add` (`zod/v4/core/registries.js:9-16`)
+  overwrites the entry on a duplicate id and does not throw. Re-evaluating a module (Next or
+  Expo HMR, several Vitest files) is therefore safe. `get` drops `id` for derived schemas
+  (`:34`), so `.extend()` or `.optional()` copies are not named by accident.
+- **Consumers.** `ApiErrorSchema.safeParse` in `packages/api-client/src/client.ts:106` and all
+  `z.infer`/`z.input` types are unaffected. `.meta` returns a clone with identical parsing.
+- **Ordering.** `ApiError` is hoisted after the route loop but before `sortedByKey`, so it
+  lands in `components.schemas` and in sorted order.
+
+**Low**
+
+1. **Test gap: the CDN pin is not asserted** (`apps/api/tests/docs.test.ts`, the new CSP test).
+   `script-src` allows the whole `https://cdn.jsdelivr.net` host. If a future edit drops
+   `cdn: SCALAR_BUNDLE` (`docs.router.ts:48`), the page silently falls back to the unpinned
+   `DEFAULT_CDN`, and all 6 http tests still pass. The step 6 promise (Deviation 6 closed)
+   would then regress unnoticed until someone looks at the browser. A one-line assertion
+   would close it: `expect(response.text).toContain('@scalar/api-reference@1.72.2')`. This is
+   a tester-only change and does not block.
+
+**Info (uncertain or optional)**
+
+2. **`script-src` could be narrowed now that the bundle is pinned** (`docs.router.ts:38`).
+   The host-wide `https://cdn.jsdelivr.net` also allows any other npm package from jsdelivr to
+   load on the API origin, and in development that origin is trusted by `CORS_ORIGINS`.
+   With the pin, the source could be the exact bundle URL. This was already true before this
+   round (dev-only), so it is optional hardening and not a regression. If done, it needs a live
+   check that the UMD bundle loads no further scripts from the same host.
+3. **Uncertain: `sortedByKey` uses `localeCompare` with no locale** (`openapi.ts:185-187`). The
+   order of `components.schemas` depends on the ICU default locale of the running process. For
+   today's ASCII PascalCase ids it matches in all common locales. Some collations reorder
+   letters, for example Estonian sorts `z` after `s`, and in such a locale the committed
+   snapshot could differ. A code-point comparison (`a < b ? -1 : 1`) would make it
+   locale-independent. I did not reproduce this; it is theoretical here.
+4. **For the verifier:** the pinned `1.72.2` bundle URL has its own live check only in the
+   implementer's Deviations (headless Chrome, 0 CSP lines). The previous PASS verification
+   loaded the unpinned URL and does not cover this round.
 
 No findings require code changes. Plan to `verify`.
 
