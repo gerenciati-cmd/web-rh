@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
+import type { CountryCode } from '../country';
+import { InvalidValueError } from '../errors';
+
 import { TaxId } from './tax-id';
 
 describe('TaxId', () => {
@@ -56,5 +59,14 @@ describe('TaxId', () => {
   it('Colombia: TaxId.isValid coincide con el resultado de create', () => {
     expect(TaxId.isValid('CO', '900.123.456-8')).toBe(true);
     expect(TaxId.isValid('CO', '900123456-9')).toBe(false);
+  });
+
+  // Regresión: filas viejas con country = 'CL' llegaban por cast y lanzaban TypeError.
+  it('rechaza con InvalidValueError un país fuera de SUPPORTED_COUNTRIES en vez de lanzar', () => {
+    const country = 'CL' as CountryCode;
+    const result = TaxId.create(country, '760864285');
+    expect(result.ok).toBe(false);
+    expect(!result.ok && result.error).toBeInstanceOf(InvalidValueError);
+    expect(TaxId.isValid(country, '760864285')).toBe(false);
   });
 });
