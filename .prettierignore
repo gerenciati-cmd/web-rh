@@ -8,6 +8,8 @@ dist
 coverage
 apps/mobile/ios
 apps/mobile/android
+# Generado por packages/contracts/src/openapi.test.ts (su formato es JSON.stringify del snapshot)
+packages/contracts/openapi.json
 # Adaptadores generados por scripts/harness/sync.mjs (su formato lo define el generador)
 .claude/agents
 .claude/skills/planear

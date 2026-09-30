@@ -3,6 +3,7 @@ export * from './employees/employee.contract';
 export * from './http';
 export * from './identity/auth.contract';
 export * from './organization/company.contract';
+export * from './openapi';
 
 import { employeeRoutes } from './employees/employee.contract';
 import { authRoutes } from './identity/auth.contract';

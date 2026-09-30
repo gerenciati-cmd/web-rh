@@ -9,6 +9,7 @@ import { pinoHttp } from 'pino-http';
 import { modules, type AppContainer } from '@/container';
 
 import { createAuthenticate } from './authenticate';
+import { createDocsRouter } from './docs.router';
 import { errorHandler, notFoundHandler } from './error-handler';
 import { createHealthRouter } from './health.router';
 
@@ -42,6 +43,12 @@ export function createApp(container: AppContainer): Express {
   app.use(cookieParser());
 
   app.use('/health', createHealthRouter({ healthChecks }));
+
+  // Antes del API autenticado: la referencia no necesita sesión. Nunca en producción (no se
+  // publica el mapa de la API de RRHH).
+  if (env.NODE_ENV !== 'production') {
+    app.use(API_PREFIX, createDocsRouter({ openApiUrl: `${API_PREFIX}/openapi.json` }));
+  }
 
   const api = Router();
   for (const module of modules) {

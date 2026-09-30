@@ -2,11 +2,15 @@ import { SUPPORTED_COUNTRIES } from '@rrhh/domain';
 import { z } from 'zod';
 
 /** Forma única de error en toda la API. `code` es estable (sirve para i18n en clientes). */
-export const ApiErrorSchema = z.object({
-  code: z.string(),
-  message: z.string(),
-  details: z.record(z.string(), z.unknown()).optional(),
-});
+// `.meta({ id })` nombra el modelo en el documento OpenAPI (`components.schemas`); no cambia la
+// validación. Solo se nombran modelos de cuerpo; params/query se expanden como parámetros.
+export const ApiErrorSchema = z
+  .object({
+    code: z.string(),
+    message: z.string(),
+    details: z.record(z.string(), z.unknown()).optional(),
+  })
+  .meta({ id: 'ApiError' });
 export type ApiErrorBody = z.infer<typeof ApiErrorSchema>;
 
 export const PageQuerySchema = z.object({
@@ -30,7 +34,7 @@ export interface Page<T> {
   pageSize: number;
 }
 
-export const CreatedSchema = z.object({ id: z.uuid() });
+export const CreatedSchema = z.object({ id: z.uuid() }).meta({ id: 'Created' });
 export type Created = z.infer<typeof CreatedSchema>;
 
 export const CountrySchema = z.enum(SUPPORTED_COUNTRIES);
