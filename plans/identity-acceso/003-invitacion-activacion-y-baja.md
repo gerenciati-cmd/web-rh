@@ -167,16 +167,16 @@ cross-module adapter: `identity/infrastructure/organization-company-directory.ts
 
 ## Acceptance criteria
 
-- [ ] `pnpm check` and `pnpm test:integration` pass; web and mobile typecheck.
-- [ ] Migration `*_create_invitations` adds `users.employee_id` (unique, nullable, no FK) and `identity.invitations`; no DROP.
-- [ ] HR of company A: `POST /companies/A/employees/:id/invitations` → 201 `{ id, email, expiresAt }` (email = ficha's by default, or the one sent); for company B → 403; employee of another company or unknown → 404 `EMPLOYEE_NOT_FOUND`; terminated employee → 422 `EMPLOYEE_INACTIVE`; already linked → 409 `EMPLOYEE_ALREADY_HAS_ACCESS`; email already registered → 409 `EMAIL_ALREADY_REGISTERED`.
-- [ ] Inviting again supersedes the previous invitation: the old token no longer activates.
-- [ ] `POST /invitations` (external): Admin holding → 201; HR → 403.
-- [ ] With `pnpm dev:api` + `pnpm dev:worker` + Mailpit, the invitation email arrives in Mailpit (http://localhost:8025) with the activation link; the job does not remain in Valkey after completion.
-- [ ] `POST /auth/activate` with the token and a valid password → 204; login then works; `/auth/me` returns `employeeId`; the new user has exactly one active `EMPLOYEE` assignment with the colaborador's company; a second activation with the same token, an expired, superseded or unknown token → 422 `INVITATION_NOT_VALID` (same body); weak password → 422 `WEAK_PASSWORD`.
-- [ ] External activation creates a user with `employeeId: null` and no role.
-- [ ] Publishing `employees.employee.terminated` for a linked colaborador disables the user, revokes all their sessions (next request 401) and supersedes pending invitations — **checked by tests** (no terminate endpoint exists yet; see Out of scope).
-- [ ] The last-admin rule ignores disabled admins.
+- [x] `pnpm check` and `pnpm test:integration` pass; web and mobile typecheck.
+- [x] Migration `*_create_invitations` adds `users.employee_id` (unique, nullable, no FK) and `identity.invitations`; no DROP.
+- [x] HR of company A: `POST /companies/A/employees/:id/invitations` → 201 `{ id, email, expiresAt }` (email = ficha's by default, or the one sent); for company B → 403; employee of another company or unknown → 404 `EMPLOYEE_NOT_FOUND`; terminated employee → 422 `EMPLOYEE_INACTIVE`; already linked → 409 `EMPLOYEE_ALREADY_HAS_ACCESS`; email already registered → 409 `EMAIL_ALREADY_REGISTERED`.
+- [x] Inviting again supersedes the previous invitation: the old token no longer activates.
+- [x] `POST /invitations` (external): Admin holding → 201; HR → 403.
+- [x] With `pnpm dev:api` + `pnpm dev:worker` + Mailpit, the invitation email arrives in Mailpit (http://localhost:8025) with the activation link; the job does not remain in Valkey after completion.
+- [x] `POST /auth/activate` with the token and a valid password → 204; login then works; `/auth/me` returns `employeeId`; the new user has exactly one active `EMPLOYEE` assignment with the colaborador's company; a second activation with the same token, an expired, superseded or unknown token → 422 `INVITATION_NOT_VALID` (same body); weak password → 422 `WEAK_PASSWORD`.
+- [x] External activation creates a user with `employeeId: null` and no role.
+- [x] Publishing `employees.employee.terminated` for a linked colaborador disables the user, revokes all their sessions (next request 401) and supersedes pending invitations — **checked by tests** (no terminate endpoint exists yet; see Out of scope).
+- [x] The last-admin rule ignores disabled admins.
 
 ## Test layers required
 
@@ -420,3 +420,66 @@ revokedAt: null`, then `false` if the row exists, else `create`). Neither adapte
 Count for round 3: 0 high, 0 medium, 0 low, 1 nit. Status → `verify`.
 
 ## Verification
+
+Verifier run (2026-09-30, main session inline), on `455f6b7` (after review round 3). **Result: PASS.**
+
+**Suites**
+
+- `pnpm check`: green. api 410 passed + 2 skipped (the two NOT CONFIRMED `it.skip`, exercised below), contracts 107, domain 51, web and mobile typecheck; arch, plans lint, harness, hooks, bootstrap and quality all ok.
+- `pnpm test:integration`: `Test Files 9 passed (9)`, `Tests 84 passed (84)`.
+- `pnpm --filter @rrhh/api db:deploy` on the dev DB: `4 migrations found … No pending migrations to apply.`
+
+**Running app** (`pnpm --filter @rrhh/api dev` on :3001 + `pnpm --filter @rrhh/api dev:worker` (`worker listo … jobs: ["identity.send-invitation-email"]`) + Mailpit/Valkey/Postgres from `pnpm db:up`)
+
+- Setup: I created `verif3-admin` (HOLDING_ADMIN) and `verif3-hr` (HR of APS Holding) through the real use cases.
+- Invite matrix:
+  - anonymous → 401 `AUTHENTICATION_REQUIRED`
+  - HR of the holding on the Colombia path → 403 `FORBIDDEN`
+  - unknown employee → 404 `EMPLOYEE_NOT_FOUND`
+  - admin on seed employee Ana under the Colombia path → 404, with the same body
+  - `email: "x"` → 400 `VALIDATION_ERROR`
+  - an already registered email → 409 `EMAIL_ALREADY_REGISTERED`
+  - HR invites Ana → 201 `{id, email: "ana.rojas@example.com", expiresAt: +7 days}`, the ficha email by default
+- Email:
+  - "Activa tu acceso a RRHH APS" arrived in Mailpit, with the link `http://localhost:3000/activar?token=…`.
+  - After the jobs completed, the only keys left under `bull:default:*` in Valkey were `stalled-check`, `id`, `events` and `meta`: no job hash stayed behind.
+  - The API and worker logs contain no `token=` (0 matches).
+- Re-invite:
+  - With an edited email (`verif3-ana@…`) → 201, and a second email arrived with a different token.
+  - The old token → 422 `INVITATION_NOT_VALID`. In the DB the first invitation has `revoked_at` set.
+- External invite: HR → 403; admin → 201, and its email arrived.
+- Activation:
+  - Unknown token → 422 `INVITATION_NOT_VALID`, with the same body as the superseded one.
+  - Weak password → 422 `WEAK_PASSWORD`.
+  - Valid token → 204. Reusing that token → 422 `INVITATION_NOT_VALID`.
+  - Login → 200, and `/auth/me` → `{"employeeId":"01a0f2c4-7e50-…"}`.
+  - DB: exactly one active `EMPLOYEE` assignment, with `company_id` = APS Holding.
+  - The new account gets 403 on the employees list.
+  - Inviting Ana again → 409 `EMPLOYEE_ALREADY_HAS_ACCESS`.
+  - External activation → 204, `/auth/me` shows `employeeId: null`, and the user has no role row.
+- Termination, against the real DB, beyond the tests:
+  - Setup:
+    - I registered two verification colaboradores over HTTP (e1 and e2). e1 was invited, activated, logged in, and its session answered `/auth/me` 200. e2 was invited and left pending.
+    - A temporary script then terminated both through `employeeRepository` and published `employees.employee.terminated` on a container with `wireSubscriptions`, the same wiring as `main/http.ts`.
+  - Result:
+    - e1's existing session → 401, and login with the right password → 401 `INVALID_CREDENTIALS`, the same body as a wrong password.
+    - DB: e1 is `DISABLED`, with 0 of its 2 sessions still open.
+    - e2's pending invitation has `revoked_at` set, and its token → 422.
+    - HR inviting e2 → 422 `EMPLOYEE_INACTIVE`.
+  - Note: the first attempt of that script built the container without `wireSubscriptions`, so nothing reacted to the event. That was my script's mistake, not a product defect: `main/http.ts:11` and `main/worker.ts:17` both wire the subscriptions.
+
+**Acceptance criteria**: all met.
+
+- The last-admin rule for disabled admins is **checked by tests** (`revoke-role-assignment.command.test.ts`, `prisma-role-assignment.int.test.ts`). I did not exercise it over HTTP, because doing so would disable a real admin.
+
+**NOT VERIFIED**
+
+- The real concurrent interleaving of an activation and a termination. The conditional write is covered by integration tests (`Promise.all`).
+- The page `/activar` on the web, which comes with plan 004.
+
+**Leftover dev data from this run** (not deleted: destructive SQL is blocked for agents):
+
+- users `verif3-{admin,hr,ana,ext,e1}@example.test`
+- employees `verif3-e1` and `verif3-e2` (TERMINATED)
+- their invitations
+- seed employee Ana is now linked to `verif3-ana`
