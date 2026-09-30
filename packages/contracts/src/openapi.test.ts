@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
+import { z } from 'zod';
 
+import type { RouteDefinition } from './http';
+import { defineRoute } from './http';
 import { apiRoutes, buildOpenApiDocument } from './index';
 
 // `openapi.json` versionado: si cambia un contrato sin regenerarlo, este test falla en
@@ -92,14 +95,133 @@ describe('buildOpenApiDocument', () => {
     expect(document.security).toEqual([{ bearerAuth: [] }, { cookieAuth: [] }, {}]);
   });
 
-  it('cada operación referencia ApiError en los códigos de error declarados', () => {
-    const createCompany = document.paths['/companies']?.post;
-    for (const code of ['400', '401', '404', '409', '500']) {
-      expect(createCompany?.responses[code]).toMatchObject({
-        content: {
-          'application/json': { schema: { $ref: '#/components/schemas/ApiError' } },
-        },
-      });
+  // Ronda de reparación 1 (README decisión 6): las 5 respuestas de error por operación se
+  // reemplazaron por una sola `components.responses.Error`, referenciada como `default`
+  // (`openapi.ts:110-113`). Reemplaza el test anterior, que esperaba 400/401/404/409/500 por
+  // operación (comportamiento ya no vigente).
+  it('cada operación referencia components.responses.Error como respuesta default', () => {
+    const createCompany = document.paths['/companies']?.post as {
+      responses: Record<string, unknown>;
+    };
+    expect(createCompany.responses.default).toEqual({ $ref: '#/components/responses/Error' });
+    expect(createCompany.responses).not.toHaveProperty('400');
+    expect(createCompany.responses).not.toHaveProperty('401');
+  });
+
+  it('components.responses.Error referencia components.schemas.ApiError', () => {
+    const errorResponse = (
+      document as unknown as {
+        components: { responses: { Error: { content: Record<string, unknown> } } };
+      }
+    ).components.responses.Error;
+    expect(errorResponse.content).toMatchObject({
+      'application/json': { schema: { $ref: '#/components/schemas/ApiError' } },
+    });
+  });
+
+  it('los modelos nombrados con .meta({ id }) del catálogo real quedan en components.schemas, sin copias en línea', () => {
+    for (const id of [
+      'ApiError',
+      'Created',
+      'Company',
+      'CreateCompanyInput',
+      'EmployeeListItem',
+      'RegisterEmployeeInput',
+      'SessionUser',
+      'LogInInput',
+      'LogInResponse',
+    ]) {
+      expect(document.components.schemas[id]).toBeDefined();
     }
+    const createCompanyBody = (
+      document.paths['/companies']?.post as unknown as {
+        requestBody: { content: { 'application/json': { schema: unknown } } };
+      }
+    ).requestBody.content['application/json'].schema;
+    expect(createCompanyBody).toEqual({ $ref: '#/components/schemas/CreateCompanyInput' });
+  });
+});
+
+/**
+ * Casos límite del generador que la revisión pidió cubrir (hallazgos 2 y 3, ronda de
+ * reparación 1): los `throw` de `openapi.ts` ante catálogos inválidos. Cada catálogo es
+ * mínimo y ad hoc — no viene de `apiRoutes` real — porque el propósito es forzar la condición,
+ * no describir una ruta real del producto.
+ */
+describe('buildOpenApiDocument — catálogos inválidos (finding 2 y 3 de la revisión)', () => {
+  type Catalogue = Readonly<Record<string, Readonly<Record<string, RouteDefinition>>>>;
+
+  it('lanza si dos rutas del catálogo comparten método y path', () => {
+    const duplicated: Catalogue = {
+      moduleA: {
+        one: defineRoute({
+          method: 'GET',
+          path: '/duplicated',
+          summary: 'Primera',
+          response: z.string(),
+        }),
+      },
+      moduleB: {
+        two: defineRoute({
+          method: 'GET',
+          path: '/duplicated',
+          summary: 'Segunda',
+          response: z.string(),
+        }),
+      },
+    };
+
+    expect(() => buildOpenApiDocument(duplicated)).toThrow(/está definida dos veces/);
+  });
+
+  it('lanza si Zod extrae un $def anónimo (esquema recursivo sin .meta({ id }))', () => {
+    // Un esquema que se referencia a sí mismo en una posición que no es la raíz obliga a Zod a
+    // hoistearlo a `$defs` con un id arbitrario (`__schema0`) cuando no tiene `.meta({ id })`.
+    const nodeSchema: z.ZodType = z.lazy(() => z.object({ value: z.string(), next: nodeSchema }));
+    const wrapper = z.object({ a: nodeSchema, b: nodeSchema });
+    const anonymous: Catalogue = {
+      moduleA: {
+        one: defineRoute({
+          method: 'GET',
+          path: '/anonymous',
+          summary: 'Recursivo sin nombre',
+          response: wrapper,
+        }),
+      },
+    };
+
+    expect(() => buildOpenApiDocument(anonymous)).toThrow(/esquema extraído sin nombre/);
+  });
+
+  it('lanza si dos modelos usan el mismo .meta({ id }) con formas distintas', () => {
+    const dupA = z.object({ x: z.string() }).meta({ id: 'Dup' });
+    const dupB = z.object({ y: z.number() }).meta({ id: 'Dup' });
+    const collision: Catalogue = {
+      moduleA: {
+        one: defineRoute({ method: 'GET', path: '/dup-a', summary: 's', response: dupA }),
+        two: defineRoute({ method: 'GET', path: '/dup-b', summary: 's', response: dupB }),
+      },
+    };
+
+    expect(() => buildOpenApiDocument(collision)).toThrow(/tiene dos formas distintas/);
+  });
+
+  it('lanza si un esquema de params/query lleva .meta({ id }) (se perdería como $ref)', () => {
+    const namedParams = z.object({ companyId: z.uuid() }).meta({ id: 'NamedParams' });
+    const badParams: Catalogue = {
+      moduleA: {
+        one: defineRoute({
+          method: 'GET',
+          path: '/named-params/:companyId',
+          summary: 's',
+          params: namedParams,
+          response: z.string(),
+        }),
+      },
+    };
+
+    expect(() => buildOpenApiDocument(badParams)).toThrow(
+      /los esquemas de path no deben llevar \.meta\(\{ id \}\)/,
+    );
   });
 });

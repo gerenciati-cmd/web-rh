@@ -1,5 +1,5 @@
 ---
-status: testing
+status: review
 module: platform
 min_implementer: mid
 depends_on: []
@@ -337,6 +337,73 @@ Scalar in a browser with no CSP console errors, the four login/listing flows per
 the rendered Scalar page, and the cookie flow's dependency on the user's own `apps/api/.env`
 `CORS_ORIGINS`. No GAP found: the http/contract layers behave exactly as the plan and code
 describe; nothing promised by the plan is missing from the implementation at these layers.
+
+### Test coverage — repair round 1 (2026-09-30)
+
+Scope: step 6 (dedup, pinned CDN, review findings 1–4). The table above covers the pre-repair
+code and does not cover the dedup/error-consolidation/throws below; it stays as history.
+
+Baseline `pnpm check` (before touching tests): **1 failing test**, exactly the one the Deviations
+section predicted —
+`packages/contracts/src/openapi.test.ts › buildOpenApiDocument › cada operación referencia
+ApiError en los códigos de error declarados` — asserting the removed per-operation 400/401/
+404/409/500 shape against the new `default: { $ref: '#/components/responses/Error' }`
+(`openapi.ts:110-113`). `@rrhh/contracts` 41 tests (5 files); the other 18 tasks green.
+
+Changes (test-only, no product code touched — `git status --porcelain` shows only
+`packages/contracts/src/openapi.test.ts` and `apps/api/tests/docs.test.ts` modified):
+
+- Replaced the failing test (role purity: a test-only correction per `tester.md` §Repair
+  handoff, not a product fix) with two that match the current shape: `default` references
+  `#/components/responses/Error`, and that response's content references `ApiError`. Added a
+  third asserting the 9 `.meta({ id })` models land in `components.schemas` and a body
+  (`CreateCompanyInput`) is referenced by `$ref`, not inlined — the dedup's core promise.
+- Added `describe('buildOpenApiDocument — catálogos inválidos …')` with one test per new
+  `throw` in `openapi.ts`, each built from a minimal ad hoc catalogue (not `apiRoutes`) crafted
+  to force the exact condition, verified against real Zod 4.6.5 output before writing the
+  assertion (probed empirically: a schema reused only by object identity does _not_ hoist to
+  `$defs` without `.meta({ id })`; a self-referencing schema at a non-root position does, as
+  `__schema0` — confirmed with a throwaway script, not guessed):
+  - two catalogue entries sharing method+path → `/está definida dos veces/` (finding 3).
+  - a `z.lazy` self-reference without `.meta({ id })`, reused twice → Zod emits `$defs.__schema0`
+    → `/esquema extraído sin nombre/` (finding 2, the anonymous-id half).
+  - two different schemas both `.meta({ id: 'Dup' })` with different shapes, used in different
+    operations → `/tiene dos formas distintas/` (finding 2, the id-collision half).
+  - a `params` schema carrying `.meta({ id })` → top-level `$ref`, no `properties` → `/los
+esquemas de path no deben llevar/` (finding 2, the params/query half).
+- `apps/api/tests/docs.test.ts`: two new tests for finding 4 (CSP assertion). One reads the
+  `content-security-policy` header on `GET /api/v1/docs`, confirms `script-src` carries both
+  `'self'` and `https://cdn.jsdelivr.net`, no `upgrade-insecure-requests`, extracts the nonce
+  from the header and confirms the same value appears in a `nonce="…"` attribute of the
+  returned HTML. The other confirms `GET /api/v1/companies` keeps the global `helmet()` CSP
+  (no `cdn.jsdelivr.net`, no `nonce-`) — the relaxed policy does not leak past `/docs`.
+
+Closing `pnpm check`: green, **19/19 tasks**. `@rrhh/contracts` 47 tests (5 files,
+`openapi.test.ts` now 15, +6 net). `@rrhh/api` 186 tests (25 files, `docs.test.ts` now 6, +2).
+`arch:check` no dependency violations (156 modules). `plans:lint` unaffected by this change.
+Ran individually before the closing run: `pnpm --filter @rrhh/contracts exec vitest run
+src/openapi.test.ts` (15/15), `pnpm --filter @rrhh/api exec vitest run tests/docs.test.ts`
+(6/6), plus `typecheck`/`lint` on both packages (both clean after fixing import order and a
+`prefer-const` the linter caught in the first draft of the recursive-schema test).
+
+| Behavior (from plan / code)                                                                                            | Source (`file:line`)                                                                                 | Layer    | Test                                                                                            | State     |
+| ---------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- | -------- | ----------------------------------------------------------------------------------------------- | --------- |
+| Error responses consolidated to one `components.responses.Error`, referenced as `default` per operation                | `openapi.ts:51-56,110-113`                                                                           | contract | `openapi.test.ts › cada operación referencia components.responses.Error como respuesta default` | CONFIRMED |
+| `components.responses.Error.content` references `#/components/schemas/ApiError`                                        | `openapi.ts:40,52-54`                                                                                | contract | `openapi.test.ts › components.responses.Error referencia components.schemas.ApiError`           | CONFIRMED |
+| The 9 `.meta({ id })` models land in `components.schemas`; a request body is `$ref`'d, not inlined                     | `openapi.ts:145-171`, `common.ts`, `company.contract.ts`, `employee.contract.ts`, `auth.contract.ts` | contract | `openapi.test.ts › los modelos nombrados … quedan en components.schemas, sin copias en línea`   | CONFIRMED |
+| Duplicate method+path in the catalogue throws instead of overwriting silently (finding 3)                              | `openapi.ts:32-35`                                                                                   | contract | `openapi.test.ts › lanza si dos rutas del catálogo comparten método y path`                     | CONFIRMED |
+| A `$def` with no explicit id (anonymous, e.g. an unnamed recursive schema) throws (finding 2)                          | `openapi.ts:160-162`                                                                                 | contract | `openapi.test.ts › lanza si Zod extrae un $def anónimo …`                                       | CONFIRMED |
+| The same `.meta({ id })` used by two schemas with different JSON shapes throws (finding 2)                             | `openapi.ts:163-167`                                                                                 | contract | `openapi.test.ts › lanza si dos modelos usan el mismo .meta({ id }) con formas distintas`       | CONFIRMED |
+| A `params`/`query` schema carrying `.meta({ id })` throws instead of silently dropping its parameters (finding 2)      | `openapi.ts:126-129`                                                                                 | contract | `openapi.test.ts › lanza si un esquema de params/query lleva .meta({ id }) …`                   | CONFIRMED |
+| `/docs`'s relaxed CSP allows the pinned Scalar CDN via a per-request nonce, no `upgrade-insecure-requests` (finding 4) | `docs.router.ts:36-41`                                                                               | http     | `docs.test.ts › la CSP de /docs permite el CDN de Scalar con un nonce que coincide …`           | CONFIRMED |
+| The relaxed `/docs` CSP does not leak to other routes (they keep the global `helmet()` policy) (finding 4)             | `app.ts:24,49-50`                                                                                    | http     | `docs.test.ts › la CSP relajada de /docs no se filtra a otras rutas …`                          | CONFIRMED |
+
+Not exercised here, same reasons as the previous round (interactive/browser, verifier's job):
+rendering Scalar live with the pinned `1.72.2` bundle and no console CSP errors (Deviation 6
+closed, checked live by the previous verification round for a different bundle URL — this
+round's pin needs its own live check), and the four login/listing flows. No GAP found: the
+throws match the plan's step 6 text exactly, and the CSP/dedup behavior matches the code as
+written; nothing promised by step 6 is missing at the contract/http layers.
 
 ## Review findings
 
