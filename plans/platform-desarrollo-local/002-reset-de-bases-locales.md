@@ -1,5 +1,5 @@
 ---
-status: verify
+status: done
 module: platform
 min_implementer: mid
 depends_on: []
@@ -348,7 +348,7 @@ Acceptance criteria:
 - [x] `pnpm db:reset < /dev/null`: `…requiere una terminal interactiva` / `Reset cancelado`,
       exit 1, nothing dropped (user).
 - [x] Non-local URL: `DATABASE_URL_TEST=…@db.remoto.example.com…` gives `DATABASE_URL_TEST no
-  apunta a localhost…`, exit 1, host not in the message. Name mismatch (`…/otra_test`)
+apunta a localhost…`, exit 1, host not in the message. Name mismatch (`…/otra_test`)
       gives `…no apunta a la base "rrhh_test" del contenedor`, exit 1. Afterwards `rrhh_test`
       still had its 2 `_prisma_migrations` rows, so nothing was dropped.
 - [x] `--test --no-seed` and `--test --foo`: usage line, exit 1.
