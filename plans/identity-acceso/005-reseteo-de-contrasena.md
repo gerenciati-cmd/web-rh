@@ -340,10 +340,10 @@ from 003. Serialization:
 
 ## Acceptance criteria
 
-- [ ] `pnpm check` and `pnpm test:integration` pass; web and mobile typecheck.
-- [ ] Migration `*_create_password_resets` creates `identity.password_resets` (unique `token_hash`,
+- [x] `pnpm check` and `pnpm test:integration` pass; web and mobile typecheck.
+- [x] Migration `*_create_password_resets` creates `identity.password_resets` (unique `token_hash`,
       FK to `identity.users` only); no DROP.
-- [ ] `POST /auth/password-reset` answers **204 with an empty body** for:
+- [x] `POST /auth/password-reset` answers **204 with an empty body** for:
   - an existing active user
   - an unknown email
   - a disabled user
@@ -353,7 +353,7 @@ from 003. Serialization:
   `${APP_PUBLIC_URL}/restablecer?token=…` link that expires 1 hour later. The job does not remain
   in Valkey.
 
-- [ ] `POST /auth/password-reset/confirm`:
+- [x] `POST /auth/password-reset/confirm`:
   - With the token and a valid password → 204.
   - After that, login with the new password works and the old password gives 401.
   - Every session the user had before gives 401.
@@ -362,7 +362,7 @@ from 003. Serialization:
   - These give the same 422 `PASSWORD_RESET_NOT_VALID`: reusing the token, a superseded token (an
     earlier request), an expired or unknown token, and a user disabled after the request.
   - A weak password → 422 `WEAK_PASSWORD`, and the token stays usable.
-- [ ] Force reset for a colaborador (`POST /companies/:companyId/employees/:employeeId/password-reset`):
+- [x] Force reset for a colaborador (`POST /companies/:companyId/employees/:employeeId/password-reset`):
   - HR of that company → 201 `{ id, email, expiresAt }`, and the email says staff requested it.
   - HR of another company's path → 403.
   - An employee of another company, or unknown → 404 `EMPLOYEE_NOT_FOUND`.
@@ -370,9 +370,9 @@ from 003. Serialization:
   - A disabled account → 422 `USER_DISABLED`.
   - Anonymous → 401.
   - The cooldown does not apply.
-- [ ] `POST /users/:userId/password-reset`: Admin holding → 201, also for external users (no
+- [x] `POST /users/:userId/password-reset`: Admin holding → 201, also for external users (no
       `employeeId`); HR → 403; unknown user → 404 `USER_NOT_FOUND`.
-- [ ] L3: two concurrent invitations to the same colaborador (or the same external email) leave
+- [x] L3: two concurrent invitations to the same colaborador (or the same external email) leave
       exactly one pending invitation — **checked by integration tests** (real Postgres, parallel
       transactions).
 
@@ -522,3 +522,93 @@ Also checked and correct:
 - The email job is `sensitive`, and the token never reaches events, logs or responses.
 
 ## Verification
+
+Verifier run (2026-09-30, main session inline) on `c5faae4`. **Result: PASS.**
+
+**Suites**
+
+- `pnpm check`: green. api 516 passed + 3 skipped (the NOT CONFIRMED `it.skip`s, exercised below);
+  contracts 133; domain 51; web and mobile typecheck; arch, plans lint, harness, hooks, bootstrap,
+  quality all ok.
+- `pnpm test:integration`: `Test Files 10 passed | 1 skipped (11)`, `Tests 110 passed | 1 skipped (111)`.
+  The skipped file is the tester's untracked `zz-control.int.test.ts` (see Deviations; not committed).
+- `pnpm --filter @rrhh/api db:deploy` on the dev DB: `5 migrations found … No pending migrations to apply.`
+
+**Running app**
+
+- Stack: `pnpm --filter @rrhh/api dev` on :3001, plus `pnpm --filter @rrhh/api dev:worker`, plus
+  Mailpit, Valkey and Postgres from `pnpm db:up`.
+- Setup through the real use cases and HTTP:
+  - `verif5-admin` (HOLDING_ADMIN), `verif5-hr` (HR of APS Holding) and `verif5-ext` (external,
+    no role).
+  - Two colaboradores. e1 was invited and activated; e2 has no account.
+
+**Forgot my password (`POST /auth/password-reset`)**
+
+- e1 → 204. The email "Restablece tu contraseña de RRHH APS" arrived with
+  `http://localhost:3000/restablecer?token=…` and the line "vence el 30 de septiembre de 2026 a las
+  5:12 p.m.". That is 1 hour later in Cancún time; the DB row has `expires_at − created_at = 60 min`.
+- These all gave 204, and **none sent another email**: a second request within the cooldown (1
+  email in total to e1), an unknown email (0 emails), and later the disabled e1 (0 emails).
+- `email: "x"` → 400 `VALIDATION_ERROR`.
+- Valkey after the jobs: only `bull:default:{stalled-check,id,events,meta}`, no job hashes.
+- API and worker logs contain no `token=` (0 matches).
+
+**Force reset**
+
+- `/companies/:companyId/employees/:employeeId/password-reset`:
+  - anonymous → 401
+  - HR on the Colombia path → 403
+  - admin on e1 under the Colombia path → 404 `EMPLOYEE_NOT_FOUND`
+  - HR with an unknown employee → 404 `EMPLOYEE_NOT_FOUND`
+  - HR on e2 (no account) → 404 `USER_NOT_FOUND`
+  - HR on e1 → 201 `{id, email, expiresAt}`, sent without waiting for the cooldown. Its email
+    includes "Un administrador solicitó…".
+  - After termination: HR on e1 → 422 `USER_DISABLED`.
+- `/users/:userId/password-reset`:
+  - HR → 403
+  - admin on the external user → 201
+  - admin on an unknown id → 404 `USER_NOT_FOUND`
+
+**Confirm (`POST /auth/password-reset/confirm`)**
+
+- Before confirming, 5 failed logins blocked e1: a correct password got 429
+  `LOGIN_TEMPORARILY_BLOCKED` (`retryAfterSeconds: 900`).
+- Token 1 (self-service): with a weak password → 422 `WEAK_PASSWORD`. After HR's forced reset
+  superseded it → 422 `PASSWORD_RESET_NOT_VALID`.
+- An unknown token → 422 with the same body.
+- Token 2 (forced) → 204. Reusing it → 422.
+- After the confirmation:
+  - The session e1 opened before → 401.
+  - Login with the old password → 401 `INVALID_CREDENTIALS`.
+  - Login with the new password → **200 right away**, even though the 15-minute block had not
+    ended.
+  - DB: 1 of e1's 2 sessions is open, and it is the new one.
+- Token 3: requested before e1's termination, confirmed after it → 422 `PASSWORD_RESET_NOT_VALID`.
+  - Termination was driven by a scratchpad script that ran `employee.terminate` and published the
+    event on a container with `wireSubscriptions`, as `main/http.ts` does.
+  - The script logged `identity.user.disabled`.
+
+**L3**
+
+- 5 concurrent `POST /invitations` to the same email over HTTP → DB `pendientes = 1` of `total = 5`.
+- The integration tests also cover this: the real commands in parallel, plus the tester's negative
+  control without the lock.
+
+**Acceptance criteria**: all met.
+
+**NOT VERIFIED live** (covered by tests only)
+
+- An expired token. It needs to wait an hour or move the clock.
+- "The token stays usable after a weak password". Live, token 1 was superseded right after, so it
+  could not be tried again. `reset-password.command.test.ts` covers it.
+- A confirmation that races a termination in real parallel Postgres transactions. It is covered in
+  pieces: the lock and re-read integration test, and the in-memory race test.
+- The `/restablecer` web page does not exist yet (plan 004).
+
+**Leftover dev data from this run** (destructive SQL is blocked for agents):
+
+- users `verif5-{admin,hr,ext,e1}@example.test`
+- employees `verif5-e1` (TERMINATED) and `verif5-e2`
+- their invitations, including five for `verif5-l3@example.test`
+- their password resets
