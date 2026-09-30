@@ -34,6 +34,8 @@ pnpm check                            # formato, tipos, lint, tests, arquitectur
 pnpm --filter @rrhh/api test          # tests de un paquete
 pnpm db:migrate --name add_positions  # nueva migración tras editar schema.prisma
 pnpm db:studio                        # explorar la BD
+pnpm db:reset                         # reconstruye la BD de desarrollo (pide confirmación; --no-seed la deja vacía)
+pnpm db:reset --test                  # reconstruye rrhh_test
 docker build -f apps/api/Dockerfile .  # imagen del API (web: apps/web/Dockerfile)
 ```
 

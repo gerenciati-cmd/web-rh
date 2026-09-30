@@ -1,5 +1,5 @@
 ---
-status: draft
+status: testing
 module: platform
 min_implementer: mid
 depends_on: []
@@ -200,6 +200,39 @@ scripts/database-reset.test.mjs`. The tester creates that test file. Until it ex
 | script      | yes     | `scripts/database-reset.test.mjs` (node:test, fake deps): call order, refusals before drop, no-leak errors, no confirm for test, seed flag; hook cases in `hooks.test.mjs`. |
 
 ## Deviations
+
+Implemented 2026-09-29, inline in the main session. All deviations are cosmetic (fixed forward):
+
+1. **Step 1.4, dev database name as a psql variable.** The plan passed `-v db="$POSTGRES_DB"`
+   inside the container. The implementation passes the name already resolved in step 1.1
+   (`SELECT current_database()`) as a literal argv element (`-v`, `db=<name>`). Same value, same
+   safety (argv, never shell text or SQL). Both targets share one code path.
+2. **Step 1.6, seed environment.** The plan ran the seed without an explicit env. The
+   implementation passes the same `{ ...process.env, ...env, DATABASE_URL: <validated URL> }` as
+   migrate. `loadEnv` (`apps/api/src/config/env.ts:56`) and `prisma.config.ts:5` do not
+   override existing variables, so this guarantees the seed writes to the validated database
+   and not to a `DATABASE_URL` coming from the shell.
+3. **Step 2, env loading.** The plan said `process.loadEnvFile`. The implementation uses
+   `util.parseEnv` on `apps/api/.env`, merged as `{ ...file, ...process.env }` (same precedence
+   as `loadEnvFile`). This builds the `env` copy the step asks for without mutating
+   `process.env`.
+4. **Step 4, hook match.** `pnpm` is matched by an exact `db:reset` argument (covers
+   `pnpm db:reset` and `pnpm run db:reset`); `node` by an argument ending in
+   `scripts/db-reset.mjs`. Both are denied unless `--test` is present, as specified.
+
+Observable results checked during implementation:
+
+- `pnpm db:reset --test` against the running infra: `rrhh_test recreada`, both migrations
+  applied (`20260926030736_init`, `20260929171530_create_identity`), `✔ Listo.` Then
+  `pnpm test:integration`: 6 files, 39 tests passed.
+- `pnpm test:harness`: 161 pass, including the 4 new block and 1 new allow cases.
+- `pnpm check`: green. `scripts/database-reset.test.mjs` holds one `test.todo` placeholder for
+  the tester.
+- `pnpm plans:scope … --base main`: only out-of-scope entries are the untracked, unrelated
+  `plans/platform-openapi/*` drafts, which are not part of this diff and will be committed on
+  their own branch.
+- Not exercised by the implementer: the development reset (`pnpm db:reset`). The hook blocks
+  it for agents by design, so it is left to the verifier with the user.
 
 ## Test coverage
 

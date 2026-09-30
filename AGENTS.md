@@ -82,6 +82,7 @@ scripts/          bootstrap · plans/ (status, lint, scope) · harness/ (generad
 | Tests de integración (Prisma, BD real)  | `pnpm test:integration` (requiere `pnpm db:up`)        |
 | Reglas de arquitectura                  | `pnpm arch:check`                                      |
 | Nueva migración                         | `pnpm db:migrate --name <snake_case>`                  |
+| Reiniciar BD local (dev / test)         | `pnpm db:reset` / `pnpm db:reset --test`               |
 | Regenerar cliente Prisma                | `pnpm db:generate`                                     |
 | Estado de los planes                    | `pnpm plans:status`                                    |
 | ¿El diff respeta el plan?               | `pnpm plans:scope plans/<x>/NNN-y.md`                  |
@@ -169,7 +170,7 @@ Detalle y motivo (incidentes reales): `docs/harness/HARNESS.md` → _Destructive
 - **Git**: `git stash`, `git checkout -- <archivo>`, `git restore <archivo>`, `git reset --hard`,
   `git clean -f`, `git push --force` / push a `main`, `--no-verify`. Para comparar contra HEAD
   usa el baseline por scratchpad de HARNESS.md.
-- **BD / Docker**: `prisma migrate reset`, `prisma db push`, SQL destructivo,
+- **BD / Docker**: `prisma migrate reset`, `prisma db push`, `pnpm db:reset` (sin `--test`), SQL destructivo,
   `docker compose down -v`, borrar volúmenes.
 - **Otros**: npm/yarn/npx, `curl | sh`, `sudo`, editar `.env`, `pnpm-lock.yaml`, código
   generado, adaptadores generados del harness, migraciones aplicadas, `apps/mobile/{ios,android}`.

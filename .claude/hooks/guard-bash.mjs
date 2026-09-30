@@ -225,6 +225,14 @@ export function checkCommand(command, { projectDir, cwd = projectDir }, depth = 
       /\bprisma\s+(migrate\s+reset|db\s+push)\b/.test(text)
     )
       deny('Usa migraciones nuevas, nunca reset/db push');
+    if (
+      ((program === 'pnpm' && vals.includes('db:reset')) ||
+        (program === 'node' && vals.some((v) => v.endsWith('scripts/db-reset.mjs')))) &&
+      !vals.includes('--test')
+    )
+      deny(
+        'Solo el usuario resetea la base de desarrollo; los agentes pueden usar pnpm db:reset --test',
+      );
     if (['psql', 'pgcli'].includes(program) || /\bprisma\s+db\s+execute\b/.test(text)) {
       if (
         /\b(drop\s+(database|schema|table)|truncate\b)/i.test(text) ||
