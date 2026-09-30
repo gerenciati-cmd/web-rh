@@ -128,6 +128,10 @@ around them.
 
 - Schema changes only via new Prisma migrations (`pnpm db:migrate --name …`). Never edit an
   applied migration; never `db push` or `migrate reset` (blocked).
+- `pnpm db:reset` is the only sanctioned rebuild of a local database (drop, recreate, migrate,
+  seed). The development database is reset only by the user, in an interactive terminal,
+  typing its name. Codex runs no hooks, so that typed confirmation is the real guard. Agents
+  may run `pnpm db:reset --test` (it rebuilds `rrhh_test` without asking).
 - No `DELETE`/`UPDATE` whose `WHERE` you have not first proven with `SELECT COUNT(*)`; if the
   count disagrees with the plan, stop (`status: blocked`) — never adjust the plan to match.
 - A migration that drops or rewrites data needs the user's explicit approval in the plan.

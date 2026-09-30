@@ -28,6 +28,7 @@
     "db:generate": "pnpm --filter @rrhh/api db:generate",
     "db:studio": "pnpm --filter @rrhh/api db:studio",
     "db:seed": "pnpm --filter @rrhh/api db:seed",
+    "db:reset": "node scripts/db-reset.mjs",
     "bootstrap": "node scripts/bootstrap.mjs",
     "prepare": "husky",
     "plans:status": "node scripts/plans/status.mjs",
@@ -37,7 +38,7 @@
     "harness:check": "node scripts/harness/sync.mjs --check",
     "test:harness": "node --test .claude/hooks/hooks.test.mjs scripts/plans/plans.test.mjs scripts/plans/scope.test.mjs",
     "test:integration": "pnpm --filter @rrhh/api test:integration",
-    "test:bootstrap": "node --test scripts/bootstrap-database.test.mjs",
+    "test:bootstrap": "node --test scripts/bootstrap-database.test.mjs scripts/database-reset.test.mjs",
     "test:quality": "node --test scripts/quality/frontend-config.test.mjs"
   },
   "devDependencies": {
