@@ -31,6 +31,7 @@ describe('User', () => {
       id: 'user-1' as UserId,
       email: email('ana@aps.cl'),
       passwordHash: 'hash',
+      employeeId: null,
       now,
     });
 
@@ -41,6 +42,7 @@ describe('User', () => {
     const user = User.restore('user-1' as UserId, {
       email: email('ana@aps.cl'),
       passwordHash: 'hash',
+      employeeId: null,
       status: 'DISABLED',
     });
 
@@ -51,6 +53,7 @@ describe('User', () => {
     const user = User.restore('user-1' as UserId, {
       email: email('ana@aps.cl'),
       passwordHash: 'hash',
+      employeeId: null,
       status: 'ACTIVE',
     });
 

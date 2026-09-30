@@ -1,5 +1,5 @@
 ---
-status: draft
+status: testing
 module: identity
 min_implementer: mid
 depends_on: ['002']
@@ -190,6 +190,20 @@ cross-module adapter: `identity/infrastructure/organization-company-directory.ts
 | e2e         | no      | (no e2e infrastructure yet)                                                                                                                                  |
 
 ## Deviations
+
+Cosmetic, fixed forward (none changes design or scope):
+
+- **Migration timestamp** (step 7): `20260930165402_create_invitations` (generated with `prisma migrate dev` under a pty, because the warning for the new unique index asks for interactive confirmation; SQL has no DROP and no hand-written statements). `invitations.invited_by` is a plain column (no FK), as in the plan's schema text.
+- **Existing tests outside the plan's file list, updated minimally** because the planned behavior changes their expectations (`pnpm plans:scope` reports them as out of scope):
+  - `packages/contracts/src/openapi.test.ts` (operation count 12 → 15), `packages/contracts/src/identity/access.contract.test.ts` (public routes now include `invitations.activateAccount`), `packages/contracts/src/identity/auth.contract.test.ts` (`SessionUser` fixture gains `employeeId`).
+  - `apps/api/src/modules/identity/application/commands/log-in.command.test.ts`, `.../queries/get-current-user.query.test.ts`, `.../application/session-authenticator.test.ts` (fixtures/expectations gain `employeeId: null`; HR now has 4 grants), `.../domain/role-catalog.test.ts` (HR gains `identity.users:invite`), `apps/api/tests/auth.test.ts` (`/auth/me` returns `employeeId`).
+  - `.../application/commands/revoke-role-assignment.command.test.ts` (listed in step 9 as "modify"; the admins are now registered as ACTIVE users in the in-memory store because the last-admin count ignores users not ACTIVE) and `.../domain/user.test.ts` (listed; `employeeId: null` in `UserProps` fixtures) — only the minimum to keep the build green; the tester adds the new cases.
+- `apps/api/src/modules/identity/application/commands/log-in.command.ts` (not listed): `LogInOutput.user` and its mapping gain `employeeId`, forced by `SessionUserSchema` (the login response reuses it).
+- Listed but unchanged: `application/queries/user.queries.ts` (its type derives from `SessionUser`; only the Prisma/in-memory adapters changed) and `application/commands/revoke-role-assignment.command.ts` (the repository change is enough). `identity/index.ts` only gained the new event-name exports.
+- `DisableTerminatedEmployee` runs its writes inside `transactionRunner.run` (not spelled out in the plan) so disable + session revoke + invitation supersede are atomic.
+- Unknown payload in the `EMPLOYEE_TERMINATED` subscription throws inside the handler: `InMemoryEventBus` already logs rejected handlers (`event handler failed`) and continues, which implements "log and ignore" without needing a logger in the module cradle.
+
+Risk for the tester (NOT CONFIRMED): `PrismaUserRepository.save` tells `employee_id` uniqueness from `email` uniqueness by looking for `employee_id` in the P2002 error's `meta` (Prisma 7 + `@prisma/adapter-pg`); confirm it against the real DB in `prisma-user.int.test.ts`.
 
 ## Test coverage
 

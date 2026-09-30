@@ -9,16 +9,22 @@ export interface RoleDefinition {
 /**
  * Catálogo fijo de roles (README decisiones 6 y 13). DIRECT_MANAGER y EMPLOYEE existen pero son
  * inertes: sus alcances (equipo, propio) aún no se aplican en ninguna consulta, así que no
- * conceden nada y no se pueden asignar hasta que existan `managerId` y `User.employeeId`.
+ * conceden nada y no se pueden asignar por HTTP (EMPLOYEE se concede solo al activar una invitación).
  */
 export const ROLE_DEFINITIONS: Readonly<Record<Role, RoleDefinition>> = {
   HOLDING_ADMIN: { scope: 'HOLDING', permissions: PERMISSIONS, assignable: true },
   HR: {
     scope: 'COMPANY',
-    permissions: ['organization.companies:read', 'employees:read', 'employees:register'],
+    permissions: [
+      'organization.companies:read',
+      'employees:read',
+      'employees:register',
+      'identity.users:invite',
+    ],
     assignable: true,
   },
   DIRECT_MANAGER: { scope: 'TEAM', permissions: [], assignable: false },
+  // No asignable por HTTP: solo se concede al activar una invitación (`RoleAssignment.grantSelf`).
   EMPLOYEE: { scope: 'SELF', permissions: [], assignable: false },
 };
 

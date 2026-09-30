@@ -34,7 +34,11 @@ export class InMemoryUserQueries implements UserQueries {
 
   findSessionUser(userId: string): Promise<SessionUser | null> {
     const user = this.deps.userRepository.users.get(userId);
-    return Promise.resolve(user ? { id: user.id, email: user.snapshot.email.value } : null);
+    return Promise.resolve(
+      user
+        ? { id: user.id, email: user.snapshot.email.value, employeeId: user.snapshot.employeeId }
+        : null,
+    );
   }
 
   listUsers({

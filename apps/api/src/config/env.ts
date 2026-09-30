@@ -41,6 +41,21 @@ const EnvSchema = z.object({
   LOGIN_IP_MAX_FAILURES: z.coerce.number().int().positive().default(50),
   LOGIN_FAILURE_WINDOW_MINUTES: z.coerce.number().int().positive().default(15),
   LOGIN_BLOCK_MINUTES: z.coerce.number().int().positive().default(15),
+  // Correo saliente (plan 003). En desarrollo: Mailpit en localhost:1025 (ver docker-compose).
+  SMTP_HOST: z.string().default('localhost'),
+  SMTP_PORT: z.coerce.number().int().positive().default(1025),
+  SMTP_SECURE: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((value) => value === 'true'),
+  // Vacío = sin autenticación (Mailpit). `loadEnvFile` convierte una línea vacía en `""`.
+  SMTP_USER: z.preprocess((value) => (value === '' ? undefined : value), z.string().optional()),
+  SMTP_PASSWORD: z.preprocess((value) => (value === '' ? undefined : value), z.string().optional()),
+  MAIL_FROM: z.string().min(1).default('RRHH APS <no-reply@example.com>'),
+  // Base de los enlaces de los correos (p. ej. `${APP_PUBLIC_URL}/activar?token=…`).
+  APP_PUBLIC_URL: z.url().default('http://localhost:3000'),
+  // Vigencia de una invitación (168 h = 7 días).
+  INVITATION_TTL_HOURS: z.coerce.number().int().positive().default(168),
   // Contraseña del usuario admin@example.com que crea `pnpm db:seed`; vacío = no se crea.
   // `process.loadEnvFile` convierte `SEED_USER_PASSWORD=` (línea vacía en .env) en `""`, no en
   // `undefined`, así que sin este preprocess un .env recién copiado de .env.example no arranca.

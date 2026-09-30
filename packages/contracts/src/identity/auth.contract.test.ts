@@ -56,7 +56,9 @@ describe('LogInSchema', () => {
 });
 
 describe('LogInResponseSchema', () => {
-  const base = { user: { id: '00000000-0000-4000-8000-000000000000', email: 'ana@aps.cl' } };
+  const base = {
+    user: { id: '00000000-0000-4000-8000-000000000000', email: 'ana@aps.cl', employeeId: null },
+  };
 
   it('acepta token nulo (web: viaja en cookie)', () => {
     const result = LogInResponseSchema.safeParse({

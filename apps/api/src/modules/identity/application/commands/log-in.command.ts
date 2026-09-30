@@ -30,7 +30,7 @@ export interface LogInCommandInput {
 }
 
 export interface LogInOutput {
-  user: { id: string; email: string };
+  user: { id: string; email: string; employeeId: string | null };
   token: string;
   expiresAt: Date;
 }
@@ -126,7 +126,11 @@ export class LogIn implements Command<LogInCommandInput, LogInOutput> {
     await eventBus.publish(session.pullEvents());
 
     return ok({
-      user: { id: user.id, email: user.snapshot.email.value },
+      user: {
+        id: user.id,
+        email: user.snapshot.email.value,
+        employeeId: user.snapshot.employeeId,
+      },
       token,
       expiresAt: session.snapshot.expiresAt,
     });

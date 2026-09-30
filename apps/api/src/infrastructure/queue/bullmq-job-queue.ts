@@ -1,6 +1,6 @@
 import { Queue } from 'bullmq';
 
-import type { JobQueue } from '@/shared/application/jobs';
+import type { EnqueueOptions, JobQueue } from '@/shared/application/jobs';
 
 export const DEFAULT_QUEUE = 'default';
 
@@ -15,12 +15,13 @@ export class BullMqJobQueue implements JobQueue {
     return this.#queue;
   }
 
-  async enqueue(name: string, data: object, options?: { delayMs?: number }) {
+  async enqueue(name: string, data: object, options?: EnqueueOptions) {
     await this.queue.add(name, data, {
       attempts: 3,
       backoff: { type: 'exponential', delay: 1_000 },
-      removeOnComplete: 1_000,
-      removeOnFail: 5_000,
+      // Un job sensible no deja su payload en Valkey (los demás conservan historial para depurar).
+      removeOnComplete: options?.sensitive ? true : 1_000,
+      removeOnFail: options?.sensitive ? true : 5_000,
       ...(options?.delayMs ? { delay: options.delayMs } : {}),
     });
   }

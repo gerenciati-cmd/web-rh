@@ -28,7 +28,12 @@ describe('RevokeRoleAssignment', () => {
   let revoke: RevokeRoleAssignment;
 
   beforeEach(() => {
-    repository = new InMemoryRoleAssignmentRepository({ userRepository: { users: new Map() } });
+    // El conteo de administradores solo cuenta usuarios ACTIVE (README decisión 18).
+    const users = new Map([
+      [USER, { snapshot: { status: 'ACTIVE' } }],
+      [OTHER_USER, { snapshot: { status: 'ACTIVE' } }],
+    ]);
+    repository = new InMemoryRoleAssignmentRepository({ userRepository: { users } });
     eventBus = new RecordingEventBus();
     revoke = new RevokeRoleAssignment({
       roleAssignmentRepository: repository,

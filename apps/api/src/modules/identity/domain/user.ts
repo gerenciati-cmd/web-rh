@@ -9,13 +9,16 @@ export interface UserProps {
   email: Email;
   passwordHash: string;
   status: UserStatus;
+  /** Colaborador vinculado, por id y sin FK (ADR 0010). `null` = persona que no es colaborador. */
+  employeeId: string | null;
 }
 
 export const USER_REGISTERED = 'identity.user.registered';
+export const USER_DISABLED = 'identity.user.disabled';
 
 /**
- * Cuenta de acceso. Separada del colaborador (README decisión 2): el vínculo
- * `employeeId` llega con las invitaciones (plan 003), no aquí.
+ * Cuenta de acceso. Separada del colaborador (README decisión 2): el vínculo opcional
+ * `employeeId` se fija al activar una invitación.
  * Sin setters ni borrado: ADR 0010 regla 1 prohíbe borrar entidades referenciables.
  */
 export class User extends AggregateRoot<UserId> {
@@ -26,11 +29,18 @@ export class User extends AggregateRoot<UserId> {
     super(id);
   }
 
-  static register(input: { id: UserId; email: Email; passwordHash: string; now: Date }): User {
+  static register(input: {
+    id: UserId;
+    email: Email;
+    passwordHash: string;
+    employeeId?: string | null;
+    now: Date;
+  }): User {
     const user = new User(input.id, {
       email: input.email,
       passwordHash: input.passwordHash,
       status: 'ACTIVE',
+      employeeId: input.employeeId ?? null,
     });
     user.record(createEvent(USER_REGISTERED, { userId: input.id }, input.now));
     return user;
@@ -43,6 +53,13 @@ export class User extends AggregateRoot<UserId> {
   /** Un usuario DISABLED nunca puede iniciar sesión, aunque la contraseña sea correcta. */
   get canSignIn(): boolean {
     return this.props.status === 'ACTIVE';
+  }
+
+  /** Idempotente. La baja del acceso nunca borra al usuario (ADR 0010 regla 1). */
+  disable(now: Date): void {
+    if (this.props.status === 'DISABLED') return;
+    this.props = { ...this.props, status: 'DISABLED' };
+    this.record(createEvent(USER_DISABLED, { userId: this.id }, now));
   }
 
   get snapshot(): Readonly<UserProps> {

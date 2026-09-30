@@ -12,6 +12,7 @@ import type { Env } from './config/env';
 import { DatabaseHealthCheck } from './infrastructure/database/database-health-check';
 import { PrismaDatabase } from './infrastructure/database/prisma-database';
 import { PrismaTransactionRunner } from './infrastructure/database/prisma-transaction-runner';
+import { SmtpEmailSender } from './infrastructure/email/smtp-email-sender';
 import { InMemoryEventBus } from './infrastructure/events/in-memory-event-bus';
 import { BullMqJobQueue } from './infrastructure/queue/bullmq-job-queue';
 import { SystemClock } from './infrastructure/system/system-clock';
@@ -20,6 +21,7 @@ import { attendanceModule, type AttendanceCradle } from './modules/attendance';
 import { employeesModule, type EmployeesCradle } from './modules/employees';
 import { identityModule, type IdentityCradle } from './modules/identity';
 import { organizationModule, type OrganizationCradle } from './modules/organization';
+import type { EmailSender } from './shared/application/email';
 import type { JobQueue } from './shared/application/jobs';
 import type {
   Clock,
@@ -51,6 +53,7 @@ export interface SharedCradle {
   transactionRunner: TransactionRunner;
   eventBus: EventBus;
   jobQueue: JobQueue;
+  emailSender: EmailSender;
   clock: Clock;
   idGenerator: IdGenerator;
   healthChecks: HealthCheck[];
@@ -81,6 +84,11 @@ export function buildContainer(env: Env, logger: PinoLogger): AppContainer {
     jobQueue: asClass(BullMqJobQueue)
       .singleton()
       .disposer((queue) => queue.close()),
+    emailSender: asClass(SmtpEmailSender)
+      .singleton()
+      .disposer((sender) => {
+        sender.close();
+      }),
     clock: asClass(SystemClock).singleton(),
     idGenerator: asClass(UuidV7Generator).singleton(),
     healthChecks: asFunction(({ database }: Cradle) => [

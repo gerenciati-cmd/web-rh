@@ -23,7 +23,7 @@ class StubUserQueries implements UserQueries {
 
 describe('GetCurrentUser', () => {
   it('delega en UserQueries.findSessionUser', async () => {
-    const sessionUser: SessionUser = { id: 'user-1', email: 'ana@aps.cl' };
+    const sessionUser: SessionUser = { id: 'user-1', email: 'ana@aps.cl', employeeId: null };
     const getCurrentUser = new GetCurrentUser({
       userQueries: new StubUserQueries(new Map([['user-1', sessionUser]])),
     });
