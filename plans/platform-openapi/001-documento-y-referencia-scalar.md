@@ -1,5 +1,5 @@
 ---
-status: review
+status: verify
 module: platform
 min_implementer: mid
 depends_on: []
@@ -286,5 +286,85 @@ the rendered Scalar page, and the cookie flow's dependency on the user's own `ap
 describe; nothing promised by the plan is missing from the implementation at these layers.
 
 ## Review findings
+
+Reviewed 2026-09-30 (Reviewer subagent). Diff: `git diff origin/main...HEAD` (commits `5fd9348`,
+`f9ea577`; the merge of `origin/main` with plan 002 is excluded). Working tree clean.
+
+### Pass 1 — Checklist: 12/13 (1 procedural failure, no code change needed)
+
+- [ ] `pnpm plans:scope … --base origin/main`: **fails**. Out of scope: `.prettierignore`
+      (disclosed in Deviation 2, justified: without it `pnpm check` cannot be green) and
+      `apps/api/tests/docs.test.ts` (the tester's http test required by "Test layers required",
+      but the path is not in any step's file list). `packages/contracts/src/index.ts` (hot
+      file): the change is one appended `export * from './openapi'`, append-only. `pnpm-lock.yaml`
+      only adds the `@scalar/*` 0.10.23 tree (no 0.10.24, `pnpm-workspace.yaml` unchanged).
+- [x] `pnpm check` passes: `Tasks: 19 successful, 19 total`, `@rrhh/api` 184 tests (25 files,
+      `tests/docs.test.ts` 4), arch `no dependency violations found (156 modules)`,
+      `harness:check — 24 adaptadores al día`, bootstrap 17/17, quality 9/9.
+- [x] `infrastructure/` not touched: integration tests N/A.
+- [x] No business rules added (pure generator in contracts; router only wires HTTP).
+- [x] CQRS-lite: N/A (no commands/queries).
+- [x] Types come from `@rrhh/contracts` (`RouteDefinition`, `apiRoutes`, `ApiErrorSchema`);
+      the document is derived, nothing hand-duplicated.
+- [x] Errors: N/A for new endpoints; CSP middleware error is forwarded via `next(error)`.
+- [x] Money/dates/Clock/IdGenerator: N/A. The nonce uses `node:crypto` like the request id.
+- [x] No schema change.
+- [x] No DI registrations added; `tests/container.test.ts` green.
+- [x] No secrets, `.env` contents or personal data. `.env.example` only gains a local origin.
+- [x] `## Deviations` exists and is honest. Spot-checked: Deviation 5
+      (`createDocsRouter({ openApiUrl })`, `docs.router.ts:19`, called at `app.ts:50`) and Deviation 3
+      (`apps/api/package.json` pins `0.10.23`, lockfile has no 0.10.24, no workspace diff) and
+      Deviation 4 (installed `@scalar/client-side-rendering@0.4.5` `html-rendering.js:183,196-200`:
+      with a `nonce` it emits the UMD `<script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference">`
+      plus a nonced inline init script, matching the CSP in `docs.router.ts:31`).
+- [x] Docs updated: `README.md` and `docs/conventions.md` (contracts section). `docs/architecture.md`
+      has no mention of HTTP docs/CSP that became stale.
+
+### Pass 2 — Bug hunt
+
+No Critical/High/Medium findings. Traced: `apiRoutes` → `buildOpenApiDocument` (`openapi.ts:19-55`)
+→ `openapi.json` snapshot and `GET /api/v1/openapi.json` (`docs.router.ts:23-25`); `GET /api/v1/docs`
+→ route-scoped helmet CSP (overrides the global header via `setHeader`) → Scalar HTML. Mounted
+at `app.ts:47-51` before the authenticated router, only when `NODE_ENV !== 'production'`.
+`openapi.json`: query params use `io: 'input'` (`page`/`pageSize` not required, with defaults),
+path params required, no stray `$ref`/`$defs` besides `ApiError`.
+
+**Low**
+
+1. **Procedural: plan file list incomplete** (`plans:scope` item above). No code change: the
+   main session should either add `.prettierignore` and `apps/api/tests/docs.test.ts` to the
+   plan's file lists or accept them explicitly when committing. Not blocking.
+2. **Latent: `$defs`/`$ref` produced by `z.toJSONSchema` would break once hoisted**
+   (`openapi.ts:117-123`, `parametersFrom` `:103-113`). Each schema is converted standalone and
+   only `$schema` is dropped. If a contract ever uses `.meta({ id })`/a registry or a recursive
+   schema, Zod emits `$defs` + `$ref: '#/$defs/…'` inside the fragment; embedded in the document,
+   those refs resolve against the document root and break (and `parametersFrom` would drop a
+   `$ref`-only param). Not reachable today (no `.meta(`/ids in `packages/contracts/src`, no
+   `$defs` in `openapi.json`). Scenario: a future contract adds `.meta({ id: 'Money' })` →
+   Scalar shows unresolved refs, the snapshot test still passes.
+3. **Latent: operations colliding on the same path+method overwrite silently**
+   (`openapi.ts:24-26`). Two catalogue entries with the same `method` + `path` in different
+   modules keep only the last one and the "every route present" test would catch it only by
+   count. Not reachable today (8 distinct operations).
+4. **Test gap (not required by the plan): the CSP on `/docs` is not asserted** (`docs.test.ts:26-32`
+   checks only status and content type). A regression that drops the nonce, loosens
+   `script-src` or leaks the relaxed CSP to other routes would pass `pnpm check` and only surface
+   in verify. Suggest asserting the `content-security-policy` header (nonce present, matches
+   the `<script nonce>` in the body, no `upgrade-insecure-requests`) and that `/api/v1/companies`
+   keeps the global CSP.
+
+**Info (uncertain, for the verifier)**
+
+5. Helmet's defaults leave `connect-src`/`worker-src` falling back to `default-src 'self'`. If the
+   UMD bundle uses `blob:` workers or fetches from other hosts, the browser console will show CSP
+   errors (acceptance criterion 2). Not verifiable without a browser.
+6. Exposure is fail-open on `NODE_ENV` (`env.ts:10` defaults to `development`). Mitigated by
+   `apps/api/Dockerfile:46` (`ENV NODE_ENV=production`) and consistent with the existing
+   `bind-route.ts` gate; noted only because a deploy outside that image without `NODE_ENV` would
+   publish the API map. Plus Deviation 6: the unpinned CDN bundle runs on the API origin, which
+   the development `CORS_ORIGINS` now trusts for cookie-authenticated mutations (dev-only,
+   accepted in the plan).
+
+No findings require code changes. Plan to `verify`.
 
 ## Verification
