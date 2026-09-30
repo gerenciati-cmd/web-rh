@@ -129,19 +129,23 @@ describe('autorización HTTP', () => {
       await request(app).get('/health/live').expect(200);
     });
 
-    // GAP: `bindRoute` valida params/query/body ANTES de autorizar (plan 002 paso 9: "después de
-    // parsear"), así que un anónimo con un cuerpo inválido recibe 400 con el detalle del esquema en
-    // vez de 401. El criterio de aceptación dice "sin sesión, toda ruta de negocio → 401".
+    // R1 (ronda de reparación 1): `bindRoute` valida `params`, autoriza y solo entonces valida
+    // `query`/`body`, así que un anónimo nunca ve el detalle del esquema de entrada.
     it('anónimo con body inválido recibe 401, no 400 (autoriza antes de validar body)', async () => {
-      await as(null).post('/companies').send({}).expect(401);
+      const response = await as(null).post('/companies').send({}).expect(401);
+      expect(response.body.code).toBe('AUTHENTICATION_REQUIRED');
     });
 
-    it.fails(
-      'GAP: plan 002 (criterio 3): anónimo con :userId inválido recibe 401, no 400',
-      async () => {
-        await as(null).get('/users/no-es-uuid/role-assignments').expect(401);
-      },
-    );
+    it('anónimo con query inválida recibe 401, no 400 (autoriza antes de validar query)', async () => {
+      const response = await as(null).get('/users?page=0').expect(401);
+      expect(response.body.code).toBe('AUTHENTICATION_REQUIRED');
+    });
+
+    it('anónimo con :userId inválido recibe 400: el param de path se valida ANTES de autenticar', async () => {
+      // Por diseño (ADR 0012): `companyParam` sale de los params, así que se parsean primero.
+      const response = await as(null).get('/users/no-es-uuid/role-assignments').expect(400);
+      expect(response.body.code).toBe('VALIDATION_ERROR');
+    });
   });
 
   describe('usuario sin asignaciones: 403 FORBIDDEN en negocio y 200 en /auth/me', () => {
@@ -235,6 +239,13 @@ describe('autorización HTTP', () => {
       expect(response.body.code).toBe('FORBIDDEN');
     });
 
+    it('con body o query inválidos recibe 403, no 400 (autoriza antes de validar)', async () => {
+      const post = await as(hrToken).post('/companies').send({}).expect(403);
+      expect(post.body.code).toBe('FORBIDDEN');
+      await as(hrToken).get('/users?page=0').expect(403);
+      await as(hrToken).post(`/companies/${companyB}/employees`).send({}).expect(403);
+    });
+
     it('POST /companies, GET /users y las rutas de roles: 403', async () => {
       await as(hrToken)
         .post('/companies')
@@ -248,6 +259,12 @@ describe('autorización HTTP', () => {
   });
 
   describe('HOLDING_ADMIN', () => {
+    it('con permiso, body o query inválidos sí son 400 VALIDATION_ERROR', async () => {
+      const post = await as(adminToken).post('/companies').send({}).expect(400);
+      expect(post.body.code).toBe('VALIDATION_ERROR');
+      await as(adminToken).get('/users?page=0').expect(400);
+    });
+
     it('GET /companies devuelve todas', async () => {
       const response = await as(adminToken).get('/companies').expect(200);
 

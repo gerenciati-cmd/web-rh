@@ -159,6 +159,91 @@ describe('AssignRole', () => {
     expect(eventBus.published).toHaveLength(eventsBefore);
   });
 
+  describe('serialización por usuario (R4, decisión 18)', () => {
+    /** Registra el orden de las llamadas y si ocurren dentro de `run`. */
+    function buildWithSpies() {
+      const calls: string[] = [];
+      let inside = false;
+      const runner: TransactionRunner = {
+        async run<T>(work: () => Promise<T>): Promise<T> {
+          calls.push('begin');
+          inside = true;
+          try {
+            return await work();
+          } finally {
+            inside = false;
+            calls.push('end');
+          }
+        },
+      };
+      const lockUser = roleAssignmentRepository.lockUser.bind(roleAssignmentRepository);
+      const save = roleAssignmentRepository.save.bind(roleAssignmentRepository);
+      const find = roleAssignmentRepository.findActiveByUser.bind(roleAssignmentRepository);
+      roleAssignmentRepository.lockUser = (id) => {
+        calls.push(inside ? 'lock:in' : 'lock:out');
+        return lockUser(id);
+      };
+      roleAssignmentRepository.findActiveByUser = (id) => {
+        calls.push(inside ? 'find:in' : 'find:out');
+        return find(id);
+      };
+      roleAssignmentRepository.save = (assignment) => {
+        calls.push(inside ? 'save:in' : 'save:out');
+        return save(assignment);
+      };
+      const directory: CompanyDirectory = {
+        find: (id) => {
+          calls.push(inside ? 'directory:in' : 'directory:out');
+          return Promise.resolve({ id, active: true });
+        },
+      };
+      const command = new AssignRole({
+        userRepository,
+        roleAssignmentRepository,
+        companyDirectory: directory,
+        idGenerator: new SequentialIdGenerator(),
+        transactionRunner: runner,
+        clock: new FixedClock(NOW),
+        eventBus,
+      });
+      return { calls, command };
+    }
+
+    it('bloquea al usuario, comprueba duplicado y guarda dentro de la transacción; el directorio va fuera', async () => {
+      const { calls, command } = buildWithSpies();
+
+      const result = await command.execute(hrInput);
+
+      expect(result.ok).toBe(true);
+      expect(calls).toEqual(['directory:out', 'begin', 'lock:in', 'find:in', 'save:in', 'end']);
+    });
+
+    it('el bloqueo devuelve false (usuario borrado tras la primera lectura): USER_NOT_FOUND sin guardar', async () => {
+      const { calls, command } = buildWithSpies();
+      roleAssignmentRepository.lockUser = () => Promise.resolve(false);
+
+      const result = await command.execute(hrInput);
+
+      expect(!result.ok && result.error.code).toBe('USER_NOT_FOUND');
+      expect(roleAssignmentRepository.assignments.size).toBe(0);
+      expect(calls).not.toContain('save:in');
+      expect(eventBus.published).toEqual([]);
+    });
+
+    it('el duplicado se detecta dentro de la transacción y no publica evento', async () => {
+      const { calls, command } = buildWithSpies();
+      await command.execute(hrInput);
+      calls.length = 0;
+      const eventsBefore = eventBus.published.length;
+
+      const result = await command.execute(hrInput);
+
+      expect(!result.ok && result.error.code).toBe('ROLE_ALREADY_ASSIGNED');
+      expect(calls).toEqual(['directory:out', 'begin', 'lock:in', 'find:in', 'end']);
+      expect(eventBus.published).toHaveLength(eventsBefore);
+    });
+  });
+
   it('el mismo rol en otra empresa no es duplicado', async () => {
     await assignRole.execute(hrInput);
     const otherCompany = new AssignRole({
