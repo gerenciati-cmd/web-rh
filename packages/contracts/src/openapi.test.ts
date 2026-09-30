@@ -256,7 +256,7 @@ describe('buildOpenApiDocument — orden de components.schemas (info 3, ronda de
     // `ApiError` (build siempre lo agrega) siempre entra: por punto de código 'A' (65) < 'B'
     // (66) < 'a' (97), así que queda antes que ambos. Entre los dos ids del catálogo ad hoc,
     // 'Bbb' (66) va antes que 'aaa' (97). Un `localeCompare` case-insensitive daría
-    // ['ApiError', 'aaa', 'Bbb'] (a antes que B) en vez de este orden.
+    // ['aaa', 'ApiError', 'Bbb'] (comprobado aparte) en vez de este orden.
     expect(Object.keys(document.components.schemas)).toEqual(['ApiError', 'Bbb', 'aaa']);
   });
 });

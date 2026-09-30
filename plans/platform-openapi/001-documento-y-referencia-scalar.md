@@ -1,5 +1,5 @@
 ---
-status: review
+status: verify
 module: platform
 min_implementer: mid
 depends_on: []
@@ -456,9 +456,10 @@ Changes (test-only, no product code touched):
   assertion with a throwaway script, not guessed:
   `['aaa','Bbb'].sort(localeCompare)` → `['aaa','Bbb']` (case-insensitive, a before B);
   `['aaa','Bbb'].sort(code point)` → `['Bbb','aaa']` (`'B'`=66 < `'a'`=97). `ApiError` (always
-  hoisted by the builder) sorts before both by either method, so the assertion is
-  `['ApiError', 'Bbb', 'aaa']` — the order `sortedByKey` produces today, and the order
-  `localeCompare` would NOT produce (`['ApiError', 'aaa', 'Bbb']`).
+  hoisted by the builder) sorts before both under code-point comparison (`'A'`=65 is the
+  smallest), so the assertion is `['ApiError', 'Bbb', 'aaa']` — the order `sortedByKey`
+  produces today, and the order `localeCompare` would NOT produce (`['aaa', 'ApiError',
+'Bbb']`, confirmed empirically).
 
 Closing `pnpm check`: green, 19/19 tasks. `@rrhh/contracts` 48 tests (5 files, `openapi.test.ts`
 now 16, +1 net). `@rrhh/api` 187 tests (25 files, `docs.test.ts` now 7, +1 net). `arch:check` no
@@ -645,6 +646,81 @@ No Critical, High or Medium findings. I checked these points:
 4. **For the verifier:** the pinned `1.72.2` bundle URL has its own live check only in the
    implementer's Deviations (headless Chrome, 0 CSP lines). The previous PASS verification
    loaded the unpinned URL and does not cover this round.
+
+No findings require code changes. Plan to `verify`.
+
+### Review — repair round 2 (2026-09-30)
+
+Reviewer subagent. Scope: commits `90e65c0` (fix) and `8de5ff5` (tests) against
+"### Repair round 2" in Deviations and "### Test coverage — repair round 2". The two reviews
+above are history and do not cover this code. Working tree clean at `8de5ff5`.
+
+#### Pass 1 — Checklist: 13/13
+
+- [x] `pnpm plans:scope … --base origin/main`: all changes in scope (17 declared, 20 changed).
+      This round touched only `docs.router.ts`, `openapi.ts`, `docs.test.ts` and
+      `openapi.test.ts`, all listed in step 6. The hot file `packages/contracts/src/index.ts`
+      was not touched in this round.
+- [x] `pnpm check`: `Tasks: 19 successful, 19 total`. `@rrhh/contracts` 48 tests (5 files).
+      `@rrhh/api` 187 tests (25 files). Arch `no dependency violations found (156 modules)`.
+      `plans:lint` clean, `harness:check` 24 adapters up to date, harness 161/161,
+      bootstrap 17/17, quality 9/9.
+- [x] `infrastructure/`: not touched. Integration N/A.
+- [x] No business rules. The changes are a sort comparator and a CSP source list.
+- [x] CQRS-lite: N/A.
+- [x] Contract types: N/A. No contract changed in this round.
+- [x] Errors: N/A.
+- [x] Money, dates, Clock, IdGenerator: N/A.
+- [x] No schema change.
+- [x] No DI registrations. `tests/container.test.ts` green.
+- [x] No secrets or personal data.
+- [x] Deviations are honest. Spot-checked two claims. (a) "Regenerating gave no diff":
+      `openapi.json` is not in `90e65c0`, and the snapshot test is green with the new
+      comparator. Today's ids are ASCII PascalCase, so both orders agree on the real
+      catalogue. (b) `script-src` has the exact bundle URL: `docs.router.ts:36` uses
+      `SCALAR_BUNDLE` (`:13`), the same constant passed as `cdn` at `:46`. The host-only
+      constant was removed.
+- [x] Docs: no document mentions the jsdelivr host, `script-src` or the sort order. Nothing is
+      stale.
+
+#### Pass 2 — Bug hunt
+
+No Critical, High, Medium or Low findings. I checked these points:
+
+- **CSP path source.** A CSP source whose path does not end in `/` is an exact-path match.
+  The `<script src>` that Scalar emits (`cdn ?? DEFAULT_CDN`) is the same `SCALAR_BUNDLE`
+  string, so the source and the request cannot drift apart. They share one constant, and the
+  http test hardcodes the URL independently. The nonced inline init script is still covered
+  by `'nonce-…'`. If jsdelivr ever redirected, CSP matching ignores the path after a redirect
+  but still checks the host, which is also `cdn.jsdelivr.net`. So a redirect would not break
+  the page.
+- **Comparator.** `(a < b ? -1 : a > b ? 1 : 0)` compares UTF-16 code units. It is
+  consistent and locale-independent, and it never sees equal keys because the input is an
+  object. `paths` are not sorted. They keep catalogue insertion order, which is deterministic
+  and not locale-dependent.
+- **Tests discriminate.** The contract test fails under `localeCompare`, and the http test
+  fails if `cdn` falls back to the unpinned default or if `script-src` widens to the bare host.
+  The ad hoc `.meta({ id: 'aaa' | 'Bbb' })` registrations do not collide with other ids in the
+  file (`Dup`) or with the real models, and Vitest isolates the global registry per file.
+
+**Info**
+
+1. **Wrong comment and plan claim about the `localeCompare` order**
+   (`packages/contracts/src/openapi.test.ts:236-238,255-259`, and the same claim in
+   "### Test coverage — repair round 2"). Both say `ApiError` sorts first "by either method",
+   so that `localeCompare` would give `['ApiError', 'aaa', 'Bbb']`. That is wrong. I ran
+   `['Bbb','ApiError','aaa'].sort((a, b) => a.localeCompare(b))` on this machine's Node
+   (scratch script) and got `['aaa', 'ApiError', 'Bbb']`: ICU compares the letters
+   case-insensitively first, and `aa` < `ap`. The assertion `['ApiError', 'Bbb', 'aaa']`
+   is still correct, and the test still fails under `localeCompare`, so the test works. Only
+   the explanation is inaccurate. If the tester corrects it, the change is comment-only and
+   does not block.
+2. **For the verifier:** the narrower `script-src` (exact bundle URL) has a live check only in
+   the implementer's Deviations (headless Chrome, 0 CSP lines). Test coverage round 2 says the
+   earlier live check "still applies", but the existing `## Verification` PASS is at `ea950ea`.
+   That is before both repair rounds, and it loaded the unpinned URL under the host-wide
+   source. Per the repair handoff, it does not cover this code. The pinned bundle loading
+   under the path-restricted CSP with no "Refused" console lines needs a fresh verifier check.
 
 No findings require code changes. Plan to `verify`.
 
