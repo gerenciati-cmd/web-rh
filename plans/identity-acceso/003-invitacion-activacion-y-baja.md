@@ -1,5 +1,5 @@
 ---
-status: testing
+status: review
 module: identity
 min_implementer: mid
 depends_on: ['002']
@@ -255,6 +255,19 @@ Counts of tests added by this phase: domain 18, application 45, contract 21, htt
 | `countActiveByRole` ignores DISABLED users; `grantSelf` persisted                                 | `prisma-role-assignment.repository.ts:27-31`             | integration | `prisma-role-assignment.int.test.ts` (2 new)                                                               | CONFIRMED                                 |
 | `sensitive` enqueue → BullMQ `removeOnComplete/removeOnFail: true`                                | `bullmq-job-queue.ts`                                    | http (skip) | `invitations.test.ts › it.skip('NOT CONFIRMED: …Valkey')`                                                  | NOT CONFIRMED                             |
 | SMTP delivery to Mailpit with the activation link                                                 | `smtp-email-sender.ts`                                   | http (skip) | `invitations.test.ts › it.skip('NOT CONFIRMED: …SMTP')`                                                    | NOT CONFIRMED                             |
+
+**Repair round 1 regressions (tester, 2026-09-30).** Baseline: `pnpm check` and `pnpm test:integration` green (api 409 + 2 skipped, 80 integration). The previous matrix rows remain valid except the no-op row of `DisableTerminatedEmployee`, superseded by the L2 row below.
+
+| Behavior (repair M1 / L2)                                                                                 | Source                                         | Layer       | Test                                                                                                             | State     |
+| --------------------------------------------------------------------------------------------------------- | ---------------------------------------------- | ----------- | ---------------------------------------------------------------------------------------------------------------- | --------- |
+| `save` returns true on create and on updating a still-pending invitation                                  | `prisma-invitation.repository.ts:37-52`        | integration | `prisma-invitation.int.test.ts › save condicional › devuelve true…`                                              | CONFIRMED |
+| Accepted invitation in DB is never overwritten by a stale supersede (returns false, marks intact)         | `prisma-invitation.repository.ts:40-47`        | integration | `› una invitación ya aceptada en la base no se sobrescribe…`                                                     | CONFIRMED |
+| Superseded invitation in DB is never revived by a stale accept (returns false, marks intact)              | same                                           | integration | `› una invitación ya reemplazada en la base no se revive…`                                                       | CONFIRMED |
+| Concurrent accept vs supersede: exactly one write wins, row keeps one mark                                | same                                           | integration | `› aceptar y reemplazar a la vez…` (Promise.all against the real DB)                                             | CONFIRMED |
+| Activation losing the race at commit: `INVITATION_NOT_VALID`, transaction rolled back, no role, no events | `activate-account.command.ts:98-112`           | application | `activate-account.command.test.ts › la invitación fue cerrada entre la lectura y el commit…`                     | CONFIRMED |
+| Termination of a colaborador without account supersedes the pending invitation, ok, no events (L2)        | `disable-terminated-employee.command.ts:38-48` | application | `disable-terminated-employee.command.test.ts › colaborador sin cuenta…` (updated by the implementer, kept as is) | CONFIRMED |
+
+Not covered by design: the real interleaving of activation vs `DisableTerminatedEmployee` across two transactions (needs a controllable DB interleaving); the integration test above exercises the conditional write that makes it safe, and the application test the handling of `false`. The rollback of the created `User` is asserted through the runner seeing the thrown error (the in-memory repositories have no rollback), not by absence of the row.
 
 Notes for review/verify: the two NOT CONFIRMED items are exactly the acceptance criterion "email arrives in Mailpit; the job does not remain in Valkey", which the verifier must exercise in the running app. Existing test files outside the plan's step 9 list were touched by the implementer (see Deviations), not by the tester.
 

@@ -41,6 +41,12 @@ function invitation(
   });
 }
 
+async function mustFind(id: InvitationId): Promise<Invitation> {
+  const found = await repository.findById(id);
+  if (!found) throw new Error(`invitación ${id} no encontrada`);
+  return found;
+}
+
 describe('PrismaInvitationRepository', () => {
   it('guarda y rehidrata todos los campos (invitedBy sin FK: el usuario no existe en la tabla)', async () => {
     const original = invitation();
@@ -102,6 +108,68 @@ describe('PrismaInvitationRepository', () => {
     expect((await repository.findById(accepted.id))?.snapshot.acceptedAt).toEqual(NOW);
     expect((await repository.findById(superseded.id))?.snapshot.revokedAt).toEqual(NOW);
     expect(await database.client.invitation.count()).toBe(2);
+  });
+
+  describe('save condicional (la decisión previa gana)', () => {
+    it('devuelve true al crear y al actualizar una invitación aún pendiente', async () => {
+      const original = invitation();
+
+      expect(await repository.save(original)).toBe(true);
+      original.supersede(NOW);
+
+      expect(await repository.save(original)).toBe(true);
+    });
+
+    it('una invitación ya aceptada en la base no se sobrescribe: devuelve false', async () => {
+      const original = invitation();
+      await repository.save(original);
+      const accepted = await mustFind(original.id);
+      const stale = await mustFind(original.id);
+      accepted.accept(NOW);
+      await repository.save(accepted);
+
+      stale.supersede(new Date(NOW.getTime() + 1000));
+      const saved = await repository.save(stale);
+
+      expect(saved).toBe(false);
+      expect((await mustFind(original.id)).snapshot).toMatchObject({
+        acceptedAt: NOW,
+        revokedAt: null,
+      });
+    });
+
+    it('una invitación ya reemplazada en la base no se revive al aceptar: devuelve false', async () => {
+      const original = invitation();
+      await repository.save(original);
+      const superseding = await mustFind(original.id);
+      const stale = await mustFind(original.id);
+      superseding.supersede(NOW);
+      await repository.save(superseding);
+
+      stale.accept(new Date(NOW.getTime() + 1000));
+      const saved = await repository.save(stale);
+
+      expect(saved).toBe(false);
+      expect((await mustFind(original.id)).snapshot).toMatchObject({
+        acceptedAt: null,
+        revokedAt: NOW,
+      });
+    });
+
+    it('aceptar y reemplazar a la vez: solo una escritura gana y la fila queda con una sola marca', async () => {
+      const original = invitation();
+      await repository.save(original);
+      const accepting = await mustFind(original.id);
+      const superseding = await mustFind(original.id);
+      accepting.accept(NOW);
+      superseding.supersede(NOW);
+
+      const results = await Promise.all([repository.save(accepting), repository.save(superseding)]);
+
+      expect(results.filter(Boolean)).toHaveLength(1);
+      const { acceptedAt, revokedAt } = (await mustFind(original.id)).snapshot;
+      expect([acceptedAt, revokedAt].filter((mark) => mark !== null)).toHaveLength(1);
+    });
   });
 
   describe('findPendingForEmployee', () => {

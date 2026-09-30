@@ -22,6 +22,27 @@ class NoopTransactionRunner implements TransactionRunner {
   }
 }
 
+/** Como el runner real: si el trabajo lanza, la transacción se revierte y el error se propaga. */
+class RollbackSpyTransactionRunner implements TransactionRunner {
+  rolledBack = 0;
+
+  async run<T>(work: () => Promise<T>): Promise<T> {
+    try {
+      return await work();
+    } catch (error) {
+      this.rolledBack += 1;
+      throw error;
+    }
+  }
+}
+
+/** Simula que otra transacción (baja, nueva invitación) cerró la invitación antes del commit. */
+class LosingInvitationRepository extends InMemoryInvitationRepository {
+  override save(): Promise<boolean> {
+    return Promise.resolve(false);
+  }
+}
+
 class StubEmployeeDirectory implements EmployeeDirectory {
   employees = new Map<string, InvitableEmployee>();
 
@@ -261,6 +282,43 @@ describe('ActivateAccount', () => {
 
     expect(!result.ok && result.error.code).toBe('EMPLOYEE_ALREADY_HAS_ACCESS');
     expect(users.users.size).toBe(1);
+  });
+
+  it('la invitación fue cerrada entre la lectura y el commit (carrera con la baja): INVITATION_NOT_VALID, transacción revertida, sin rol ni eventos', async () => {
+    const runner = new RollbackSpyTransactionRunner();
+    const losing = new LosingInvitationRepository();
+    const loser = new ActivateAccount({
+      invitationRepository: losing,
+      invitationTokens: tokens,
+      userRepository: users,
+      roleAssignmentRepository: roleAssignments,
+      employeeDirectory: directory,
+      passwordHasher: new FakePasswordHasher(),
+      idGenerator: new SequentialIdGenerator(),
+      transactionRunner: runner,
+      clock,
+      eventBus,
+    });
+    const { token, tokenHash } = tokens.issue();
+    const invitation = Invitation.issue({
+      id: 'inv-race' as InvitationId,
+      email: mustEmail('ana@aps.cl'),
+      employeeId: ana.id,
+      companyId: COMPANY,
+      tokenHash,
+      invitedBy: 'user-admin' as UserId,
+      ttlMs: TTL_MS,
+      now: clock.now(),
+    });
+    invitation.pullEvents();
+    losing.invitations.set(invitation.id, invitation);
+
+    const result = await loser.execute({ token, password: PASSWORD });
+
+    expect(!result.ok && result.error.code).toBe('INVITATION_NOT_VALID');
+    expect(runner.rolledBack).toBe(1);
+    expect(roleAssignments.assignments.size).toBe(0);
+    expect(eventBus.published).toEqual([]);
   });
 
   it('no abre sesión ni publica nada si la activación falla', async () => {
