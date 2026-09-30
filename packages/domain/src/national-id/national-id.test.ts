@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
+import type { CountryCode } from '../country';
+import { InvalidValueError } from '../errors';
+
 import { NationalId } from './national-id';
 
 describe('NationalId', () => {
@@ -76,5 +79,14 @@ describe('NationalId', () => {
 
   it('Colombia: rechaza caracteres no numéricos', () => {
     expect(NationalId.create('CO', '10203ABCDE').ok).toBe(false);
+  });
+
+  // Regresión: filas viejas con country = 'CL' llegan por cast; antes lanzaban TypeError.
+  it('rechaza con InvalidValueError un país fuera de SUPPORTED_COUNTRIES en vez de lanzar', () => {
+    const country = 'CL' as CountryCode;
+    const result = NationalId.create(country, '123456785');
+    expect(result.ok).toBe(false);
+    expect(!result.ok && result.error).toBeInstanceOf(InvalidValueError);
+    expect(NationalId.isValid(country, '123456785')).toBe(false);
   });
 });
