@@ -1,5 +1,5 @@
 ---
-status: review
+status: verify
 module: platform
 min_implementer: mid
 depends_on: []
@@ -260,5 +260,65 @@ Docker. 11 tests nuevos + los 6 ya existentes de `bootstrap-database.test.mjs` (
 | Reset real de `rrhh`/`rrhh_test` contra Postgres (drop/create real, migraciones, seed con 3 empresas)                                  | acceptance criteria          | —      | —                                                                                                                                                                                | NOT CONFIRMED: la tabla "Test layers required" marca integration=no explícitamente (destruiría la BD que usa la propia suite de integración); queda para el verifier contra la infraestructura real, como ya hizo el implementador para `--test` y deja pendiente para `dev` (ver `## Deviations`).                                                                                                                                                             |
 
 ## Review findings
+
+Reviewed 2026-09-29 (reviewer subagent). Diff base: `main...HEAD` on `feat/platform-db-reset`
+(commits `da36007`, `236a98f`, `69ab974`); no uncommitted changes to tracked files.
+
+### Checklist — 13/13 passed (7 applicable, 6 N/A)
+
+- [x] `pnpm plans:scope … --base main`: all 11 changed files are declared or belong to this
+      plan's initiative. The only out-of-scope entries are the untracked
+      `plans/platform-openapi/*` drafts, which are unrelated to this plan and not part of its
+      diff (confirmed by the dispatcher). No hot files touched.
+- [x] `pnpm check`: green (format, typecheck, lint, tests, arch, plans:lint, harness:check,
+      `test:harness` 161/161, `test:bootstrap` 17/17, `test:quality` 9/9).
+- [x] `pnpm test:integration`: N/A — no `infrastructure/` change. (Implementer reports
+      39/39 after `pnpm db:reset --test`; not re-run here.)
+- [x] Business rules in `domain/`: N/A — tooling scripts only, no API code.
+- [x] CQRS-lite: N/A.
+- [x] Contracts: N/A — no endpoint.
+- [x] Expected errors: script errors are fixed Spanish messages that name the variable, never
+      its value; subprocess errors are swallowed (`database-reset.mjs:77-81`, `:122-125`).
+- [x] Money / dates / Clock / IdGenerator: N/A.
+- [x] Schema change: N/A — no migration, schema or seed change.
+- [x] DI registrations: N/A.
+- [x] No secrets / `.env` contents / personal data: tests use `postgres://localhost:5432/rrhh`
+      style literals only; the CLI never prints `env`.
+- [x] `## Deviations` honest. Spot-checked 2 (seed receives the validated `DATABASE_URL`,
+      `database-reset.mjs:52,57`) and 3 (`{ ...fileEnv, ...process.env }`, `db-reset.mjs:28`,
+      `process.env` wins as with `loadEnvFile`). Both match the code; `prisma.config.ts:3-6`
+      and `env.ts` `loadEnv` indeed do not override existing variables.
+- [x] Docs: `AGENTS.md` (command row + prohibited list), `HARNESS.md` Database section and
+      `README.md` agree with the behavior. Only the three documents the plan names were
+      checked; a repo-wide search for other mentions could not be run in this session.
+
+### Findings
+
+No blocking findings. Flow traced end to end (flags → env load → resolve name in container →
+URL validation → confirm → drop/create via stdin with `:"db"` → `db:deploy` → `db:seed`), and
+every refusal happens before the drop call.
+
+Low (non-blocking, no change required for this plan):
+
+1. `.claude/hooks/guard-bash.mjs:228-235` — the hook rule matches exactly what step 4
+   specified (program `pnpm` with a literal `db:reset` argument, or program `node` with an
+   argument ending in `scripts/db-reset.mjs`). It does not cover invocations where the entry
+   script is launched indirectly (another program wrapping `node`, or a path that does not
+   end in `scripts/db-reset.mjs`). Scenario: an agent reaches the dev entrypoint through such
+   a spelling; the hook allows it, and the dev database is still protected only by the TTY
+   check in `db-reset.mjs:31-35` (agent shells have no TTY, so `confirm` returns false and it
+   aborts with `Reset cancelado` before any drop). This is consistent with the plan and with
+   the guard's own disclaimer (`guard-bash.mjs:2`, "no es un sandbox"); noted so the verifier
+   does not assume the hook is exhaustive.
+2. `scripts/database-reset.mjs:102-108` (uncertain, edge case) — validation checks host and
+   database name but not the port. If `DATABASE_URL` points at another local PostgreSQL on a
+   different port with a database of the same name, the container's database is dropped and
+   recreated while `db:deploy`/`db:seed` run against the other server. Nothing is lost beyond
+   what the user confirmed, but the container database would be left without migrations.
+   Requires a non-default local setup (`POSTGRES_PORT` changed without updating
+   `DATABASE_URL`); not observed, reported for awareness only.
+
+Note: the `test` branch check at `database-reset.mjs:109-111` is unreachable (already covered
+by the name equality at `:106`), as the tester recorded; harmless defense in depth.
 
 ## Verification
