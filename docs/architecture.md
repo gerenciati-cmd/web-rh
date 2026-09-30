@@ -89,8 +89,9 @@ rol): 401 sin sesión, 403 sin permiso (ADR 0012).
 
 ```
 POST /api/v1/companies/:id/employees
- → bindRoute: valida params/body con el schema de @rrhh/contracts (400 si falla)
+ → bindRoute: valida params con el schema de @rrhh/contracts (400 si falla)
  → bindRoute: autoriza según route.access (401 sin sesión · 403 sin permiso/alcance)
+ → bindRoute: valida query/body (400 si falla; un anónimo nunca llega aquí)
  → RegisterEmployee.execute(input)
      → EmployerDirectory.find()  ──(adaptador)──▶ OrganizationApi.findCompany()
      → NationalId.create / Email.create        (value objects, Result)

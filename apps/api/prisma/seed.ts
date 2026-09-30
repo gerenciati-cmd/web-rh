@@ -78,7 +78,7 @@ async function seedUser(email: string, password: string): Promise<string> {
   }
   if (result.error.code !== 'USER_ALREADY_EXISTS') throw result.error;
 
-  const found = await listUsers.execute({ page: 1, pageSize: 1, search: email });
+  const found = await listUsers.execute({ page: 1, pageSize: 100, search: email });
   const existing = found.items.find((user) => user.email === email);
   if (!existing) throw new Error(`No se encontró el usuario ya existente ${email}`);
   return existing.id;

@@ -27,7 +27,7 @@ const COOKIE_OPTIONS = { httpOnly: true, secure: true, sameSite: 'lax' as const,
 
 /**
  * Enlaza una ruta del contrato con su handler. Centraliza (DRY) lo que todo endpoint
- * repetiría: validar params/query/body, armar el contexto de la petición, responder con el
+ * repetiría: validar params/query/body (autorizando entre params y query/body), armar el contexto de la petición, responder con el
  * status correcto y (fuera de producción) verificar que la respuesta cumple el contrato.
  */
 export function bindRoute<R extends RouteDefinition>(
@@ -38,11 +38,10 @@ export function bindRoute<R extends RouteDefinition>(
   const method = route.method.toLowerCase() as Lowercase<R['method']>;
 
   router[method](route.path, async (req, res) => {
-    const parsed = {
-      params: parsePart(route.params, req.params, 'params'),
-      query: parsePart(route.query, req.query, 'query'),
-      body: parsePart(route.body, req.body, 'body'),
-    } as ParsedRequest<R>;
+    // Los params se validan primero porque de ahí sale la empresa que `authorize` necesita; un
+    // param de path inválido responde 400 antes de la autenticación. Query y body se validan
+    // DESPUÉS de autorizar: un anónimo (401) o sin permiso (403) no debe ver el detalle del esquema.
+    const params = parsePart(route.params, req.params, 'params');
 
     const context: RequestContext = {
       actor: res.locals.actor ?? null,
@@ -53,7 +52,13 @@ export function bindRoute<R extends RouteDefinition>(
       },
     };
 
-    authorize(route.access, parsed.params, context);
+    authorize(route.access, params, context);
+
+    const parsed = {
+      params,
+      query: parsePart(route.query, req.query, 'query'),
+      body: parsePart(route.body, req.body, 'body'),
+    } as ParsedRequest<R>;
 
     const output = await handler(parsed, context);
 

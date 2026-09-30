@@ -17,10 +17,13 @@ agujero, y que el mismo dato alimente la documentación OpenAPI.
   obligatorio y vale `public`, `authenticated` o `permission` (con un permiso atómico y, si aplica,
   `companyParam`: el parámetro de path cuya empresa debe estar en el alcance del actor). Negado por
   defecto: omitirlo es un error de tipos.
-- **`bindRoute` lo hace cumplir una sola vez**, después de validar y antes del handler: sin actor
+- **`bindRoute` lo hace cumplir una sola vez**, después de validar los `params` y antes de validar `query`/`body` y de llamar al handler: sin actor
   → 401 `AUTHENTICATION_REQUIRED`; sin permiso o fuera de alcance → 403 `FORBIDDEN`. Es un error de
   adaptador (`PermissionDeniedError`), como el 401. El 403 se da aunque la empresa no exista, para
-  que quien no tiene alcance no pueda sondear cuáles existen.
+  que quien no tiene alcance no pueda sondear cuáles existen. Como autoriza antes de validar
+  `query` y `body`, un anónimo o un actor sin permiso nunca ve el detalle del esquema de entrada;
+  un param de path inválido sí responde 400 antes de la autenticación (hace falta para leer
+  `companyParam`).
 - **Catálogo fijo de roles** (`HOLDING_ADMIN`, `HR`, `DIRECT_MANAGER`, `EMPLOYEE`) con permisos
   atómicos; el vocabulario vive en `@rrhh/domain` y el mapeo rol → permisos en
   `identity/domain/role-catalog.ts`. Las asignaciones `(usuario, rol, alcance)` se guardan en

@@ -1,6 +1,7 @@
 import { Email } from '@rrhh/domain';
 import { beforeEach, describe, expect, it } from 'vitest';
 
+import type { TransactionRunner } from '@/shared/application/ports';
 import { FixedClock, RecordingEventBus, SequentialIdGenerator } from '@/shared/testing/fakes';
 
 import { ROLE_ASSIGNED } from '../../domain/role-assignment';
@@ -31,6 +32,12 @@ function mustEmail(raw: string): Email {
   return result.value;
 }
 
+class NoopTransactionRunner implements TransactionRunner {
+  run<T>(work: () => Promise<T>): Promise<T> {
+    return work();
+  }
+}
+
 describe('AssignRole', () => {
   let userRepository: InMemoryUserRepository;
   let roleAssignmentRepository: InMemoryRoleAssignmentRepository;
@@ -39,7 +46,7 @@ describe('AssignRole', () => {
 
   beforeEach(() => {
     userRepository = new InMemoryUserRepository();
-    roleAssignmentRepository = new InMemoryRoleAssignmentRepository();
+    roleAssignmentRepository = new InMemoryRoleAssignmentRepository({ userRepository });
     eventBus = new RecordingEventBus();
     userRepository.users.set(
       USER_ID,
@@ -58,6 +65,7 @@ describe('AssignRole', () => {
         { id: INACTIVE, active: false },
       ]),
       idGenerator: new SequentialIdGenerator(),
+      transactionRunner: new NoopTransactionRunner(),
       clock: new FixedClock(NOW),
       eventBus,
     });
@@ -158,6 +166,7 @@ describe('AssignRole', () => {
       roleAssignmentRepository,
       companyDirectory: new StubCompanyDirectory([{ id: 'company-b', active: true }]),
       idGenerator: new SequentialIdGenerator(),
+      transactionRunner: new NoopTransactionRunner(),
       clock: new FixedClock(NOW),
       eventBus,
     });

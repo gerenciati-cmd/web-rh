@@ -1,5 +1,5 @@
 ---
-status: review
+status: testing
 module: identity
 min_implementer: mid
 depends_on: ['001']
@@ -144,7 +144,7 @@ identity module of plan 001 (`apps/api/src/modules/identity/domain/session.ts`,
    - Observable result: typecheck passes.
 
 8. **Infrastructure and migration**
-   - Files: `apps/api/prisma/schema.prisma` (modify), `apps/api/prisma/migrations/<timestamp>_create_role_assignments/migration.sql` (create), `apps/api/src/modules/identity/infrastructure/role-assignment.mapper.ts` (create), `apps/api/src/modules/identity/infrastructure/prisma-role-assignment.repository.ts` (create), `apps/api/src/modules/identity/infrastructure/prisma-user.queries.ts` (modify), `apps/api/src/modules/identity/infrastructure/organization-company-directory.ts` (create), `apps/api/src/modules/identity/infrastructure/in-memory/in-memory-role-assignment.repository.ts` (create), `apps/api/src/modules/identity/infrastructure/in-memory/in-memory-user.queries.ts` (modify)
+   - Files: `apps/api/prisma/schema.prisma` (modify), `apps/api/prisma/migrations/20260930150447_create_role_assignments/migration.sql` (create), `apps/api/src/modules/identity/infrastructure/role-assignment.mapper.ts` (create), `apps/api/src/modules/identity/infrastructure/prisma-role-assignment.repository.ts` (create), `apps/api/src/modules/identity/infrastructure/prisma-user.queries.ts` (modify), `apps/api/src/modules/identity/infrastructure/organization-company-directory.ts` (create), `apps/api/src/modules/identity/infrastructure/in-memory/in-memory-role-assignment.repository.ts` (create), `apps/api/src/modules/identity/infrastructure/in-memory/in-memory-user.queries.ts` (modify)
    - Do (skill `db-change`):
      - `enum IdentityRole { HOLDING_ADMIN HR DIRECT_MANAGER EMPLOYEE @@schema("identity") }`; `model RoleAssignment { id Uuid @id; userId @map("user_id") Uuid; user User @relation(...); role IdentityRole; companyId String? @map("company_id") @db.Uuid /// referencia por id a organization, sin FK (ADR 0010); assignedAt @map("assigned_at") Timestamptz(3); assignedBy String? @map("assigned_by") @db.Uuid; revokedAt DateTime? @map("revoked_at") Timestamptz(3); revokedBy String? @map("revoked_by") @db.Uuid; @@index([userId, revokedAt]) @@index([role, revokedAt]) @@map("role_assignments") @@schema("identity") }`; add `roleAssignments RoleAssignment[]` to `User`. `pnpm db:migrate --name create_role_assignments`, then `pnpm db:generate`. Replace `<timestamp>` in this plan's Files line with the real directory (record it in Deviations).
      - Mapper and Prisma repository like `session.mapper.ts` / `prisma-session.repository.ts` (`save` = upsert; `findActiveByUser` / `countActiveByRole` filter `revokedAt: null`).
@@ -190,6 +190,20 @@ identity module of plan 001 (`apps/api/src/modules/identity/domain/session.ts`,
     - Do: nothing for the implementer.
     - Observable result: test suites green.
 
+15. **Review round 1 repairs** (added 2026-09-30 by the main session; R1 and R4 approach chosen by the user, README decisions 17-18)
+    - Files: `apps/api/src/http/bind-route.ts` (modify), `docs/adr/0012-autorizacion-declarada-en-contratos.md` (modify), `docs/architecture.md` (modify), `apps/api/src/modules/identity/infrastructure/prisma-role-assignment.repository.ts` (modify), `apps/api/src/modules/identity/domain/role-assignment.repository.ts` (modify), `apps/api/src/modules/identity/infrastructure/in-memory/in-memory-role-assignment.repository.ts` (modify), `apps/api/src/modules/identity/application/commands/assign-role.command.ts` (modify), `apps/api/prisma/seed.ts` (modify), `.claude/skills/new-use-case/SKILL.md` (modify), `.claude/skills/new-module/SKILL.md` (modify)
+    - Do:
+      - **R1 (authorize before validating input)**: in `bindRoute` parse `params` first (the company comes from there), then run `authorize(route.access, parsed.params, context)`, and only then parse `query` and `body`. Keep the context construction before `authorize`. An anonymous request with any query/body now gets 401, and a caller without permission gets 403, before any schema error is revealed. An invalid **path param** still answers 400 before auth (needed to read `companyParam`); state that in the comment and in ADR 0012. Update ADR 0012 and the request-flow paragraph in `docs/architecture.md` to this order.
+      - **R4 (no duplicate active assignments) — revised 2026-09-30, README decision 18**: no migration and no schema change (the partial-index route was blocked: Prisma 7.10 has no partial indexes and the migration guard refuses hand-written SQL; deviation 9). Serialize assignments per user with a row lock instead: add `lockUser(userId: UserId): Promise<boolean>` to `RoleAssignmentRepository` (doc: "debe llamarse dentro de `transactionRunner.run`; bloquea la fila de `identity.users` hasta el fin de la transacción; `false` si el usuario no existe"). Prisma: `$queryRaw` `SELECT id FROM identity.users WHERE id = ${userId}::uuid FOR UPDATE` (same technique as `prisma-login-throttle.repository.ts` `lock`). In-memory: returns whether the user id is known to it (constructor receives the in-memory user store through a structural interface, as `in-memory-user.queries.ts` does). `AssignRole` gains `transactionRunner` in `Deps`; the user check, the duplicate check and `save` run inside `transactionRunner.run(async () => { if (!(await lockUser(userId))) return err(UserNotFoundError); ...; })`; the company-directory lookup (another module) stays **outside** the transaction, before it. Publish events after the transaction. `save` keeps its current signature.
+      - **R5**: in `seed.ts` `seedUser`, find the existing user by exact email among the search results with `pageSize: 100` (or a dedicated exact lookup if one already exists in `UserQueries`); throw only if no exact match.
+      - **R3**: `new-use-case` recipe (line 52 says permission checks go in the use case): replace with "declare `access` in the contract (`publicAccess` / `authenticated` / `requires(permission, { companyParam })`), add new permissions to `PERMISSIONS` in `packages/domain/src/identity/access.ts` and to `ROLE_DEFINITIONS` in `identity/domain/role-catalog.ts`; row filtering goes in the use case with `companiesWith(actor, permission)` (ADR 0012)". Add the same pointer to the contracts step of the `new-module` recipe. These two SKILL files are hand-written recipes (CLAUDE.md), not generated adapters.
+    - Observable result: `pnpm check` and `pnpm test:integration` green; anonymous `POST /api/v1/companies` with `{}` → 401.
+
+16. **Test files touched by repairs and deviation 5** (declared for `pnpm plans:scope`, R2)
+    - Files: `apps/api/src/modules/identity/application/queries/get-current-user.query.test.ts` (modify), `apps/api/tests/zkteco-adms.test.ts` (modify), `apps/api/tests/authorization.test.ts` (modify), `apps/api/src/modules/identity/application/commands/assign-role.command.test.ts` (modify), `apps/api/tests/integration/identity/prisma-role-assignment.int.test.ts` (modify)
+    - Do: nothing for the implementer beyond mechanical compile fixes; the tester turns the two `it.fails` GAP tests into 401 assertions and adds regressions for R4 (unique violation → `ROLE_ALREADY_ASSIGNED`, also against Postgres).
+    - Observable result: test suites green, no `it.fails` left.
+
 ## Acceptance criteria
 
 - [ ] `pnpm check` and `pnpm test:integration` pass; web and mobile typecheck.
@@ -202,6 +216,8 @@ identity module of plan 001 (`apps/api/src/modules/identity/domain/session.ts`,
 - [ ] `DELETE .../role-assignments/:id` → 204 and the next request of that user reflects the loss (403); the only active HOLDING_ADMIN cannot be revoked → 422 `LAST_HOLDING_ADMIN`; a revoked or foreign id → 404 `ROLE_ASSIGNMENT_NOT_FOUND`; the row keeps `revoked_at`/`revoked_by`.
 - [ ] `GET /openapi.json` (non-production): `/auth/login` has `security: []`; business operations carry `x-permission`; the Error response mentions 403.
 - [ ] Login throttle: a login whose email key is blocked does not reserve the IP key (finding L3) — checked in tests; the finding is `planned`.
+- [ ] Anonymous requests with an invalid query or body get 401 (not 400); a caller without permission gets 403 before any body validation (step 15, R1).
+- [ ] Two identical active assignments cannot coexist, even when requested concurrently: the second gets 409 `ROLE_ALREADY_ASSIGNED` (step 15, R4); the index migration has no DROP.
 
 ## Test layers required
 
@@ -242,6 +258,45 @@ Todas cosméticas (fix forward); ninguna cambia diseño ni alcance.
    hubo nada que cambiar.
 7. `plans:scope` marca `plans/platform-openapi/001-documento-y-referencia-scalar.md` como fuera de
    alcance: ya estaba modificado antes de empezar (estado inicial del árbol), no lo toqué.
+
+8. **Repair round 1 (2026-09-30, main session)**: review round 1 found R1 (Medium) and R2-R5
+   (Low). The user chose to authorize before validating query/body (R1) and to add a partial
+   unique index now (R4) — README decisions 17-18. R2, R3, R5 fixed within scope. Added steps
+   15-16 and acceptance criteria; the migration placeholder of step 8 was replaced. Status
+   review → implementing. Earlier test/review evidence is superseded for the repaired code.
+
+9. **BLOCKED en el paso 15 (R4), implementer, 2026-09-30**: Prisma 7.10 no soporta índices
+   parciales (sin rastro de `partialIndexes` en su build) ni `NULLS NOT DISTINCT`, así que se siguió
+   la ruta `--create-only`. `pnpm db:migrate --name role_assignments_active_unique --create-only`
+   creó `apps/api/prisma/migrations/20260930154816_role_assignments_active_unique/migration.sql`
+   (sin aplicar, contiene solo `-- This is an empty migration.`). Escribir el SQL en ella lo
+   bloquean `guard-files` (Write) y `guard-bash` (printf/redirect) con "Migración existente: crea
+   una nueva": los hooks no distinguen una migración aún no aplicada. No se intentó rodearlos.
+   No se aplicó nada, no se tocó ningún otro archivo del paso 15 (R1, R4 código, R5, R3 pendientes).
+   Decisión que necesita el usuario: (a) que escriba él el SQL del paso 15 en esa migración vacía
+   (o autorice al hook), o (b) borrar ese directorio vacío que creé y repetir el flujo tras ajustar
+   el hook. SQL previsto:
+   `CREATE UNIQUE INDEX "role_assignments_active_key" ON "identity"."role_assignments" ("user_id", "role", "company_id") NULLS NOT DISTINCT WHERE "revoked_at" IS NULL;`
+10. **Resolution of deviation 9 (2026-09-30, main session)**: the user chose to drop the partial
+    index and serialize `AssignRole` with a row lock on the user (README decision 18 revised);
+    step 15's R4 text and Files line were rewritten, no migration is added by this repair. The
+    user removes the empty `20260930154816_role_assignments_active_unique` directory (the guard
+    does not let agents delete it). Status blocked → implementing.
+
+11. **Paso 15 ejecutado (implementer, 2026-09-30, ronda de reparación 1)**: R1 (`bindRoute` valida
+    `params`, autoriza, luego valida `query`/`body`), R4 (bloqueo de fila: `lockUser` en el puerto,
+    en Prisma con `SELECT … FOR UPDATE` y en memoria; `AssignRole` lleva `transactionRunner`,
+    comprobación de usuario/duplicado/`save` dentro de la transacción y la consulta a
+    `CompanyDirectory` fuera), R5 (`pageSize: 100`), R3 (recetas) y ADR 0012 / `architecture.md`
+    al nuevo orden. Sin migración. Cosmético, dentro del paso 16 (arreglos de compilación): el
+    constructor de `InMemoryRoleAssignmentRepository` ahora recibe `{ userRepository }`
+    (estructura mínima) y se actualizaron `test-app.ts` y tres tests de identity; `assign-role`
+    test recibe `NoopTransactionRunner`. Además convertí a aserción normal el `it.fails` GAP de
+    body inválido en `tests/authorization.test.ts` (pasó a 401 y dejaba `pnpm check` en rojo);
+    queda el `it.fails` de `:userId` inválido anónimo, que sigue en 400 por diseño (param de path
+    inválido responde 400 antes de autenticar, ADR 0012): el tester debe reescribirlo como 400
+    y añadir los tests de R4 (paso 16). Los tests previos de evidencia quedan superseded por esta
+    reparación.
 
 Verificación de la fase: `pnpm check` verde; `pnpm test:integration` verde (6 archivos, 39 tests);
 `pnpm db:seed` dos veces (la segunda no crea nada: `ROLE_ALREADY_ASSIGNED` ignorado). No se

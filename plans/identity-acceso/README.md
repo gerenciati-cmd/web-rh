@@ -70,6 +70,14 @@ endpoint is open (`apps/api/src/http/app.ts:43-47` mounts module routers with no
     the seed makes `admin@example.com` Admin holding. Creating users over HTTP stays in plan 003.
 16. (2026-09-30) The deferred throttle finding (`plans/hallazgos/identity-throttle-reserva-ip.md`,
     L3/I4/I6) is fixed in plan 002.
+17. (2026-09-30) Authorization runs before validating query and body: an anonymous or
+    unauthorized caller never sees schema errors (401/403 first). Path params are still validated
+    first because the company scope comes from them (plan 002 review R1).
+18. (2026-09-30) Duplicate active role assignments are prevented by serializing `AssignRole` per
+    user with a row lock (`SELECT … FOR UPDATE` on the user) — revised the same day: a partial
+    unique index was the first choice, but Prisma 7.10 cannot declare partial indexes and a
+    hand-written one risks being dropped by a later migration (plan 002 review R4, deviation 9).
+    Note for plan 003: once users can be disabled, the last-admin rule must ignore disabled admins.
 
 ## Delivered
 

@@ -1,6 +1,6 @@
 import { err, ok, type DomainError, type Role } from '@rrhh/domain';
 
-import type { Clock, EventBus, IdGenerator } from '@/shared/application/ports';
+import type { Clock, EventBus, IdGenerator, TransactionRunner } from '@/shared/application/ports';
 import type { Command } from '@/shared/application/use-case';
 
 import {
@@ -28,6 +28,7 @@ interface Deps {
   roleAssignmentRepository: RoleAssignmentRepository;
   companyDirectory: CompanyDirectory;
   idGenerator: IdGenerator;
+  transactionRunner: TransactionRunner;
   clock: Clock;
   eventBus: EventBus;
 }
@@ -41,6 +42,7 @@ export class AssignRole implements Command<AssignRoleInput, { id: RoleAssignment
       roleAssignmentRepository,
       companyDirectory,
       idGenerator,
+      transactionRunner,
       clock,
       eventBus,
     } = this.deps;
@@ -66,13 +68,25 @@ export class AssignRole implements Command<AssignRoleInput, { id: RoleAssignment
       }
     }
 
-    const active = await roleAssignmentRepository.findActiveByUser(user.id);
-    const duplicate = active.some(
-      (other) => other.snapshot.role === input.role && other.snapshot.companyId === input.companyId,
-    );
-    if (duplicate) return err<DomainError>(new RoleAlreadyAssignedError());
+    // El bloqueo de la fila del usuario serializa las asignaciones concurrentes de ese usuario:
+    // sin él, dos POST idénticos pasarían a la vez la comprobación de duplicado (README, decisión 18).
+    const saved = await transactionRunner.run(async () => {
+      if (!(await roleAssignmentRepository.lockUser(user.id))) {
+        return err<DomainError>(new UserNotFoundError());
+      }
 
-    await roleAssignmentRepository.save(assignment.value);
+      const active = await roleAssignmentRepository.findActiveByUser(user.id);
+      const duplicate = active.some(
+        (other) =>
+          other.snapshot.role === input.role && other.snapshot.companyId === input.companyId,
+      );
+      if (duplicate) return err<DomainError>(new RoleAlreadyAssignedError());
+
+      await roleAssignmentRepository.save(assignment.value);
+      return ok(undefined);
+    });
+    if (!saved.ok) return saved;
+
     await eventBus.publish(assignment.value.pullEvents());
     return ok({ id: assignment.value.id });
   }

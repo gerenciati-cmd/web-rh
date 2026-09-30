@@ -4,7 +4,14 @@ import type { RoleAssignment, RoleAssignmentId } from '../../domain/role-assignm
 import type { RoleAssignmentRepository } from '../../domain/role-assignment.repository';
 import type { UserId } from '../../domain/user';
 
+/** Estructura mínima del almacén de usuarios (evita importar otro doble de `/in-memory/`). */
+interface UserStore {
+  readonly users: ReadonlyMap<string, unknown>;
+}
+
 export class InMemoryRoleAssignmentRepository implements RoleAssignmentRepository {
+  constructor(private readonly deps: { userRepository: UserStore }) {}
+
   readonly assignments = new Map<string, RoleAssignment>();
 
   findById(id: RoleAssignmentId): Promise<RoleAssignment | null> {
@@ -21,6 +28,10 @@ export class InMemoryRoleAssignmentRepository implements RoleAssignmentRepositor
     return Promise.resolve(
       [...this.assignments.values()].filter((a) => a.snapshot.role === role && a.isActive).length,
     );
+  }
+
+  lockUser(userId: UserId): Promise<boolean> {
+    return Promise.resolve(this.deps.userRepository.users.has(userId));
   }
 
   save(assignment: RoleAssignment): Promise<void> {

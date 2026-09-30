@@ -28,6 +28,13 @@ export class PrismaRoleAssignmentRepository implements RoleAssignmentRepository 
     return this.deps.database.client.roleAssignment.count({ where: { role, revokedAt: null } });
   }
 
+  async lockUser(userId: UserId): Promise<boolean> {
+    const rows = await this.deps.database.client.$queryRaw<{ id: string }[]>`
+      SELECT id FROM identity.users WHERE id = ${userId}::uuid FOR UPDATE
+    `;
+    return rows.length > 0;
+  }
+
   async save(assignment: RoleAssignment): Promise<void> {
     const data = RoleAssignmentMapper.toPersistence(assignment);
     await this.deps.database.client.roleAssignment.upsert({

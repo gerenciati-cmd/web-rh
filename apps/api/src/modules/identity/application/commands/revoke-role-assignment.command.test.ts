@@ -28,7 +28,7 @@ describe('RevokeRoleAssignment', () => {
   let revoke: RevokeRoleAssignment;
 
   beforeEach(() => {
-    repository = new InMemoryRoleAssignmentRepository();
+    repository = new InMemoryRoleAssignmentRepository({ userRepository: { users: new Map() } });
     eventBus = new RecordingEventBus();
     revoke = new RevokeRoleAssignment({
       roleAssignmentRepository: repository,

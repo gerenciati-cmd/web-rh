@@ -29,7 +29,7 @@ describe('SessionAuthenticator', () => {
     sessionRepository = new InMemorySessionRepository();
     sessionTokens = new CryptoSessionTokens();
     clock = new FixedClock(now);
-    roleAssignmentRepository = new InMemoryRoleAssignmentRepository();
+    roleAssignmentRepository = new InMemoryRoleAssignmentRepository({ userRepository });
     authenticator = new SessionAuthenticator({
       sessionRepository,
       userRepository,

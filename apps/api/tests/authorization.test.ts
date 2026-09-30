@@ -132,12 +132,9 @@ describe('autorización HTTP', () => {
     // GAP: `bindRoute` valida params/query/body ANTES de autorizar (plan 002 paso 9: "después de
     // parsear"), así que un anónimo con un cuerpo inválido recibe 400 con el detalle del esquema en
     // vez de 401. El criterio de aceptación dice "sin sesión, toda ruta de negocio → 401".
-    it.fails(
-      'GAP: plan 002 (criterio 3): anónimo con body inválido recibe 401, no 400',
-      async () => {
-        await as(null).post('/companies').send({}).expect(401);
-      },
-    );
+    it('anónimo con body inválido recibe 401, no 400 (autoriza antes de validar body)', async () => {
+      await as(null).post('/companies').send({}).expect(401);
+    });
 
     it.fails(
       'GAP: plan 002 (criterio 3): anónimo con :userId inválido recibe 401, no 400',

@@ -44,7 +44,7 @@ export function buildTestContainer(env: Env = testEnv) {
   const companies = new InMemoryCompanyStore();
   const employees = new InMemoryEmployeeRepository();
   const users = new InMemoryUserRepository();
-  const roleAssignments = new InMemoryRoleAssignmentRepository();
+  const roleAssignments = new InMemoryRoleAssignmentRepository({ userRepository: users });
   // Directorio falso respaldado por el mismo almacén de empresas del contenedor de test.
   const companyDirectory: CompanyDirectory = {
     find: (companyId) => {
