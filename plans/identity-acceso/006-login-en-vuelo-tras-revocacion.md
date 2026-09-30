@@ -1,5 +1,5 @@
 ---
-status: review
+status: verify
 module: identity
 min_implementer: mid
 depends_on: ['005']
@@ -144,5 +144,67 @@ were not run against a pre-fix build (no baseline mutation allowed), so their ab
 without the fix is argued from the gates, not demonstrated.
 
 ## Review findings
+
+Reviewed 2026-09-30 (reviewer subagent), diff `f4a4c08..HEAD` (commits f0c8cee, 6a8e377, 176da1a).
+
+**Checklist: 13/13 passed.**
+
+- [x] `pnpm plans:scope <plan> --base f4a4c08`: 6 changed files, all in scope.
+- [x] `pnpm check` green, all stages through `test:quality`.
+- [x] `pnpm test:integration` green (11 files, 115 tests). No `infrastructure/` change, but the
+      acceptance criteria require it.
+- [x] No business rules outside `domain/`. The re-check uses `User.canSignIn` and compares hashes;
+      it is orchestration in the use case, the same shape as `ResetPassword`.
+- [x] CQRS-lite: this is a command. It goes through `UserRepository.lock`/`findById` and
+      `SessionRepository.save`, returns `Result`, and adds no new repository methods.
+- [x] No contract change.
+- [x] Expected error stays `InvalidCredentialsError` (`INVALID_CREDENTIALS`).
+      `CredentialsChangedError` is internal and never leaves the command
+      (`log-in.command.ts:167-170`).
+- [x] Time and ids go through `Clock`/`IdGenerator`. No money involved.
+- [x] No schema change and no migration.
+- [x] No DI change: `LogIn` already had `transactionRunner` in `Deps`. `tests/container.test.ts`
+      is green.
+- [x] No secrets or real personal data (fixture `ana@aps.cl`, fake hasher).
+- [x] `## Deviations: None` is honest. Spot-check: step 1.5 (throttle `clear`/`release` moved
+      after the save) matches `log-in.command.ts:124-128`, and step 1.3 (missing, cannot sign in,
+      or hash differs) matches `:161`.
+- [x] Docs: no existing doc describes the login save path or `revokeAllForUser`
+      (`grep` over `docs/`). The hallazgo is `resolved` with `plan: identity-acceso/006`, and
+      README row 006 and decision 31 are present.
+
+**Bug hunt.** I traced both orders against real Postgres semantics (READ COMMITTED):
+
+- **Reset or disable commits first.** The login's `SELECT … FOR UPDATE` waits. The re-read
+  `findById` is a new statement, so it sees the committed new hash or `DISABLED` and the login
+  rejects.
+- **Login locks first.** `ResetPassword` waits on its own `lock`. `DisableTerminatedEmployee`
+  waits on its user `upsert`, a row write. Each one's later `revokeAllForUser` is a new
+  statement that sees the committed session and revokes it.
+- **Other revokers.** `revokeAllForUser` has no callers besides these two commands (`grep`), so no
+  other revoker is left uncovered.
+- **Hash comparison.** Argon2 salts every hash, so resetting to the same password still produces a
+  different hash and the stale login is rejected. The fake hasher is deterministic, but no test
+  depends on that case.
+- **Real transaction.** The lock-first integration tests would fail if `lock` ran outside a real
+  transaction, because the reset would not wait and the session would stay active. That proves
+  `transactionRunner` scopes `database.client`.
+
+The main session also reports mutation evidence: with the pre-fix `log-in.command.ts`, 4 of the 5
+integration tests and the 3 new application tests fail. That answers the "not demonstrated" note
+in `## Test coverage`.
+
+**Findings: 0 blocking, 0 high, 0 medium, 1 low (informational, no code change required).**
+
+- **Low (uncertain, test strength).** `log-in-race.int.test.ts:212-240`: in the lock-first tests,
+  nothing asserts that `ResetPassword`/`DisableTerminatedEmployee` actually reached their lock
+  before `holding.release.resolve()` ran. Both commands are started without being awaited, and
+  the release happens at once, so the other transaction may begin only after the login commits.
+  The assertions still hold in either order, because the session ends up revoked. So the test
+  proves the outcome, not that the other transaction was blocked. The test names say "espera al
+  login", which overstates this. No action required; a tester could tighten it (for example, by
+  polling `pg_locks` before releasing) if desired.
+
+All green. Status to `verify`.
 
 ## Verification
