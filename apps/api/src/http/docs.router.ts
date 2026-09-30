@@ -5,14 +5,12 @@ import { apiReference } from '@scalar/express-api-reference';
 import { Router } from 'express';
 import { contentSecurityPolicy } from 'helmet';
 
-/** Origen desde el que Scalar carga su bundle. */
-const SCALAR_CDN_ORIGIN = 'https://cdn.jsdelivr.net';
-
 /**
  * Bundle fijado: sin versión, el CDN serviría la última publicada en cada carga. 1.72.2 es la que
- * se verificó renderizando sin errores de CSP; subirla es un cambio deliberado.
+ * se verificó renderizando sin errores de CSP; subirla es un cambio deliberado. La CSP permite
+ * exactamente esta URL, no todo el CDN.
  */
-const SCALAR_BUNDLE = `${SCALAR_CDN_ORIGIN}/npm/@scalar/api-reference@1.72.2`;
+const SCALAR_BUNDLE = 'https://cdn.jsdelivr.net/npm/@scalar/api-reference@1.72.2';
 
 /**
  *  /openapi.json → documento OpenAPI derivado de los contratos (el mismo que `openapi.json`).
@@ -35,7 +33,7 @@ export function createDocsRouter(deps: { openApiUrl: string }): Router {
     const nonce = randomBytes(16).toString('base64');
     const csp = contentSecurityPolicy({
       directives: {
-        scriptSrc: ["'self'", SCALAR_CDN_ORIGIN, `'nonce-${nonce}'`],
+        scriptSrc: ["'self'", SCALAR_BUNDLE, `'nonce-${nonce}'`],
         // En http://localhost reescribiría a https las peticiones de "probar" hacia el API.
         upgradeInsecureRequests: null,
       },

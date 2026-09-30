@@ -182,7 +182,12 @@ function rewriteRefs(value: unknown): unknown {
   );
 }
 
-/** Orden estable: el archivo versionado no cambia por el orden en que se recorren las rutas. */
+/**
+ * Orden estable: el archivo versionado no cambia por el orden en que se recorren las rutas.
+ * Por punto de código, no `localeCompare`: el orden no debe depender del locale de la máquina/CI.
+ */
 function sortedByKey(record: Record<string, JsonSchema>): Record<string, JsonSchema> {
-  return Object.fromEntries(Object.entries(record).sort(([a], [b]) => a.localeCompare(b)));
+  return Object.fromEntries(
+    Object.entries(record).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)),
+  );
 }

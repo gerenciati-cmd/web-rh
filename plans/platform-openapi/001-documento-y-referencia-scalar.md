@@ -1,5 +1,5 @@
 ---
-status: verify
+status: testing
 module: platform
 min_implementer: mid
 depends_on: []
@@ -303,6 +303,26 @@ The previous Test coverage, Review findings and Verification entries remain as h
 error declarados`, which asserts the removed 5-code shape. It is a test-only correction for
   the tester (role purity), together with finding 4 (CSP assertion) and tests for the new
   throws.
+
+### Repair round 2 (2026-09-30)
+
+Reason: the repair-round-1 review left 1 low and 3 info items. The user chose a short second
+round. Status went verify → implementing. Same files as step 6.
+
+- **Info 3 (determinism).** `sortedByKey` now compares by code point instead of
+  `localeCompare()`, so the committed `openapi.json` order cannot depend on the machine or CI
+  locale. Regenerating gave no diff (`git diff --stat packages/contracts/openapi.json` was
+  empty).
+- **Info 2 (CSP hardening).** `script-src` now allows only the pinned bundle URL
+  (`https://cdn.jsdelivr.net/npm/@scalar/api-reference@1.72.2`), not the whole
+  `cdn.jsdelivr.net` host. Live check: header is `script-src 'self'
+https://cdn.jsdelivr.net/npm/@scalar/api-reference@1.72.2 'nonce-…'`. Headless Chrome shows
+  0 CSP/"Refused" console lines, bundle `1.72.2` logs its version, and "Models" renders. The
+  UMD bundle loads no further scripts.
+- **Low 1 (pinned-version test)** and a test for the exact-URL `script-src` belong to the
+  tester.
+- `pnpm check`: `Tasks: 19 successful`, arch clean, harness 161/161, bootstrap 17/17,
+  quality 9/9.
 
 ## Test coverage
 
