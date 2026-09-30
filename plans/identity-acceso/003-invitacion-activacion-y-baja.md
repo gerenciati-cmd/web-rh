@@ -1,5 +1,5 @@
 ---
-status: review
+status: verify
 module: identity
 min_implementer: mid
 depends_on: ['002']
@@ -333,5 +333,50 @@ Result: M1 requires a code change, so the status stays `review` (back to impleme
 - Fix in this plan: **M1**, **L2** (supersede pending invitations of the employee even when no user exists; one of the two transactions must always see the other) and **L1** (plan file lists: step 7 timestamp and the files recorded in Deviations).
 - **L3** is deferred to `plans/hallazgos/identity-invitaciones-concurrentes.md` (impact contained; not fixed here unless M1's repair adds an invitation lock anyway).
 - Circuit: review → implementing (implementer repairs) → testing (tester adds regressions and updates the L2 no-op test) → review (round 2) → verify.
+
+### Round 2 (2026-09-30) — repair of M1, L2, L1
+
+Reviewer run, diff `4418fd7..HEAD` (commits b1fff1b fix, 37a7c86 test), working tree clean. Round 1 findings above are kept as history; M1, L2 and L1 are superseded by this round, and L3 is tracked in `plans/hallazgos/identity-invitaciones-concurrentes.md`.
+
+**Pass 1 — Checklist: 13/13**
+
+- [x] `pnpm plans:scope` passes (82 declared, 82 changed). What remains is the two "declared without changes" entries recorded in Deviations, plus the four append-only hot files. **L1 resolved.**
+- [x] `pnpm check` green: api 410 passed + 2 skipped, contracts 107, domain 51; arch, plans lint, harness, hooks and quality all ok.
+- [x] `pnpm test:integration` green (9 files, 84 tests; 4 of them new, in `prisma-invitation.int.test.ts › save condicional`).
+- [x] Business rules stay in the domain: `Invitation.accept`/`supersede` are unchanged. The conditional write is a persistence guarantee documented on the port (`invitation.repository.ts:11-16`).
+- [x] CQRS-lite unchanged. `save` returning `boolean` is a write outcome, not a screen method.
+- [x] No contract changes.
+- [x] Expected errors: the lost race maps to the existing `INVITATION_NOT_VALID`. `InvitationLostError` is internal (not exported) and only serves to roll back the transaction; anything else is rethrown (`activate-account.command.ts:117-122`).
+- [x] Time and IDs unchanged (`clock.now()` is still taken once per command).
+- [x] No new migration. The conditional update uses existing columns.
+- [x] DI: no new registrations, and `container.test.ts` is green.
+- [x] No secrets and no real data. The new fixtures are synthetic.
+- [x] Deviations are honest. Spot-check: "L2 … all inside one transaction" matches `disable-terminated-employee.command.ts:35-52` (supersede, then `findByEmployeeId`, then disable and revoke, all inside `transactionRunner.run`).
+- [x] Docs: nothing stale. The port docblock describes the new `save` semantics.
+
+**Pass 2 — Findings**
+
+Traced interleavings (Postgres default READ COMMITTED; `PrismaDatabase` propagates the tx client via AsyncLocalStorage, so the repository `client` is the transaction's). T1 = `ActivateAccount` (INSERT user, then conditional UPDATE invitation). T2 = `DisableTerminatedEmployee` (conditional UPDATE invitation, then SELECT user).
+
+- (a) T2 updates the invitation first. T1's UPDATE blocks on the row lock and re-evaluates `revoked_at IS NULL` after T2 commits: 0 rows, `findUnique` finds the row, `false`, `InvitationLostError`, and T1's user insert is rolled back.
+- (b) T1 updates first. T2's UPDATE blocks, then matches 0 rows (`accepted_at` is set). Its next statement (`findByEmployeeId`) sees T1's committed user and disables it.
+- (c) T1 commits before T2 starts. T2 finds no pending invitation, finds the user and disables it.
+
+No interleaving leaves an ACTIVE user for a terminated colaborador. The lock order (users index, then invitation row, versus invitation row then a plain read) cannot deadlock. Two concurrent activations of the same token still collide on the email unique index and get 409, as before. **M1 resolved. L2 resolved** (`disable-terminated-employee.command.ts:38-45`: invitations are superseded even without an account, and the test asserts `revokedAt`).
+
+**Low (non-blocking)**
+
+- **L4 — The in-memory invitation repository does not honor the port's new contract.**
+  - Where: `apps/api/src/modules/identity/infrastructure/in-memory/in-memory-invitation.repository.ts:37-40`.
+  - What fails: `save` always stores the value and returns `true`. The port (`invitation.repository.ts:11-16`) promises that an invitation already accepted or superseded is never overwritten and that `save` returns `false` in that case. By contrast, `InMemoryUserRepository.save` does emulate the DB's unique constraints.
+  - Why it is non-blocking today:
+    - The fake stores live references, so `findById`/`findByTokenHash`/`findPending*` return the stored object itself, and a stale copy cannot exist unless a test builds one with `Invitation.restore`.
+    - Every current caller saves only an instance it has just seen pending (`findPending*` results, or `accept()` success), so in sequential flows both adapters return `true`. No current unit or http test would behave differently on Prisma.
+    - The `false` branch is covered by the `LosingInvitationRepository` subclass (application) and by 4 integration tests against the real DB.
+  - Failure scenario (latent): a future caller or http test that relies on `false` (for example, a stale accept after a supersede) would pass against the fake and behave differently in production, and the gap would only show up in integration. Two options: make the fake store snapshots (restore on read) and apply the same `acceptedAt/revokedAt` guard, or add a comment on the fake stating that it does not emulate the conditional write and why. Decision for the main session/user; not required for this plan.
+- **L5 — Docblock typo.** `disable-terminated-employee.command.ts:25` reads "Idempotente (el evento puede repetirse) y y reemplaza…" (duplicated "y"; the line is also longer than the 100-column style of its neighbours, since Prettier does not wrap comments). Cosmetic; fix forward.
+- Informational, not a finding: `InviteEmployee`/`InviteExternal`/`DisableTerminatedEmployee` ignore the `boolean` from `save` on supersede. This is correct: `false` there means the invitation was concurrently accepted or superseded, which is the desired end state anyway. The pending-invitation duplication stays under L3's hallazgo.
+
+Result: M1, L2 and L1 are resolved. The two new lows need no code change for this plan. Count for round 2: 0 high, 0 medium, 2 low (non-blocking). Status → `verify`.
 
 ## Verification
