@@ -91,11 +91,11 @@ This follows the lock-and-re-read shape of `ResetPassword`
 
 ## Acceptance criteria
 
-- [ ] `pnpm check` and `pnpm test:integration` pass.
-- [ ] Normal login is unchanged: 200 with a session. Wrong password and a disabled user still give
+- [x] `pnpm check` and `pnpm test:integration` pass.
+- [x] Normal login is unchanged: 200 with a session. Wrong password and a disabled user still give
       401 `INVALID_CREDENTIALS`. The throttle still blocks after the configured failures, and a
       successful login still clears the email throttle.
-- [ ] Against real Postgres, `LogIn` runs in parallel with `ResetPassword` or
+- [x] Against real Postgres, `LogIn` runs in parallel with `ResetPassword` or
       `DisableTerminatedEmployee`, and the password verification is held until the other
       transaction has committed. The outcome must be one of two, never an active session left
       behind by the stale login:
@@ -208,3 +208,42 @@ in `## Test coverage`.
 All green. Status to `verify`.
 
 ## Verification
+
+Verifier run (2026-09-30, main session inline) on `ebccd70`. **Result: PASS.**
+
+**Suites**
+
+- `pnpm check`: green. api 519 passed + 3 skipped, contracts 133, domain 51. arch, plans lint,
+  harness, hooks, bootstrap and quality all ok.
+- `pnpm test:integration`: `Test Files 11 passed (11)`, `Tests 115 passed (115)`.
+
+**Negative control** (main session): the regression tests do catch the bug.
+
+- I temporarily restored `log-in.command.ts` from `f0c8cee`, before the fix, with
+  `git show … > file`.
+- Results against that code:
+  - `log-in-race.int.test.ts`: 4 of 5 failed. Both stale-login cases returned `ok` instead of
+    `INVALID_CREDENTIALS`, so the race is real. The two lock-first cases timed out, because the old
+    code never takes the lock.
+  - `log-in.command.test.ts`: the 3 new cases failed.
+- I then restored the file from `HEAD`; `git status` was clean.
+
+**Running app** (`pnpm --filter @rrhh/api dev` on :3001, with the `verif5-*` users left by plan
+005's run): the normal login flows are unchanged.
+
+- Successful logins:
+  - mobile → 200 with a token, and `/auth/me` → 200
+  - web → 200
+- These all gave 401 `INVALID_CREDENTIALS`: a wrong password, a disabled user with the right
+  password, and an unknown email.
+- Throttle:
+  - After 5 failures, the right password → 429 `LOGIN_TEMPORARILY_BLOCKED`.
+  - Another email from the same IP still logs in (200).
+  - 2 failures followed by a correct login → 200. After 4 more failures, login is still allowed
+    (200), so the success cleared the email throttle.
+
+**Acceptance criteria**: all met.
+
+**NOT VERIFIED live**: the race itself over HTTP. It needs a controlled pause inside argon2
+verification; it is covered by the integration test against real Postgres and by the negative
+control above.
