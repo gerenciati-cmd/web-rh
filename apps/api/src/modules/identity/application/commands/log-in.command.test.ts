@@ -130,6 +130,39 @@ describe('LogIn', () => {
     expect(!result.ok && result.error.details?.retryAfterSeconds).toBe(300);
   });
 
+  // L3 (hallazgo identity-throttle-reserva-ip, plan 002 paso 11): la primera llave bloqueada
+  // corta la reserva; la llave de IP ni se toca, así un correo bloqueado no consume cupo de IP.
+  it('correo bloqueado: no reserva (ni toca) la llave de la IP', async () => {
+    const throttle = LoginThrottle.restore(LoginThrottle.keyForEmail(email(input.email)), {
+      failures: THROTTLE_POLICIES.email.maxFailures,
+      windowStartedAt: now,
+      blockedUntil: new Date(now.getTime() + 10 * 60_000),
+    });
+    throttleRepository.throttles.set(throttle.id, throttle);
+
+    const result = await logIn.execute(input);
+
+    expect(!result.ok && result.error.code).toBe('LOGIN_TEMPORARILY_BLOCKED');
+    expect(throttleRepository.throttles.has(LoginThrottle.keyForIp(input.ip!))).toBe(false);
+  });
+
+  // I6 del mismo hallazgo: si la IP está bloqueada, la reserva ya hecha del correo se libera.
+  it('IP bloqueada: libera la reserva que ya se había hecho para el correo', async () => {
+    const throttle = LoginThrottle.restore(LoginThrottle.keyForIp(input.ip!), {
+      failures: THROTTLE_POLICIES.ip.maxFailures,
+      windowStartedAt: now,
+      blockedUntil: new Date(now.getTime() + 5 * 60_000),
+    });
+    throttleRepository.throttles.set(throttle.id, throttle);
+
+    await logIn.execute(input);
+
+    const emailThrottle = throttleRepository.throttles.get(
+      LoginThrottle.keyForEmail(email(input.email)),
+    );
+    expect(emailThrottle?.snapshot.failures ?? 0).toBe(0);
+  });
+
   it('usuario desconocido: simula la verificación, responde INVALID_CREDENTIALS y registra el fallo en ambos throttles', async () => {
     const result = await logIn.execute(input);
 

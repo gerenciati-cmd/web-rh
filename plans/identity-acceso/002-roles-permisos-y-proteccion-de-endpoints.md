@@ -1,5 +1,5 @@
 ---
-status: testing
+status: review
 module: identity
 min_implementer: mid
 depends_on: ['001']
@@ -248,6 +248,54 @@ Verificación de la fase: `pnpm check` verde; `pnpm test:integration` verde (6 a
 ejercitaron los criterios HTTP de aceptación contra la app corriendo (fase de verify).
 
 ## Test coverage
+
+Tester, 2026-09-30. Línea base: `pnpm check` verde y `pnpm test:integration` verde (6 archivos,
+39 tests) antes de escribir nada. Todo derivado de código real (`archivo:línea` por función) o de
+ejecución local; nada asumido del plan sin confirmar en el código.
+
+| Comportamiento                                                                                                                                     | Fuente                                                  | Capa        | Test                                                             | Estado                             |
+| -------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- | ----------- | ---------------------------------------------------------------- | ---------------------------------- |
+| `hasPermission`: sin empresa basta cualquier concesión; con empresa, holding o esa empresa                                                         | `shared/application/actor.ts` `hasPermission`           | application | `actor.test.ts › hasPermission` (6)                              | CONFIRMED                          |
+| `companiesWith`: `'ALL'` / ids distintos / vacío                                                                                                   | `actor.ts` `companiesWith`                              | application | `actor.test.ts › companiesWith` (3)                              | CONFIRMED                          |
+| Catálogo: alcances, permisos por rol, roles inertes no asignables                                                                                  | `role-catalog.ts` `ROLE_DEFINITIONS`                    | domain      | `role-catalog.test.ts › ROLE_DEFINITIONS` (4)                    | CONFIRMED                          |
+| `grantsFor` expande por empresa/holding, acumula, inertes no aportan                                                                               | `role-catalog.ts` `grantsFor`                           | domain      | `role-catalog.test.ts › grantsFor` (5)                           | CONFIRMED                          |
+| `RoleAssignment.assign`: alcance válido, `ROLE_NOT_ASSIGNABLE` antes que `INVALID_ROLE_SCOPE`, evento                                              | `role-assignment.ts` `assign`                           | domain      | `role-assignment.test.ts › assign` (7)                           | CONFIRMED                          |
+| `revoke` registra quién/cuándo, evento, idempotente; `restore`                                                                                     | `role-assignment.ts` `revoke`/`restore`                 | domain      | `role-assignment.test.ts › revoke`, `restore` (3)                | CONFIRMED                          |
+| `AssignRole`: feliz, `USER_NOT_FOUND`, alcance/no asignable, `COMPANY_NOT_FOUND`, `COMPANY_INACTIVE`, `ROLE_ALREADY_ASSIGNED` (revocada no cuenta) | `assign-role.command.ts`                                | application | `assign-role.command.test.ts` (11)                               | CONFIRMED                          |
+| `RevokeRoleAssignment`: feliz, no encontrada / ajena / ya revocada, `LAST_HOLDING_ADMIN` (con y sin segundo admin, revocado no cuenta)             | `revoke-role-assignment.command.ts`                     | application | `revoke-role-assignment.command.test.ts` (8)                     | CONFIRMED                          |
+| `SessionAuthenticator` expande grants, ignora revocadas/ajenas, revocar rige de inmediato                                                          | `session-authenticator.ts`                              | application | `session-authenticator.test.ts` (+4)                             | CONFIRMED                          |
+| `ListCompanies` filtra por concesión (holding / una / varias / ninguna)                                                                            | `list-companies.query.ts`, `in-memory-company.store.ts` | application | `list-companies.query.test.ts` (5)                               | CONFIRMED                          |
+| `LogIn` L3: correo bloqueado no reserva la IP; I6: IP bloqueada libera el correo                                                                   | `log-in.command.ts` `reserveOrBlock`                    | application | `log-in.command.test.ts` (+2)                                    | CONFIRMED                          |
+| Toda ruta declara `access`; solo `logIn` pública; `companyParam` existe en el path                                                                 | `http.ts`, contratos                                    | contract    | `access.contract.test.ts › access de cada ruta` (16)             | CONFIRMED                          |
+| Rutas de acceso: forma, `AssignRoleSchema`, `ListUsersQuerySchema`, DTOs                                                                           | `access.contract.ts`                                    | contract    | `access.contract.test.ts` (resto)                                | CONFIRMED                          |
+| OpenAPI: `security: []` en login, `x-permission`/`x-company-param`, 403 en Error                                                                   | `openapi.ts:46-107`                                     | contract    | `access.contract.test.ts › OpenAPI: seguridad por operación` (5) | CONFIRMED                          |
+| Sin sesión: 401 `AUTHENTICATION_REQUIRED` en las 9 rutas de negocio + me/logout, token falso; login y `/health/live` abiertos                      | `bind-route.ts authorize`, `error-handler.ts`           | http        | `authorization.test.ts › sin sesión`                             | CONFIRMED                          |
+| Sin asignaciones: 403 `FORBIDDEN` en las 9 rutas, 200 en `/auth/me`                                                                                | `bind-route.ts`                                         | http        | `authorization.test.ts › usuario sin asignaciones` (10)          | CONFIRMED                          |
+| HR de A: lista solo A; A ok; B y empresa inexistente 403 (no se sondea); rutas de admin 403                                                        | `bind-route.ts`, `list-companies.query.ts`              | http        | `authorization.test.ts › HR de la empresa A`                     | CONFIRMED                          |
+| HOLDING_ADMIN ve todo; empresa inexistente es 404 solo con alcance                                                                                 | `bind-route.ts`                                         | http        | `authorization.test.ts › HOLDING_ADMIN` (3)                      | CONFIRMED                          |
+| `GET /users` lista y filtra por `search`                                                                                                           | `access.router.ts`, `in-memory-user.queries.ts`         | http        | `authorization.test.ts › GET /users`                             | CONFIRMED                          |
+| Asignar: 201, efecto en la siguiente petición, 422/404/409/400 con su `code`                                                                       | `assign-role.command.ts`, `error-handler.ts`            | http        | `authorization.test.ts › asignación de roles`                    | CONFIRMED                          |
+| Revocar: 204, efecto inmediato (403), historial `revokedAt/By`, `LAST_HOLDING_ADMIN`, 404 ya revocada/ajena                                        | `revoke-role-assignment.command.ts`                     | http        | `authorization.test.ts › revocación de roles` (6)                | CONFIRMED                          |
+| `/openapi.json` servido: login sin seguridad, `x-permission`, 403                                                                                  | `openapi.ts`                                            | http        | `authorization.test.ts › OpenAPI`                                | CONFIRMED                          |
+| Repo Prisma: roundtrip (companyId/assignedBy nulos), upsert de revocación, `findActiveByUser`, `countActiveByRole`                                 | `prisma-role-assignment.repository.ts`                  | integration | `prisma-role-assignment.int.test.ts` (7)                         | CONFIRMED                          |
+| `PrismaUserQueries.listUsers` (orden, paginación, `search` insensible) y `listActiveRoleAssignments` (null / vacío / activas ISO ordenadas)        | `prisma-user.queries.ts`                                | integration | `prisma-user.queries.int.test.ts` (7)                            | CONFIRMED                          |
+| `PrismaCompanyQueries.list` con ids: filtra items y total, pagina, vacío/inexistente                                                               | `prisma-company.queries.ts`                             | integration | `prisma-company.int.test.ts` (+2)                                | CONFIRMED                          |
+| Anónimo con body/param inválido recibe 401 (criterio de aceptación 3)                                                                              | `bind-route.ts:52-60` (parsea antes de `authorize`)     | http        | `authorization.test.ts › sin sesión › it.fails('GAP: …')` (2)    | **GAP**                            |
+| Criterios HTTP contra la app corriendo, seed doble, migración sin DROP                                                                             | —                                                       | —           | no se ejercitan aquí (fase verify)                               | NOT CONFIRMED (no es capa de test) |
+
+**GAP 1 (Medium/Low)**: `bindRoute` valida params/query/body antes de aplicar `access`
+(`bind-route.ts:52-60`; el plan paso 9 lo pide "tras parsear"). Consecuencia comprobada
+ejecutando: `POST /companies` sin sesión y con `{}` responde **400 VALIDATION_ERROR** con el detalle
+del esquema, no 401; `GET /users/no-es-uuid/role-assignments` anónimo responde 400. El criterio de
+aceptación dice "sin sesión, toda ruta de negocio → 401" y revela el esquema de entrada a
+anónimos. Los dos `it.fails` se vuelven rojos cuando se autorice antes de validar (mover
+`authorize` antes de `parsePart` para `authenticated`/`permission` sin `companyParam`; con
+`companyParam` hay que validar antes el param). No se tocó código de producto.
+
+Tests nuevos por capa (cierre): domain 19 (`role-catalog` 9, `role-assignment` 10),
+application 39 (`actor` 9, `assign-role` 11, `revoke` 8,
+`session-authenticator` +4, `list-companies` 5, `log-in` +2), contract 35, http 60 (58 verdes +
+2 `it.fails`), integration 16 nuevos. `pnpm check` verde; `pnpm test:integration` verde.
 
 ## Review findings
 
