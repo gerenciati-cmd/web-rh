@@ -223,4 +223,38 @@ describe('PrismaRoleAssignmentRepository', () => {
     expect(await assignments.countActiveByRole('HR')).toBe(1);
     expect(await assignments.countActiveByRole('EMPLOYEE')).toBe(0);
   });
+
+  it('countActiveByRole ignora las asignaciones de usuarios DISABLED (decisión 18)', async () => {
+    const active = await seedUser('activo@aps.cl');
+    const disabledId = await seedUser('baja@aps.cl');
+    await assignments.save(assignment(active, 'HOLDING_ADMIN', null));
+    await assignments.save(assignment(disabledId, 'HOLDING_ADMIN', null));
+    const disabledUser = await users.findById(disabledId);
+    if (!disabledUser) throw new Error('fixture: usuario no encontrado');
+    disabledUser.disable(NOW);
+    await users.save(disabledUser);
+
+    expect(await assignments.countActiveByRole('HOLDING_ADMIN')).toBe(1);
+  });
+
+  it('grantSelf persiste EMPLOYEE con la empresa y assignedBy null', async () => {
+    const userId = await seedUser('empleado@aps.cl');
+    const granted = RoleAssignment.grantSelf({
+      id: ids.next() as RoleAssignmentId,
+      userId,
+      companyId: COMPANY,
+      now: NOW,
+    });
+    await assignments.save(granted);
+
+    const found = await assignments.findById(granted.id);
+
+    expect(found?.snapshot).toMatchObject({
+      role: 'EMPLOYEE',
+      companyId: COMPANY,
+      assignedBy: null,
+      revokedAt: null,
+    });
+    expect(await assignments.countActiveByRole('EMPLOYEE')).toBe(1);
+  });
 });
