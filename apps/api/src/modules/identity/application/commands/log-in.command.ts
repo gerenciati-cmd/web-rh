@@ -133,32 +133,32 @@ export class LogIn implements Command<LogInCommandInput, LogInOutput> {
   }
 
   /**
-   * Reserva un intento por cada llave; si alguna ya estaba bloqueada, deshace las reservas que
-   * sí se alcanzaron a hacer en esta petición y devuelve el error a propagar (`null` si ninguna
-   * llave estaba bloqueada, y ya quedaron todas reservadas).
+   * Reserva un intento por cada llave, en orden, y se detiene en la primera bloqueada (L3): no
+   * reserva las llaves siguientes, así un correo bloqueado no consume ni por un instante el cupo
+   * de una IP compartida. Deshace solo las reservas ya hechas y devuelve el error a propagar
+   * (`null` si ninguna llave estaba bloqueada y quedaron todas reservadas).
    */
   private async reserveOrBlock(
     keys: string[],
     now: Date,
   ): Promise<LoginTemporarilyBlockedError | null> {
-    const reservations: { key: string; outcome: ReservationOutcome }[] = [];
-    for (const key of keys)
-      reservations.push({ key, outcome: await this.reserveAttempt(key, now) });
+    const reserved: string[] = [];
+    for (const key of keys) {
+      const outcome = await this.reserveAttempt(key, now);
+      if (outcome.reserved) {
+        reserved.push(key);
+        continue;
+      }
 
-    const blockedUntils = reservations
-      .map((reservation) => reservation.outcome)
-      .filter((outcome): outcome is { reserved: false; blockedUntil: Date } => !outcome.reserved)
-      .map((outcome) => outcome.blockedUntil);
-    if (blockedUntils.length === 0) return null;
-
-    // El bloqueo solo pudo originarse en ESTA reserva (una llave ya bloqueada se rechaza antes
-    // de reservar), así que liberar lo reservado en esta misma petición es seguro.
-    for (const reservation of reservations) {
-      if (reservation.outcome.reserved) await this.release(reservation.key, now);
+      // El bloqueo pudo fijarlo esta reserva o una concurrente. Liberar la nuestra sigue siendo
+      // correcto: `releaseAttempt` solo levanta el bloqueo si los fallos bajan del límite.
+      for (const reservedKey of reserved) await this.release(reservedKey, now);
+      const retryAfterSeconds = Math.ceil(
+        (outcome.blockedUntil.getTime() - now.getTime()) / MS_PER_SECOND,
+      );
+      return new LoginTemporarilyBlockedError(retryAfterSeconds);
     }
-    const latest = new Date(Math.max(...blockedUntils.map((date) => date.getTime())));
-    const retryAfterSeconds = Math.ceil((latest.getTime() - now.getTime()) / MS_PER_SECOND);
-    return new LoginTemporarilyBlockedError(retryAfterSeconds);
+    return null;
   }
 
   private async reserveAttempt(key: string, now: Date): Promise<ReservationOutcome> {

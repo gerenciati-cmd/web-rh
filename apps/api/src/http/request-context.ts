@@ -23,6 +23,16 @@ export class AuthenticationRequiredError extends Error {
   }
 }
 
+/** Hay actor pero le falta el permiso (o el alcance) de la ruta. Error de ADAPTADOR → 403. */
+export class PermissionDeniedError extends Error {
+  readonly code = 'FORBIDDEN';
+
+  constructor() {
+    super('No tienes permiso para esta acción');
+    this.name = 'PermissionDeniedError';
+  }
+}
+
 export function requireActor(context: RequestContext): Actor {
   if (!context.actor) throw new AuthenticationRequiredError();
   return context.actor;

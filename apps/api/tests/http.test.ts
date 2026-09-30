@@ -6,32 +6,38 @@ import { API_PREFIX, createApp } from '@/http/app';
 import { EmployeeAlreadyExistsError } from '@/modules/employees/domain/errors';
 import { CompanyAlreadyExistsError } from '@/modules/organization/domain/errors';
 
-import { buildTestApp, buildTestContainer } from './test-app';
+import { buildTestContainer, signInAs } from './test-app';
 
 /**
  * Tests de integración del adaptador HTTP: contrato → validación → caso de uso →
  * mapeo de errores. La persistencia es en memoria (rápido, sin Docker).
  */
 describe('API HTTP', () => {
-  let app: ReturnType<typeof buildTestApp>;
+  let app: ReturnType<typeof createApp>;
+  let adminToken: string;
 
-  beforeEach(() => {
-    app = buildTestApp();
+  beforeEach(async () => {
+    const container = buildTestContainer();
+    app = createApp(container);
+    adminToken = await signInAs(container, { role: 'HOLDING_ADMIN' });
   });
 
-  const createCompany = (body: object) => request(app).post(`${API_PREFIX}/companies`).send(body);
+  // Las rutas de negocio exigen sesión (plan 002): todas se llaman como HOLDING_ADMIN.
+  const authed = () => request.agent(app).set('Authorization', `Bearer ${adminToken}`);
+
+  const createCompany = (body: object) => authed().post(`${API_PREFIX}/companies`).send(body);
 
   const validCompany = { legalName: 'APS Holding SpA', taxId: 'EKU9003173C9', country: 'MX' };
 
   it('GET /health/live responde ok', async () => {
-    await request(app).get('/health/live').expect(200, { status: 'ok' });
+    await authed().get('/health/live').expect(200, { status: 'ok' });
   });
 
   it('crea y lista empresas', async () => {
     const created = await createCompany(validCompany).expect(201);
     expect(created.body.id).toEqual(expect.any(String));
 
-    const list = await request(app).get(`${API_PREFIX}/companies`).expect(200);
+    const list = await authed().get(`${API_PREFIX}/companies`).expect(200);
     expect(list.body).toMatchObject({ total: 1, items: [{ taxId: 'EKU9003173C9' }] });
   });
 
@@ -48,7 +54,7 @@ describe('API HTTP', () => {
       country: 'CO',
     }).expect(201);
 
-    const list = await request(app).get(`${API_PREFIX}/companies`).expect(200);
+    const list = await authed().get(`${API_PREFIX}/companies`).expect(200);
     expect(list.body.items).toContainEqual(
       expect.objectContaining({ id: created.body.id, taxId: '900.123.456-8', country: 'CO' }),
     );
@@ -71,7 +77,7 @@ describe('API HTTP', () => {
       country: 'DO',
     }).expect(201);
 
-    const list = await request(app).get(`${API_PREFIX}/companies`).expect(200);
+    const list = await authed().get(`${API_PREFIX}/companies`).expect(200);
     expect(list.body.items).toContainEqual(
       expect.objectContaining({ id: created.body.id, taxId: '1-31-24679-6', country: 'DO' }),
     );
@@ -92,7 +98,7 @@ describe('API HTTP', () => {
   });
 
   it('404 con code estable para empresa inexistente', async () => {
-    const response = await request(app)
+    const response = await authed()
       .get(`${API_PREFIX}/companies/00000000-0000-4000-8000-000000000000`)
       .expect(404);
     expect(response.body.code).toBe('COMPANY_NOT_FOUND');
@@ -101,7 +107,7 @@ describe('API HTTP', () => {
   it('registra un colaborador pasando por el módulo organization', async () => {
     const { body } = await createCompany(validCompany).expect(201);
 
-    await request(app)
+    await authed()
       .post(`${API_PREFIX}/companies/${body.id}/employees`)
       .send({
         nationalId: { country: 'MX', number: 'GOMA850101HQRRRN04' },
@@ -112,7 +118,7 @@ describe('API HTTP', () => {
       })
       .expect(201);
 
-    const list = await request(app).get(`${API_PREFIX}/companies/${body.id}/employees`).expect(200);
+    const list = await authed().get(`${API_PREFIX}/companies/${body.id}/employees`).expect(200);
     expect(list.body.items[0]).toMatchObject({
       fullName: 'Ana Rojas',
       nationalId: 'GOMA850101HQRRRN04',
@@ -122,7 +128,7 @@ describe('API HTTP', () => {
   it('409 al registrar la misma CURP dos veces en la misma empresa', async () => {
     const { body } = await createCompany(validCompany).expect(201);
     const registerAna = () =>
-      request(app)
+      authed()
         .post(`${API_PREFIX}/companies/${body.id}/employees`)
         .send({
           nationalId: { country: 'MX', number: 'GOMA850101HQRRRN04' },
@@ -140,7 +146,7 @@ describe('API HTTP', () => {
   it('400 al registrar con una CURP con dígito verificador incorrecto, con el error en nationalId.number', async () => {
     const { body } = await createCompany(validCompany).expect(201);
 
-    const response = await request(app)
+    const response = await authed()
       .post(`${API_PREFIX}/companies/${body.id}/employees`)
       .send({
         nationalId: { country: 'MX', number: 'GOMA850101HQRRRN05' },
@@ -158,7 +164,7 @@ describe('API HTTP', () => {
   it('400 al registrar con una CURP cuya fecha de nacimiento no existe (850230)', async () => {
     const { body } = await createCompany(validCompany).expect(201);
 
-    const response = await request(app)
+    const response = await authed()
       .post(`${API_PREFIX}/companies/${body.id}/employees`)
       .send({
         // Dígito verificador correcto (2): aísla solo la regla de fecha inválida.
@@ -179,8 +185,10 @@ describe('API HTTP', () => {
     vi.spyOn(container.cradle.companyRepository, 'save').mockResolvedValue(
       err(new CompanyAlreadyExistsError('EKU9003173C9')),
     );
+    const token = await signInAs(container, { role: 'HOLDING_ADMIN' });
     const response = await request(createApp(container))
       .post(`${API_PREFIX}/companies`)
+      .set('Authorization', `Bearer ${token}`)
       .send(validCompany)
       .expect(409);
     expect(response.body.code).toBe('COMPANY_ALREADY_EXISTS');
@@ -189,8 +197,10 @@ describe('API HTTP', () => {
   it('mapea el conflicto durante save de colaborador a 409', async () => {
     const container = buildTestContainer();
     const localApp = createApp(container);
+    const token = await signInAs(container, { role: 'HOLDING_ADMIN' });
     const company = await request(localApp)
       .post(`${API_PREFIX}/companies`)
+      .set('Authorization', `Bearer ${token}`)
       .send(validCompany)
       .expect(201);
     vi.spyOn(container.cradle.employeeRepository, 'save').mockResolvedValue(
@@ -198,6 +208,7 @@ describe('API HTTP', () => {
     );
     const response = await request(localApp)
       .post(`${API_PREFIX}/companies/${company.body.id}/employees`)
+      .set('Authorization', `Bearer ${token}`)
       .send({
         nationalId: { country: 'MX', number: 'GOMA850101HQRRRN04' },
         firstName: 'Fixture',

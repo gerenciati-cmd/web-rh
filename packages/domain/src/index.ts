@@ -5,6 +5,7 @@ export * from './email';
 export * from './entity';
 export * from './employees/employee-status';
 export * from './errors';
+export * from './identity/access';
 export * from './money';
 export * from './national-id/national-id';
 export * from './national-id/validators';

@@ -1,3 +1,4 @@
+import type { Role } from '@rrhh/domain';
 import { asValue } from 'awilix';
 
 import { loadEnv, type Env } from '@/config/env';
@@ -6,8 +7,10 @@ import { createApp } from '@/http/app';
 import { createLogger } from '@/infrastructure/logging/pino-logger';
 import type { EmployeeQueries } from '@/modules/employees/application/queries/employee.queries';
 import { InMemoryEmployeeRepository } from '@/modules/employees/infrastructure/in-memory/in-memory-employee.repository';
+import type { CompanyDirectory } from '@/modules/identity/application/ports/company-directory';
 import { FakePasswordHasher } from '@/modules/identity/infrastructure/in-memory/fake-password-hasher';
 import { InMemoryLoginThrottleRepository } from '@/modules/identity/infrastructure/in-memory/in-memory-login-throttle.repository';
+import { InMemoryRoleAssignmentRepository } from '@/modules/identity/infrastructure/in-memory/in-memory-role-assignment.repository';
 import { InMemorySessionRepository } from '@/modules/identity/infrastructure/in-memory/in-memory-session.repository';
 import { InMemoryUserQueries } from '@/modules/identity/infrastructure/in-memory/in-memory-user.queries';
 import { InMemoryUserRepository } from '@/modules/identity/infrastructure/in-memory/in-memory-user.repository';
@@ -41,6 +44,14 @@ export function buildTestContainer(env: Env = testEnv) {
   const companies = new InMemoryCompanyStore();
   const employees = new InMemoryEmployeeRepository();
   const users = new InMemoryUserRepository();
+  const roleAssignments = new InMemoryRoleAssignmentRepository();
+  // Directorio falso respaldado por el mismo almacén de empresas del contenedor de test.
+  const companyDirectory: CompanyDirectory = {
+    find: (companyId) => {
+      const company = companies.companies.get(companyId);
+      return Promise.resolve(company ? { id: company.id, active: company.active } : null);
+    },
+  };
 
   const employeeQueries: EmployeeQueries = {
     listDirectory: ({ companyId, page, pageSize }) => {
@@ -70,7 +81,11 @@ export function buildTestContainer(env: Env = testEnv) {
     userRepository: asValue(users),
     sessionRepository: asValue(new InMemorySessionRepository()),
     loginThrottleRepository: asValue(new InMemoryLoginThrottleRepository()),
-    userQueries: asValue(new InMemoryUserQueries({ userRepository: users })),
+    roleAssignmentRepository: asValue(roleAssignments),
+    companyDirectory: asValue(companyDirectory),
+    userQueries: asValue(
+      new InMemoryUserQueries({ userRepository: users, roleAssignmentRepository: roleAssignments }),
+    ),
     passwordHasher: asValue(new FakePasswordHasher()),
     transactionRunner: asValue(new NoopTransactionRunner()),
   });
@@ -80,4 +95,40 @@ export function buildTestContainer(env: Env = testEnv) {
 
 export function buildTestApp() {
   return createApp(buildTestContainer());
+}
+
+const SIGN_IN_PASSWORD = 'contraseña-larga-y-valida';
+let signInCounter = 0;
+
+/**
+ * Registra un usuario nuevo, le asigna `role` (con `assignedBy: null`, como el seed) y abre una
+ * sesión móvil: devuelve el token para `Authorization: Bearer`.
+ */
+export async function signInAs(
+  container: ReturnType<typeof buildTestContainer>,
+  options: { role: Role; companyId?: string },
+): Promise<string> {
+  const { registerUser, assignRole, logIn } = container.cradle;
+  signInCounter += 1;
+  const email = `usuario${signInCounter}@example.com`;
+
+  const registered = await registerUser.execute({ email, password: SIGN_IN_PASSWORD });
+  if (!registered.ok) throw registered.error;
+  const assigned = await assignRole.execute({
+    userId: registered.value.id,
+    role: options.role,
+    companyId: options.companyId ?? null,
+    assignedBy: null,
+  });
+  if (!assigned.ok) throw assigned.error;
+
+  const session = await logIn.execute({
+    email,
+    password: SIGN_IN_PASSWORD,
+    client: 'mobile',
+    ip: null,
+    userAgent: null,
+  });
+  if (!session.ok) throw session.error;
+  return session.value.token;
 }

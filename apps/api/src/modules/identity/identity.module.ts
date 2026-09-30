@@ -1,26 +1,36 @@
 import { asClass, asFunction } from 'awilix';
+import { Router } from 'express';
 
 import type { Env } from '@/config/env';
 import type { AppModule } from '@/shared/app-module';
 import type { RequestAuthenticator } from '@/shared/application/actor';
 
+import { AssignRole } from './application/commands/assign-role.command';
 import { LogIn } from './application/commands/log-in.command';
 import { LogOut } from './application/commands/log-out.command';
 import { RegisterUser } from './application/commands/register-user.command';
+import { RevokeRoleAssignment } from './application/commands/revoke-role-assignment.command';
+import type { CompanyDirectory } from './application/ports/company-directory';
 import type { PasswordHasher } from './application/ports/password-hasher';
 import type { SessionTokens } from './application/ports/session-tokens';
 import { GetCurrentUser } from './application/queries/get-current-user.query';
+import { ListRoleAssignments } from './application/queries/list-role-assignments.query';
+import { ListUsers } from './application/queries/list-users.query';
 import type { UserQueries } from './application/queries/user.queries';
 import { SessionAuthenticator } from './application/session-authenticator';
 import type { LoginThrottlePolicies } from './domain/login-throttle';
 import type { LoginThrottleRepository } from './domain/login-throttle.repository';
+import type { RoleAssignmentRepository } from './domain/role-assignment.repository';
 import type { SessionPolicy } from './domain/session';
 import type { SessionRepository } from './domain/session.repository';
 import type { UserRepository } from './domain/user.repository';
+import { createAccessRouter } from './http/access.router';
 import { createIdentityRouter } from './http/identity.router';
 import { Argon2PasswordHasher } from './infrastructure/argon2-password-hasher';
 import { CryptoSessionTokens } from './infrastructure/crypto-session-tokens';
+import { OrganizationCompanyDirectory } from './infrastructure/organization-company-directory';
 import { PrismaLoginThrottleRepository } from './infrastructure/prisma-login-throttle.repository';
+import { PrismaRoleAssignmentRepository } from './infrastructure/prisma-role-assignment.repository';
 import { PrismaSessionRepository } from './infrastructure/prisma-session.repository';
 import { PrismaUserQueries } from './infrastructure/prisma-user.queries';
 import { PrismaUserRepository } from './infrastructure/prisma-user.repository';
@@ -29,6 +39,8 @@ export interface IdentityCradle {
   userRepository: UserRepository;
   sessionRepository: SessionRepository;
   loginThrottleRepository: LoginThrottleRepository;
+  roleAssignmentRepository: RoleAssignmentRepository;
+  companyDirectory: CompanyDirectory;
   userQueries: UserQueries;
   passwordHasher: PasswordHasher;
   sessionTokens: SessionTokens;
@@ -38,6 +50,10 @@ export interface IdentityCradle {
   logIn: LogIn;
   logOut: LogOut;
   getCurrentUser: GetCurrentUser;
+  listUsers: ListUsers;
+  listRoleAssignments: ListRoleAssignments;
+  assignRole: AssignRole;
+  revokeRoleAssignment: RevokeRoleAssignment;
   requestAuthenticator: RequestAuthenticator;
 }
 
@@ -47,6 +63,8 @@ export const identityModule: AppModule<IdentityCradle> = {
     userRepository: asClass(PrismaUserRepository).singleton(),
     sessionRepository: asClass(PrismaSessionRepository).singleton(),
     loginThrottleRepository: asClass(PrismaLoginThrottleRepository).singleton(),
+    roleAssignmentRepository: asClass(PrismaRoleAssignmentRepository).singleton(),
+    companyDirectory: asClass(OrganizationCompanyDirectory).singleton(),
     userQueries: asClass(PrismaUserQueries).singleton(),
     passwordHasher: asClass(Argon2PasswordHasher).singleton(),
     sessionTokens: asClass(CryptoSessionTokens).singleton(),
@@ -78,7 +96,17 @@ export const identityModule: AppModule<IdentityCradle> = {
     logIn: asClass(LogIn).singleton(),
     logOut: asClass(LogOut).singleton(),
     getCurrentUser: asClass(GetCurrentUser).singleton(),
+    listUsers: asClass(ListUsers).singleton(),
+    listRoleAssignments: asClass(ListRoleAssignments).singleton(),
+    assignRole: asClass(AssignRole).singleton(),
+    revokeRoleAssignment: asClass(RevokeRoleAssignment).singleton(),
     requestAuthenticator: asClass(SessionAuthenticator).singleton(),
   },
-  router: createIdentityRouter,
+  // `AppModule.router` es una sola función: un router que monta autenticación y accesos.
+  router: (cradle) => {
+    const router = Router();
+    router.use(createIdentityRouter(cradle));
+    router.use(createAccessRouter(cradle));
+    return router;
+  },
 };

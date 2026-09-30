@@ -2,7 +2,7 @@ import { TaxId } from '@rrhh/domain';
 import { z } from 'zod';
 
 import { CountrySchema, CreatedSchema, PageQuerySchema, pageOf } from '../common';
-import { defineRoute } from '../http';
+import { defineRoute, requires } from '../http';
 
 // ── Modelos de lectura (lo que devuelve la API) ────────────────────────────
 export const CompanySchema = z
@@ -40,6 +40,7 @@ export const organizationRoutes = {
     method: 'GET',
     path: '/companies',
     summary: 'Lista paginada de empresas del holding',
+    access: requires('organization.companies:read'),
     query: PageQuerySchema,
     response: pageOf(CompanySchema),
   }),
@@ -47,6 +48,7 @@ export const organizationRoutes = {
     method: 'GET',
     path: '/companies/:companyId',
     summary: 'Detalle de una empresa',
+    access: requires('organization.companies:read', { companyParam: 'companyId' }),
     params: CompanyParams,
     response: CompanySchema,
   }),
@@ -54,6 +56,7 @@ export const organizationRoutes = {
     method: 'POST',
     path: '/companies',
     summary: 'Crea una empresa en el holding',
+    access: requires('organization.companies:create'),
     body: CreateCompanySchema,
     response: CreatedSchema,
     successStatus: 201,

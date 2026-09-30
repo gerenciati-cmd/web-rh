@@ -6,6 +6,7 @@ import { FixedClock } from '@/shared/testing/fakes';
 import { Session, type SessionId } from '../domain/session';
 import { User, type UserId } from '../domain/user';
 import { CryptoSessionTokens } from '../infrastructure/crypto-session-tokens';
+import { InMemoryRoleAssignmentRepository } from '../infrastructure/in-memory/in-memory-role-assignment.repository';
 import { InMemorySessionRepository } from '../infrastructure/in-memory/in-memory-session.repository';
 import { InMemoryUserRepository } from '../infrastructure/in-memory/in-memory-user.repository';
 
@@ -29,6 +30,7 @@ describe('SessionAuthenticator', () => {
     authenticator = new SessionAuthenticator({
       sessionRepository,
       userRepository,
+      roleAssignmentRepository: new InMemoryRoleAssignmentRepository(),
       sessionTokens,
       clock,
     });
@@ -107,7 +109,7 @@ describe('SessionAuthenticator', () => {
 
     const actor = await authenticator.authenticate(token);
 
-    expect(actor).toEqual({ userId: USER_ID, sessionId: session.id });
+    expect(actor).toEqual({ userId: USER_ID, sessionId: session.id, grants: [] });
     expect(recordActivitySpy).not.toHaveBeenCalled();
   });
 
@@ -120,7 +122,7 @@ describe('SessionAuthenticator', () => {
 
     const actor = await authenticator.authenticate(token);
 
-    expect(actor).toEqual({ userId: USER_ID, sessionId: session.id });
+    expect(actor).toEqual({ userId: USER_ID, sessionId: session.id, grants: [] });
     expect(recordActivitySpy).toHaveBeenCalledTimes(1);
     expect(saveSpy).not.toHaveBeenCalled();
     expect(sessionRepository.sessions.get(session.id)?.snapshot.lastSeenAt).toEqual(clock.now());

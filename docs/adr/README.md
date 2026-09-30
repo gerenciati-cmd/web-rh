@@ -19,5 +19,6 @@ cómo se comunican los módulos o cualquier decisión difícil de revertir.
 | 0009 | [Países soportados (MX, DO, CO) e identificadores de empresa y persona](0009-paises-soportados-e-identificadores.md) | Aceptado |
 | 0010 | [Integridad referencial entre módulos sin foreign keys](0010-integridad-referencial-entre-modulos.md)                | Aceptado |
 | 0011 | [Sesiones opacas en Postgres](0011-sesiones-opacas-en-postgres.md)                                                   | Aceptado |
+| 0012 | [Autorización declarada en los contratos](0012-autorizacion-declarada-en-contratos.md)                               | Aceptado |
 
 Plantilla: [0000-plantilla.md](0000-plantilla.md).

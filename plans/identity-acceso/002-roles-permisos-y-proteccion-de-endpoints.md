@@ -1,5 +1,5 @@
 ---
-status: draft
+status: testing
 module: identity
 min_implementer: mid
 depends_on: ['001']
@@ -215,6 +215,37 @@ identity module of plan 001 (`apps/api/src/modules/identity/domain/session.ts`,
 | e2e         | no      | (no e2e infrastructure yet)                                                                                                                                           |
 
 ## Deviations
+
+Todas cosméticas (fix forward); ninguna cambia diseño ni alcance.
+
+1. **Nombre de la migración (paso 8)**: el directorio real es
+   `apps/api/prisma/migrations/20260930150447_create_role_assignments/` (SQL revisado: solo enum,
+   tabla, dos índices y la FK a `users`; sin DROP; `company_id` sin FK).
+2. **`Grant` vive en `@rrhh/domain`, no en `shared/application/actor.ts` (pasos 1, 4, 5)**:
+   `arch:check` (`domain-is-pure`) prohíbe que `identity/domain/role-catalog.ts` importe de
+   `src/shared/application/`. Se declaró `Grant` en `packages/domain/src/identity/access.ts` y
+   `actor.ts` lo importa y lo re-exporta (`export type { Grant }`).
+3. **`openapi.test.ts` (paso 3)**: además de la aserción del `security` global, los fixtures de
+   `defineRoute` de ese archivo necesitaron el campo `access` (ahora obligatorio) para compilar, y
+   el conteo de operaciones pasó de 8 a 12 (`toHaveLength(12)`) por las 4 rutas nuevas.
+4. **`seed.ts` (paso 10)**: `ListCompanies` ahora exige un actor; el seed usa un `Actor` de
+   sistema con `organization.companies:read` de todo el holding para localizar la empresa.
+5. **Tests existentes tocados fuera de la lista de archivos del plan (paso 12)**, solo para que
+   compilen/pasen con las rutas protegidas y los puertos nuevos (mecánico, sin escenarios nuevos):
+   `apps/api/src/modules/identity/application/queries/get-current-user.query.test.ts` (el stub de
+   `UserQueries` cumple los dos métodos nuevos) y `apps/api/tests/zkteco-adms.test.ts` (su último
+   test crea una empresa y ahora inicia sesión como HOLDING_ADMIN). En archivos que sí están en la
+   lista (paso 14, del tester) se hicieron solo ajustes mecánicos: `session-authenticator.test.ts`
+   (nueva dependencia y `grants: []` esperado) y `prisma-company.int.test.ts` (segundo argumento
+   `'ALL'`).
+6. **`plans/identity-acceso/README.md` (paso 13)**: la fila del plan 002 ya no lleva "(TBD)"; no
+   hubo nada que cambiar.
+7. `plans:scope` marca `plans/platform-openapi/001-documento-y-referencia-scalar.md` como fuera de
+   alcance: ya estaba modificado antes de empezar (estado inicial del árbol), no lo toqué.
+
+Verificación de la fase: `pnpm check` verde; `pnpm test:integration` verde (6 archivos, 39 tests);
+`pnpm db:seed` dos veces (la segunda no crea nada: `ROLE_ALREADY_ASSIGNED` ignorado). No se
+ejercitaron los criterios HTTP de aceptación contra la app corriendo (fase de verify).
 
 ## Test coverage
 

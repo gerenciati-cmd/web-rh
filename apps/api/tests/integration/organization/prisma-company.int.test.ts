@@ -67,7 +67,7 @@ it('dos saves concurrentes conservan una fila y devuelven un conflicto', async (
   expect(results.filter((result) => !result.ok).map((result) => result.error.code)).toEqual([
     'COMPANY_ALREADY_EXISTS',
   ]);
-  expect((await queries.list({ page: 1, pageSize: 20 })).total).toBe(1);
+  expect((await queries.list({ page: 1, pageSize: 20 }, 'ALL')).total).toBe(1);
 });
 
 describe('PrismaCompanyQueries', () => {
@@ -76,8 +76,8 @@ describe('PrismaCompanyQueries', () => {
     await repository.save(company('APS Holding SpA', 'EKU9003173C9'));
     await repository.save(company('Mu SpA', 'BBB020202BB2'));
 
-    const firstPage = await queries.list({ page: 1, pageSize: 2 });
-    const secondPage = await queries.list({ page: 2, pageSize: 2 });
+    const firstPage = await queries.list({ page: 1, pageSize: 2 }, 'ALL');
+    const secondPage = await queries.list({ page: 2, pageSize: 2 }, 'ALL');
 
     expect(firstPage.total).toBe(3);
     expect(firstPage.items.map((c) => c.legalName)).toEqual(['APS Holding SpA', 'Mu SpA']);

@@ -89,7 +89,8 @@ model User {
   createdAt    DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt    DateTime   @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  sessions Session[]
+  sessions        Session[]
+  roleAssignments RoleAssignment[]
 
   @@map("users")
   @@schema("identity")
@@ -111,6 +112,33 @@ model Session {
 
   @@index([userId])
   @@map("sessions")
+  @@schema("identity")
+}
+
+enum IdentityRole {
+  HOLDING_ADMIN
+  HR
+  DIRECT_MANAGER
+  EMPLOYEE
+
+  @@schema("identity")
+}
+
+model RoleAssignment {
+  id         String       @id @db.Uuid
+  userId     String       @map("user_id") @db.Uuid
+  user       User         @relation(fields: [userId], references: [id])
+  role       IdentityRole
+  /// Referencia por id a organization, sin FK (ADR 0010). null = todo el holding.
+  companyId  String?      @map("company_id") @db.Uuid
+  assignedAt DateTime     @map("assigned_at") @db.Timestamptz(3)
+  assignedBy String?      @map("assigned_by") @db.Uuid
+  revokedAt  DateTime?    @map("revoked_at") @db.Timestamptz(3)
+  revokedBy  String?      @map("revoked_by") @db.Uuid
+
+  @@index([userId, revokedAt])
+  @@index([role, revokedAt])
+  @@map("role_assignments")
   @@schema("identity")
 }
 

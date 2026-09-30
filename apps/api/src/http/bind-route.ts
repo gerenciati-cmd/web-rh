@@ -1,11 +1,11 @@
-import type { ParsedRequest, RouteDefinition, RouteResponse } from '@rrhh/contracts';
+import type { ParsedRequest, RouteAccess, RouteDefinition, RouteResponse } from '@rrhh/contracts';
 import type { DomainError, Result } from '@rrhh/domain';
 import type { Router } from 'express';
 import type { z } from 'zod';
 
-import type { Actor } from '@/shared/application/actor';
+import { hasPermission, type Actor } from '@/shared/application/actor';
 
-import type { RequestContext } from './request-context';
+import { PermissionDeniedError, requireActor, type RequestContext } from './request-context';
 import { RequestValidationError } from './request-validation-error';
 
 declare global {
@@ -53,6 +53,8 @@ export function bindRoute<R extends RouteDefinition>(
       },
     };
 
+    authorize(route.access, parsed.params, context);
+
     const output = await handler(parsed, context);
 
     if (process.env.NODE_ENV !== 'production') route.response.parse(output);
@@ -61,6 +63,29 @@ export function bindRoute<R extends RouteDefinition>(
     if (status === 204) res.status(204).end();
     else res.status(status).json(output);
   });
+}
+
+/**
+ * Aplica el acceso declarado en el contrato (negado por defecto, ADR 0012). Se lanza 403 aun si
+ * la empresa no existe: quien no tiene alcance sobre ella no puede sondear cuáles existen.
+ */
+function authorize(access: RouteAccess, params: unknown, context: RequestContext): void {
+  if (access.kind === 'public') return;
+
+  const actor = requireActor(context);
+  if (access.kind === 'authenticated') return;
+
+  if (access.companyParam === undefined) {
+    if (!hasPermission(actor, access.permission)) throw new PermissionDeniedError();
+    return;
+  }
+
+  const companyId = (params as Record<string, unknown> | undefined)?.[access.companyParam];
+  if (typeof companyId !== 'string') {
+    // Un contrato que nombra un parámetro inexistente es un error de programación, no del cliente.
+    throw new Error(`La ruta declara companyParam "${access.companyParam}" que no está en params`);
+  }
+  if (!hasPermission(actor, access.permission, companyId)) throw new PermissionDeniedError();
 }
 
 function parsePart(

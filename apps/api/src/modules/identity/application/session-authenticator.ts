@@ -1,6 +1,8 @@
 import type { Actor, RequestAuthenticator } from '@/shared/application/actor';
 import type { Clock } from '@/shared/application/ports';
 
+import type { RoleAssignmentRepository } from '../domain/role-assignment.repository';
+import { grantsFor } from '../domain/role-catalog';
 import type { SessionRepository } from '../domain/session.repository';
 import type { UserRepository } from '../domain/user.repository';
 
@@ -9,6 +11,7 @@ import type { SessionTokens } from './ports/session-tokens';
 interface Deps {
   sessionRepository: SessionRepository;
   userRepository: UserRepository;
+  roleAssignmentRepository: RoleAssignmentRepository;
   sessionTokens: SessionTokens;
   clock: Clock;
 }
@@ -18,7 +21,8 @@ export class SessionAuthenticator implements RequestAuthenticator {
   constructor(private readonly deps: Deps) {}
 
   async authenticate(token: string): Promise<Actor | null> {
-    const { sessionRepository, userRepository, sessionTokens, clock } = this.deps;
+    const { sessionRepository, userRepository, roleAssignmentRepository, sessionTokens, clock } =
+      this.deps;
     const now = clock.now();
 
     const session = await sessionRepository.findByTokenHash(sessionTokens.hashOf(token));
@@ -34,6 +38,11 @@ export class SessionAuthenticator implements RequestAuthenticator {
       await sessionRepository.recordActivity(session);
     }
 
-    return { userId: user.id, sessionId: session.id };
+    // Los permisos se resuelven en cada petición (no viajan en la sesión): revocar un rol
+    // surte efecto en la siguiente llamada del usuario.
+    const grants = grantsFor(
+      (await roleAssignmentRepository.findActiveByUser(user.id)).map((a) => a.snapshot),
+    );
+    return { userId: user.id, sessionId: session.id, grants };
   }
 }

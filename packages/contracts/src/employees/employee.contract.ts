@@ -2,7 +2,7 @@ import { EMPLOYEE_STATUSES, NationalId } from '@rrhh/domain';
 import { z } from 'zod';
 
 import { CountrySchema, CreatedSchema, PageQuerySchema, pageOf } from '../common';
-import { defineRoute } from '../http';
+import { defineRoute, requires } from '../http';
 
 export const EmployeeStatusSchema = z.enum(EMPLOYEE_STATUSES);
 
@@ -50,6 +50,7 @@ export const employeeRoutes = {
     method: 'GET',
     path: '/companies/:companyId/employees',
     summary: 'Directorio de colaboradores de una empresa',
+    access: requires('employees:read', { companyParam: 'companyId' }),
     params: CompanyScopedParams,
     query: ListEmployeesQuerySchema,
     response: pageOf(EmployeeListItemSchema),
@@ -58,6 +59,7 @@ export const employeeRoutes = {
     method: 'POST',
     path: '/companies/:companyId/employees',
     summary: 'Registra (contrata) un colaborador',
+    access: requires('employees:register', { companyParam: 'companyId' }),
     params: CompanyScopedParams,
     body: RegisterEmployeeSchema,
     response: CreatedSchema,

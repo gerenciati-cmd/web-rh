@@ -12,7 +12,7 @@ import type { ErrorRequestHandler, RequestHandler } from 'express';
 
 import type { Logger } from '@/shared/application/ports';
 
-import { AuthenticationRequiredError } from './request-context';
+import { AuthenticationRequiredError, PermissionDeniedError } from './request-context';
 import { RequestValidationError } from './request-validation-error';
 
 /**
@@ -50,6 +50,12 @@ export function errorHandler(logger: Logger): ErrorRequestHandler {
     if (error instanceof AuthenticationRequiredError) {
       const body: ApiErrorBody = { code: error.code, message: error.message };
       res.status(401).json(body);
+      return;
+    }
+
+    if (error instanceof PermissionDeniedError) {
+      const body: ApiErrorBody = { code: error.code, message: error.message };
+      res.status(403).json(body);
       return;
     }
 

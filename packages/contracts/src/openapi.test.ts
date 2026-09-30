@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 
 import type { RouteDefinition } from './http';
-import { defineRoute } from './http';
+import { authenticated, defineRoute } from './http';
 import { apiRoutes, buildOpenApiDocument } from './index';
 
 // `openapi.json` versionado: si cambia un contrato sin regenerarlo, este test falla en
@@ -46,7 +46,7 @@ describe('buildOpenApiDocument', () => {
     const expected = Object.values(apiRoutes).flatMap((group) => Object.keys(group));
 
     expect(operationIds.sort()).toEqual(expected.sort());
-    expect(operationIds).toHaveLength(8);
+    expect(operationIds).toHaveLength(12);
   });
 
   it('convierte los segmentos :param de Express a {param} de OpenAPI', () => {
@@ -92,7 +92,7 @@ describe('buildOpenApiDocument', () => {
       name: '__Host-rrhh_session',
     });
     expect(document.components.schemas.ApiError).toBeDefined();
-    expect(document.security).toEqual([{ bearerAuth: [] }, { cookieAuth: [] }, {}]);
+    expect(document.security).toEqual([{ bearerAuth: [] }, { cookieAuth: [] }]);
   });
 
   // Ronda de reparación 1 (README decisión 6): las 5 respuestas de error por operación se
@@ -158,6 +158,7 @@ describe('buildOpenApiDocument — catálogos inválidos (finding 2 y 3 de la re
           method: 'GET',
           path: '/duplicated',
           summary: 'Primera',
+          access: authenticated,
           response: z.string(),
         }),
       },
@@ -166,6 +167,7 @@ describe('buildOpenApiDocument — catálogos inválidos (finding 2 y 3 de la re
           method: 'GET',
           path: '/duplicated',
           summary: 'Segunda',
+          access: authenticated,
           response: z.string(),
         }),
       },
@@ -185,6 +187,7 @@ describe('buildOpenApiDocument — catálogos inválidos (finding 2 y 3 de la re
           method: 'GET',
           path: '/anonymous',
           summary: 'Recursivo sin nombre',
+          access: authenticated,
           response: wrapper,
         }),
       },
@@ -198,8 +201,20 @@ describe('buildOpenApiDocument — catálogos inválidos (finding 2 y 3 de la re
     const dupB = z.object({ y: z.number() }).meta({ id: 'Dup' });
     const collision: Catalogue = {
       moduleA: {
-        one: defineRoute({ method: 'GET', path: '/dup-a', summary: 's', response: dupA }),
-        two: defineRoute({ method: 'GET', path: '/dup-b', summary: 's', response: dupB }),
+        one: defineRoute({
+          method: 'GET',
+          path: '/dup-a',
+          summary: 's',
+          access: authenticated,
+          response: dupA,
+        }),
+        two: defineRoute({
+          method: 'GET',
+          path: '/dup-b',
+          summary: 's',
+          access: authenticated,
+          response: dupB,
+        }),
       },
     };
 
@@ -214,6 +229,7 @@ describe('buildOpenApiDocument — catálogos inválidos (finding 2 y 3 de la re
           method: 'GET',
           path: '/named-params/:companyId',
           summary: 's',
+          access: authenticated,
           params: namedParams,
           response: z.string(),
         }),
@@ -244,8 +260,20 @@ describe('buildOpenApiDocument — orden de components.schemas (info 3, ronda de
     const upper = z.object({ y: z.number() }).meta({ id: 'Bbb' });
     const catalogue: Catalogue = {
       moduleA: {
-        one: defineRoute({ method: 'GET', path: '/order-a', summary: 's', response: lower }),
-        two: defineRoute({ method: 'GET', path: '/order-b', summary: 's', response: upper }),
+        one: defineRoute({
+          method: 'GET',
+          path: '/order-a',
+          summary: 's',
+          access: authenticated,
+          response: lower,
+        }),
+        two: defineRoute({
+          method: 'GET',
+          path: '/order-b',
+          summary: 's',
+          access: authenticated,
+          response: upper,
+        }),
       },
     };
 

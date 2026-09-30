@@ -76,9 +76,9 @@ export class LoginThrottle extends Entity<string> {
   /**
    * Deshace la reserva de UN intento: lo usa `LogIn` cuando la contraseña resultó correcta (no
    * consumir el cupo de la IP por un login ajeno exitoso) o cuando otra llave de la misma
-   * petición terminó bloqueada. El bloqueo, si lo hay, solo pudo originarse en esta misma
-   * reserva (una llave ya bloqueada se rechaza antes de reservar), así que basta con restar el
-   * intento y levantar el bloqueo si ya no se alcanza el máximo.
+   * petición terminó bloqueada. El bloqueo, si lo hay, pudo fijarlo esta reserva o una
+   * concurrente: restar el intento sigue siendo correcto porque el bloqueo solo se levanta si
+   * los fallos bajan del máximo.
    */
   releaseAttempt(policy: LoginThrottlePolicy): void {
     const failures = Math.max(0, this.props.failures - 1);
