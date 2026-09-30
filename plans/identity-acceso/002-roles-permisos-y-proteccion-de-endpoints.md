@@ -1,5 +1,5 @@
 ---
-status: verify
+status: done
 module: identity
 min_implementer: mid
 depends_on: ['001']
