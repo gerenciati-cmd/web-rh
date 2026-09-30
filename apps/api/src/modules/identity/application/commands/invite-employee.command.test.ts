@@ -209,7 +209,7 @@ describe('InviteEmployee', () => {
     await invite.execute(input);
 
     expect(invitations.invitations.size).toBe(2);
-    expect(first?.snapshot.revokedAt).toEqual(clock.now());
+    expect(invitations.invitations.get(first?.id ?? '')?.snapshot.revokedAt).toEqual(clock.now());
     const pending = [...invitations.invitations.values()].filter((i) => i.isPendingAt(clock.now()));
     expect(pending).toHaveLength(1);
     expect(pending[0]?.id).not.toBe(first?.id);
@@ -221,7 +221,7 @@ describe('InviteEmployee', () => {
 
     await invite.execute({ ...input, email: 'ana.otra@aps.cl' });
 
-    expect(first?.isPendingAt(clock.now())).toBe(false);
+    expect(invitations.invitations.get(first?.id ?? '')?.isPendingAt(clock.now())).toBe(false);
   });
 
   it('una invitación pendiente al mismo correo (de otro colaborador) también se reemplaza', async () => {
@@ -243,7 +243,7 @@ describe('InviteEmployee', () => {
 
     await both.execute({ companyId: COMPANY, employeeId: pedro.id, invitedBy: INVITER });
 
-    expect(forAna?.isPendingAt(clock.now())).toBe(false);
+    expect(invitations.invitations.get(forAna?.id ?? '')?.isPendingAt(clock.now())).toBe(false);
   });
 
   it('una invitación ya expirada no se marca como reemplazada al invitar otra vez', async () => {

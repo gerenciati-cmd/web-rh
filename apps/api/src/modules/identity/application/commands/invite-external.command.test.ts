@@ -110,7 +110,7 @@ describe('InviteExternal', () => {
 
     await invite.execute({ email: 'contador@externo.com', invitedBy: INVITER });
 
-    expect(first?.isPendingAt(clock.now())).toBe(false);
+    expect(invitations.invitations.get(first?.id ?? '')?.isPendingAt(clock.now())).toBe(false);
     const pending = [...invitations.invitations.values()].filter((i) => i.isPendingAt(clock.now()));
     expect(pending).toHaveLength(1);
   });

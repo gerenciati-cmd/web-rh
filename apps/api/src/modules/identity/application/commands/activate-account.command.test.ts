@@ -37,9 +37,16 @@ class RollbackSpyTransactionRunner implements TransactionRunner {
 }
 
 /** Simula que otra transacción (baja, nueva invitación) cerró la invitación antes del commit. */
-class LosingInvitationRepository extends InMemoryInvitationRepository {
-  override save(): Promise<boolean> {
-    return Promise.resolve(false);
+/** Simula la baja que anula la invitación justo después de que la activación la leyó. */
+class RacingInvitationRepository extends InMemoryInvitationRepository {
+  constructor(private readonly now: () => Date) {
+    super();
+  }
+
+  override async findByTokenHash(tokenHash: string): Promise<Invitation | null> {
+    const read = await super.findByTokenHash(tokenHash);
+    if (read) this.invitations.get(read.id)?.supersede(this.now());
+    return read;
   }
 }
 
@@ -131,7 +138,7 @@ describe('ActivateAccount', () => {
     const [user] = [...users.users.values()];
     expect(user?.snapshot).toMatchObject({ employeeId: ana.id, status: 'ACTIVE' });
     expect(user?.snapshot.email.value).toBe('ana@aps.cl');
-    expect(invitation.snapshot.acceptedAt).toEqual(clock.now());
+    expect(invitations.invitations.get(invitation.id)?.snapshot.acceptedAt).toEqual(clock.now());
     const active = [...roleAssignments.assignments.values()].filter((a) => a.isActive);
     expect(active).toHaveLength(1);
     expect(active[0]?.snapshot).toMatchObject({
@@ -286,7 +293,7 @@ describe('ActivateAccount', () => {
 
   it('la invitación fue cerrada entre la lectura y el commit (carrera con la baja): INVITATION_NOT_VALID, transacción revertida, sin rol ni eventos', async () => {
     const runner = new RollbackSpyTransactionRunner();
-    const losing = new LosingInvitationRepository();
+    const losing = new RacingInvitationRepository(() => clock.now());
     const loser = new ActivateAccount({
       invitationRepository: losing,
       invitationTokens: tokens,
@@ -319,6 +326,10 @@ describe('ActivateAccount', () => {
     expect(runner.rolledBack).toBe(1);
     expect(roleAssignments.assignments.size).toBe(0);
     expect(eventBus.published).toEqual([]);
+    expect(losing.invitations.get(invitation.id)?.snapshot).toMatchObject({
+      acceptedAt: null,
+      revokedAt: clock.now(),
+    });
   });
 
   it('no abre sesión ni publica nada si la activación falla', async () => {

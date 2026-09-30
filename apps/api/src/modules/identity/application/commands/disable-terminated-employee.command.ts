@@ -22,7 +22,8 @@ interface Deps {
 
 /**
  * Reacción a `employees.employee.terminated`: deshabilita el acceso y cierra todas las sesiones
- * al instante. Idempotente (el evento puede repetirse) y y reemplaza sus invitaciones pendientes aunque aún no tuviera cuenta.
+ * al instante, y reemplaza sus invitaciones pendientes aunque aún no tuviera cuenta. Idempotente
+ * (el evento puede repetirse).
  */
 export class DisableTerminatedEmployee implements Command<DisableTerminatedEmployeeInput, void> {
   constructor(private readonly deps: Deps) {}

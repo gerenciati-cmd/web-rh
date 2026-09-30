@@ -1,5 +1,5 @@
 ---
-status: verify
+status: review
 module: identity
 min_implementer: mid
 depends_on: ['002']
@@ -210,6 +210,11 @@ Cosmetic, fixed forward (none changes design or scope):
 - Test updated minimally so `pnpm check` stays green: the no-op test in `disable-terminated-employee.command.test.ts` now asserts the pending invitation is superseded. The tester adds the regressions (conditional accept in integration, activation losing the race, repository `false` path).
 - **L1**: step 7 timestamp replaced; the nine test/fixture files and `log-in.command.ts` added to step 9's file list. Residual `plans:scope` output: the two "declared without changes" entries (recorded above).
 
+**Repair round 2 (review round 2 L4, L5; main session inline, user decision 2026-09-30):**
+
+- **L4**: `InMemoryInvitationRepository` now stores and returns copies (`Invitation.restore` of the snapshot, the pattern of `InMemorySessionRepository`) and `save` returns `false` without writing when the stored invitation is already accepted or superseded, like the Prisma adapter.
+- **L5**: docblock of `DisableTerminatedEmployee` rewritten (duplicated "y", line length).
+
 Risk for the tester (NOT CONFIRMED): `PrismaUserRepository.save` tells `employee_id` uniqueness from `email` uniqueness by looking for `employee_id` in the P2002 error's `meta` (Prisma 7 + `@prisma/adapter-pg`); confirm it against the real DB in `prisma-user.int.test.ts`.
 
 ## Test coverage
@@ -268,6 +273,8 @@ Counts of tests added by this phase: domain 18, application 45, contract 21, htt
 | Termination of a colaborador without account supersedes the pending invitation, ok, no events (L2)        | `disable-terminated-employee.command.ts:38-48` | application | `disable-terminated-employee.command.test.ts › colaborador sin cuenta…` (updated by the implementer, kept as is) | CONFIRMED |
 
 Not covered by design: the real interleaving of activation vs `DisableTerminatedEmployee` across two transactions (needs a controllable DB interleaving); the integration test above exercises the conditional write that makes it safe, and the application test the handling of `false`. The rollback of the created `User` is asserted through the runner seeing the thrown error (the in-memory repositories have no rollback), not by absence of the row.
+
+**Repair round 2 (L4, main session inline, 2026-09-30).** With the fake returning copies, seven application tests that asserted on the object they had seeded or read before the command (aliasing) now re-read the stored invitation from the repository after the command: `activate-account` (1), `disable-terminated-employee` (2), `invite-employee` (3), `invite-external` (1). The race test in `activate-account.command.test.ts` replaces the `LosingInvitationRepository` stub (always `false`) with `RacingInvitationRepository`, which supersedes the stored invitation right after the activation reads it, so the fake's real guard produces the `false`; it also asserts the stored invitation stays superseded and not accepted. `pnpm check` green (api 410 + 2 skipped).
 
 Notes for review/verify: the two NOT CONFIRMED items are exactly the acceptance criterion "email arrives in Mailpit; the job does not remain in Valkey", which the verifier must exercise in the running app. Existing test files outside the plan's step 9 list were touched by the implementer (see Deviations), not by the tester.
 
@@ -378,5 +385,7 @@ No interleaving leaves an ACTIVE user for a terminated colaborador. The lock ord
 - Informational, not a finding: `InviteEmployee`/`InviteExternal`/`DisableTerminatedEmployee` ignore the `boolean` from `save` on supersede. This is correct: `false` there means the invitation was concurrently accepted or superseded, which is the desired end state anyway. The pending-invitation duplication stays under L3's hallazgo.
 
 Result: M1, L2 and L1 are resolved. The two new lows need no code change for this plan. Count for round 2: 0 high, 0 medium, 2 low (non-blocking). Status → `verify`.
+
+**Repair decision (2026-09-30, user):** fix L4 and L5 before verifying. Repaired inline by the main session (see Deviations › Repair round 2); status verify → implementing → testing → review for a short round 3.
 
 ## Verification
