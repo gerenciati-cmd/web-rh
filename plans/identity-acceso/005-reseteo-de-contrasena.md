@@ -1,5 +1,5 @@
 ---
-status: review
+status: verify
 module: identity
 min_implementer: mid
 depends_on: ['003']
@@ -460,5 +460,65 @@ covered only at the pieces (`UserRepository.lock` re-read test plus the in-memor
 `reset-password.command.test.ts`), not as one end-to-end parallel test.
 
 ## Review findings
+
+Reviewer, 2026-09-30, diff `main...HEAD` (c9047bc, 39c5bc2, 4123fa8).
+
+**Checklist: 13/13 passed.**
+
+- `pnpm plans:scope --base main`: 55 declared, 57 changed. The only out-of-scope file is the
+  untracked `apps/api/tests/integration/identity/zz-control.int.test.ts` (tester temp, not
+  committed; the main session removes it, see Deviations). Hot files (`schema.prisma`,
+  `test-app.ts`, `contracts/src/index.ts`) are append-only.
+- `pnpm check` green (api 516 passed / 3 skipped, contracts 133, web/mobile green).
+- `pnpm test:integration` green (110 passed / 1 skipped; the skip is the temp control file).
+- Business rules in `domain/` (`PasswordReset` lifecycle, `User.changePassword`). The cooldown
+  check lives in the `PasswordResetIssuer` application service, as the plan specifies.
+- CQRS: commands go aggregate → repository and return `Result`. No queries were added.
+  `UserRepository.lock` and `InvitationRepository.lockIssuance` are concurrency primitives, not
+  screen methods.
+- Types come from `@rrhh/contracts`. Errors have stable codes (`PASSWORD_RESET_NOT_VALID`,
+  `USER_DISABLED`); `PasswordResetLostError` is internal and mapped.
+- Time and ids go through `Clock`/`IdGenerator`; `timestamptz`.
+- The new migration `20260930193302_create_password_resets` has no DROP and one FK, to
+  `identity.users` (same module).
+- DI: `container.test.ts` is green and each registration appears once.
+- No secrets and no real personal data.
+- Deviations spot-check: the claim that the force commands throw an internal `Error` if the
+  issuer returns `null` is true (`force-employee-password-reset.command.ts:55`,
+  `force-user-password-reset.command.ts:44`).
+- Docs: `architecture.md` covers the sensitive reset job and the lock strategy. The README
+  decisions and the L3 hallazgo (`resolved`) are updated.
+
+**Findings: 0 blocking. 1 low, which does not require a change. 1 out-of-scope hallazgo.**
+
+- **Low (no change required):** the issuer does not re-read the user after it takes the lock
+  (`apps/api/src/modules/identity/application/password-reset-issuer.ts:532-545`).
+  - `RequestPasswordReset` and the force commands check `canSignIn` on a user they read before
+    the transaction. The lock result (`userRepository.lock`, line 533) is ignored.
+  - Scenario: the employee's termination commits between that read and the lock. A reset is
+    still issued for a `DISABLED` user, and the email goes to the terminated employee.
+    `ResetPassword` rejects it (`reset-password.command.ts:367-369`), so the link does nothing.
+    A force route can also answer 201 instead of 422 `USER_DISABLED`.
+  - The plan specifies this flow (step 3), so it is not a deviation. It is harmless: at worst a
+    dead link. Optional hardening: re-read the user after `lock` and skip when `!canSignIn`.
+- **Out of scope → hallazgo:** `plans/hallazgos/identity-login-en-vuelo-sobrevive-revocacion.md`.
+  - A `LogIn` that verified the old password before the reset committed saves its session after
+    `revokeAllForUser`, and that session survives. The same applies to
+    `DisableTerminatedEmployee`.
+  - `LogIn` is unchanged by this plan (`log-in.command.ts:91-125`). The evidence is deduced from
+    the code, not reproduced (uncertain).
+
+Also checked and correct:
+
+- A second confirmation of the same token, and one racing a supersede: the user-row lock plus
+  the conditional `updateMany` turns both into 422.
+- A termination that commits before or during a confirmation always ends with the user
+  `DISABLED`.
+- No lock cycle: reset takes the user row then the throttle row; login takes only throttle rows.
+- `lockIssuance` keys are sorted and shared between `InviteEmployee` and `InviteExternal`
+  (`email:`).
+- A route outside the user's company gets 403 from `bindRoute`; the holding-only permission is
+  held only by `HOLDING_ADMIN`.
+- The email job is `sensitive`, and the token never reaches events, logs or responses.
 
 ## Verification
