@@ -769,3 +769,36 @@ Acceptance criteria:
 
 Verification data: no rows were created by the verifier. The `admin@example.com` user and its
 sessions come from the user's seed. The sessions created by these checks were logged out.
+
+### Verification — repair rounds 1 and 2 (2026-09-30)
+
+**PASS**. Main session (verifier role), code at `801466c`, against the user's running API
+(`tsx watch`, so the current code). The PASS above (at `ea950ea`) predates both repair rounds
+and is superseded by this one for the repaired code.
+
+Suites (run once): `pnpm check` gives `Tasks: 19 successful, 19 total`. `@rrhh/contracts` 48
+passed, `@rrhh/api` 187 passed; `no dependency violations (156 modules)`; harness 161/161,
+bootstrap 17/17, quality 9/9.
+
+- [x] Served document = committed document. A reviewed scratch script compared
+      `GET /api/v1/openapi.json` with `packages/contracts/openapi.json`: `contenido idéntico:
+true`, `operaciones: 8`, `con default → Error: 8`, `modelos: ApiError, Company,
+CreateCompanyInput, Created, EmployeeListItem, LogInInput, LogInResponse,
+RegisterEmployeeInput, SessionUser`. File size 713 lines (was 1119).
+- [x] Pinned bundle and exact-URL CSP. Header is `script-src 'self'
+https://cdn.jsdelivr.net/npm/@scalar/api-reference@1.72.2 'nonce-…'`. HTML has
+      `<script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference@1.72.2"`.
+- [x] Headless Chrome render under the new CSP. Console:
+      `"@scalar/api-reference@1.72.2", source: …@scalar/api-reference@1.72.2`. **0** CSP/"Refused"
+      lines (only KDE-extension noise). DOM contains `API RRHH APS Holding` and the `Models`
+      section.
+- [x] Bearer flow: login `client: "mobile"` → 200 with token; `me` → 200; logout → 204;
+      `me` → 401.
+- [x] Cookie flow: login `client: "web"` → 200; `me` (cookie) → 200. Logout with a foreign
+      `Origin` → 401 (CSRF check intact). Logout with `Origin: http://localhost:3001` → 204;
+      `me` → 401.
+- [x] Validation error: `POST /companies` with `taxId: "123"` → 400 `VALIDATION_ERROR`.
+- [~] Production 404: unchanged from above. Covered by `docs.test.ts` (6 → 7 tests this
+  round). NOT VERIFIED live (bash guard blocks the second-instance launch).
+
+No rows created. The sessions opened by these checks were logged out.
