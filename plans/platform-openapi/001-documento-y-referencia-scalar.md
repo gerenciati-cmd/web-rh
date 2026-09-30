@@ -1,5 +1,5 @@
 ---
-status: testing
+status: review
 module: platform
 min_implementer: mid
 depends_on: []
@@ -424,6 +424,59 @@ closed, checked live by the previous verification round for a different bundle U
 round's pin needs its own live check), and the four login/listing flows. No GAP found: the
 throws match the plan's step 6 text exactly, and the CSP/dedup behavior matches the code as
 written; nothing promised by step 6 is missing at the contract/http layers.
+
+### Test coverage — repair round 2 (2026-09-30)
+
+Scope, per the dispatch: the pinned-bundle-version test (review-round-1 Low 1), the exact-URL
+`script-src` assertion (review-round-1 Info 2), and `sortedByKey`'s code-point order (Info 3),
+if testable without inventing. Same files as the previous round's tests:
+`apps/api/tests/docs.test.ts` and `packages/contracts/src/openapi.test.ts`. The tables above
+stay as history; this table covers only the code touched in "### Repair round 2" of Deviations
+(`docs.router.ts:13,36-41` narrower `script-src`, `openapi.ts:189-193` code-point `sortedByKey`).
+
+Baseline `pnpm check` (before writing tests): green, 19/19 tasks, `@rrhh/api` 186 tests (25
+files), `@rrhh/contracts` 47 tests (5 files) — the state left by repair round 2's product code
+(commit `90e65c0`). No pre-existing failures.
+
+Changes (test-only, no product code touched):
+
+- `apps/api/tests/docs.test.ts`: added one test asserting both promises of Deviation
+  "Repair round 2" together, since they're the same request/response: the HTML body's
+  `<script src="…">` (confirmed against the installed
+  `@scalar/client-side-rendering@0.4.5` `html-rendering.js:196`,
+  `<script src="${cdn ?? DEFAULT_CDN}"${nonceAttr}></script>`) carries the exact pinned
+  URL `https://cdn.jsdelivr.net/npm/@scalar/api-reference@1.72.2`, and the `script-src` CSP
+  directive's source list contains that exact URL but not the bare host
+  `https://cdn.jsdelivr.net` as a separate token — closing review-round-1 Low 1 and Info 2.
+- `packages/contracts/src/openapi.test.ts`: added a test for `sortedByKey`'s ordering
+  (`openapi.ts:189-193`, not exported, so exercised through
+  `document.components.schemas`). Built an ad hoc catalogue (not `apiRoutes`, same pattern as
+  the existing "catálogos inválidos" tests) with two named models whose ids diverge under
+  `localeCompare` vs. code-point comparison — verified empirically before writing the
+  assertion with a throwaway script, not guessed:
+  `['aaa','Bbb'].sort(localeCompare)` → `['aaa','Bbb']` (case-insensitive, a before B);
+  `['aaa','Bbb'].sort(code point)` → `['Bbb','aaa']` (`'B'`=66 < `'a'`=97). `ApiError` (always
+  hoisted by the builder) sorts before both by either method, so the assertion is
+  `['ApiError', 'Bbb', 'aaa']` — the order `sortedByKey` produces today, and the order
+  `localeCompare` would NOT produce (`['ApiError', 'aaa', 'Bbb']`).
+
+Closing `pnpm check`: green, 19/19 tasks. `@rrhh/contracts` 48 tests (5 files, `openapi.test.ts`
+now 16, +1 net). `@rrhh/api` 187 tests (25 files, `docs.test.ts` now 7, +1 net). `arch:check` no
+dependency violations (156 modules). Ran individually before the closing run:
+`pnpm --filter @rrhh/contracts exec vitest run src/openapi.test.ts` (16/16),
+`pnpm --filter @rrhh/api exec vitest run tests/docs.test.ts` (7/7).
+
+| Behavior (from plan / code)                                                                                                                     | Source (`file:line`)                 | Layer    | Test                                                                                                                                  | State     |
+| ----------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------ | -------- | ------------------------------------------------------------------------------------------------------------------------------------- | --------- |
+| `/docs` serves the exact pinned Scalar bundle (`1.72.2`), and its CSP `script-src` allows that exact URL, not the whole `cdn.jsdelivr.net` host | `docs.router.ts:13,36,46`            | http     | `docs.test.ts › el bundle de /docs está fijado a la versión pineada, y la CSP solo permite esa URL exacta (no todo cdn.jsdelivr.net)` | CONFIRMED |
+| `components.schemas` is ordered by code point, not `localeCompare` (locale-independent)                                                         | `openapi.ts:189-193` (`sortedByKey`) | contract | `openapi.test.ts › ordena components.schemas por punto de código (case-sensitive), no por localeCompare`                              | CONFIRMED |
+
+Not exercised here (same reason as both previous rounds — interactive/browser, the verifier's
+job): loading the pinned `1.72.2` bundle live with no console CSP errors. This round changed
+only the CSP's source list and the sort comparator, not what a browser renders, so the
+verifier's prior live check of the pinned URL still applies to that part; only the narrower
+`script-src` is new and is covered above at the http layer. No GAP found: the code matches the
+dispatch's description of round 2 exactly at the layers required (contract + http).
 
 ## Review findings
 

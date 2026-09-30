@@ -51,6 +51,29 @@ describe('documentación de la API (/openapi.json, /docs)', () => {
     expect(response.text).toContain(`nonce="${nonce}"`);
   });
 
+  // Hallazgo bajo 1 y hallazgo info 2 de la revisión (ronda de reparación 1 y 2): el bundle está
+  // fijado a una versión exacta (`docs.router.ts:13`, `SCALAR_BUNDLE`), y la CSP permite
+  // exactamente esa URL, no todo el host `cdn.jsdelivr.net` (que permitiría cualquier otro
+  // paquete de npm en el origen de la API). Si `cdn` se cae al valor por defecto de Scalar
+  // (`DEFAULT_CDN`, sin versión) o la CSP se ensancha a todo el host, este test lo detecta.
+  it('el bundle de /docs está fijado a la versión pineada, y la CSP solo permite esa URL exacta (no todo cdn.jsdelivr.net)', async () => {
+    const app = createApp(buildTestContainer());
+
+    const response = await request(app).get(`${API_PREFIX}/docs`).expect(200);
+
+    const pinnedBundle = 'https://cdn.jsdelivr.net/npm/@scalar/api-reference@1.72.2';
+    // El bundle servido por Scalar (`html-rendering.js`: `<script src="${cdn ?? DEFAULT_CDN}">`).
+    expect(response.text).toContain(`<script src="${pinnedBundle}"`);
+
+    const csp = response.headers['content-security-policy'];
+    const scriptSrcMatch = /script-src ([^;]+)/.exec(csp ?? '');
+    const sources = (scriptSrcMatch?.[1] ?? '').split(' ');
+    expect(sources).toContain(pinnedBundle);
+    // El host solo, sin versión, no debe aparecer como fuente separada: eso habilitaría
+    // cualquier paquete de jsdelivr, no solo el bundle fijado.
+    expect(sources).not.toContain('https://cdn.jsdelivr.net');
+  });
+
   it('la CSP relajada de /docs no se filtra a otras rutas (mantienen el helmet() global)', async () => {
     const app = createApp(buildTestContainer());
 

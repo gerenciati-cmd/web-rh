@@ -225,3 +225,38 @@ describe('buildOpenApiDocument — catálogos inválidos (finding 2 y 3 de la re
     );
   });
 });
+
+/**
+ * Info 3 de la revisión (ronda de reparación 1) y cerrado en la ronda 2: `components.schemas`
+ * se ordena por punto de código, no por `localeCompare`, para que el archivo versionado no
+ * dependa del locale de la máquina/CI (`openapi.ts:189-193`, `sortedByKey`). `sortedByKey` no
+ * se exporta, así que se prueba a través del documento: se eligen ids ('aaa' minúscula,
+ * 'Bbb' con mayúscula inicial) donde ambos órdenes divergen de verdad — comprobado antes de
+ * escribir la aserción con un script aparte, no adivinado:
+ *   ['aaa','Bbb'].sort(localeCompare)      → ['aaa', 'Bbb']  (case-insensitive: a antes que B)
+ *   ['aaa','Bbb'].sort(código de punto)    → ['Bbb', 'aaa']  ('B'=66 < 'a'=97)
+ * Si `sortedByKey` volviera a `localeCompare`, este test fallaría.
+ */
+describe('buildOpenApiDocument — orden de components.schemas (info 3, ronda de reparación 2)', () => {
+  it('ordena components.schemas por punto de código (case-sensitive), no por localeCompare', () => {
+    type Catalogue = Readonly<Record<string, Readonly<Record<string, RouteDefinition>>>>;
+    const lower = z.object({ x: z.string() }).meta({ id: 'aaa' });
+    const upper = z.object({ y: z.number() }).meta({ id: 'Bbb' });
+    const catalogue: Catalogue = {
+      moduleA: {
+        one: defineRoute({ method: 'GET', path: '/order-a', summary: 's', response: lower }),
+        two: defineRoute({ method: 'GET', path: '/order-b', summary: 's', response: upper }),
+      },
+    };
+
+    const document = buildOpenApiDocument(catalogue) as {
+      components: { schemas: Record<string, unknown> };
+    };
+
+    // `ApiError` (build siempre lo agrega) siempre entra: por punto de código 'A' (65) < 'B'
+    // (66) < 'a' (97), así que queda antes que ambos. Entre los dos ids del catálogo ad hoc,
+    // 'Bbb' (66) va antes que 'aaa' (97). Un `localeCompare` case-insensitive daría
+    // ['ApiError', 'aaa', 'Bbb'] (a antes que B) en vez de este orden.
+    expect(Object.keys(document.components.schemas)).toEqual(['ApiError', 'Bbb', 'aaa']);
+  });
+});
