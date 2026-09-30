@@ -17,6 +17,7 @@ import {
   type SessionPolicy,
 } from '../../domain/session';
 import type { SessionRepository } from '../../domain/session.repository';
+import type { UserId } from '../../domain/user';
 import type { UserRepository } from '../../domain/user.repository';
 import type { PasswordHasher } from '../ports/password-hasher';
 import type { SessionTokens } from '../ports/session-tokens';
@@ -51,6 +52,9 @@ interface Deps {
 
 const MS_PER_SECOND = 1_000;
 
+/** Señal interna para revertir la transacción cuando el usuario cambió tras verificar la contraseña. */
+class CredentialsChangedError extends Error {}
+
 /** Resultado de reservar un intento para una llave: o quedó reservado, o la llave ya estaba
  *  bloqueada de antes (en cuyo caso nada se registró). */
 type ReservationOutcome = { reserved: true } | { reserved: false; blockedUntil: Date };
@@ -61,7 +65,6 @@ export class LogIn implements Command<LogInCommandInput, LogInOutput> {
   async execute(input: LogInCommandInput) {
     const {
       userRepository,
-      sessionRepository,
       passwordHasher,
       sessionTokens,
       sessionPolicy,
@@ -100,18 +103,9 @@ export class LogIn implements Command<LogInCommandInput, LogInOutput> {
       return err(new InvalidCredentialsError());
     }
 
-    // Éxito: se limpia el throttle del correo entero, pero el de IP solo libera SU reserva de
-    // esta petición (no se limpia entero) — un login ajeno correcto no debe resetear el cupo de
-    // fuerza bruta de quien comparte la IP.
-    await this.clear(emailKey, now);
-    if (ipKey) await this.release(ipKey, now);
-
     const { token, tokenHash } = sessionTokens.issue();
     const client: SessionClient = input.client === 'web' ? 'WEB' : 'MOBILE';
 
-    // El throttle usa transactionRunner porque el row lock (`FOR UPDATE`) solo tiene sentido
-    // dentro de una transacción; la sesión sigue siendo un agregado independiente, sin
-    // transacción compartida con el throttle (tolera una actualización perdida entre sí).
     const session = Session.start({
       id: idGenerator.next() as SessionId,
       userId: user.id,
@@ -122,7 +116,17 @@ export class LogIn implements Command<LogInCommandInput, LogInOutput> {
       ip: input.ip,
       userAgent: input.userAgent,
     });
-    await sessionRepository.save(session);
+
+    // La reserva del intento sigue contada si se rechaza, como en cualquier login fallido.
+    const saved = await this.saveSessionUnderUserLock(session, user.id, user.snapshot.passwordHash);
+    if (!saved) return err(new InvalidCredentialsError());
+
+    // Éxito: se limpia el throttle del correo entero, pero el de IP solo libera SU reserva de
+    // esta petición (no se limpia entero) — un login ajeno correcto no debe resetear el cupo de
+    // fuerza bruta de quien comparte la IP.
+    await this.clear(emailKey, now);
+    if (ipKey) await this.release(ipKey, now);
+
     await eventBus.publish(session.pullEvents());
 
     return ok({
@@ -134,6 +138,36 @@ export class LogIn implements Command<LogInCommandInput, LogInOutput> {
       token,
       expiresAt: session.snapshot.expiresAt,
     });
+  }
+
+  /**
+   * `revokeAllForUser` solo revoca las sesiones que ya existen: un login que verificó la
+   * contraseña vieja antes de un reseteo o una baja guardaría su sesión después y nadie la
+   * revocaría. Por eso la sesión se guarda bajo el row lock del usuario, releyéndolo: si el
+   * otro proceso ganó el lock, aquí se ve el hash nuevo o el estado DISABLED y se rechaza; si
+   * ganó este login, su sesión ya está confirmada cuando el otro revoca y queda revocada.
+   * Devuelve `false` si el usuario cambió tras verificar la contraseña (nada se guardó).
+   */
+  private async saveSessionUnderUserLock(
+    session: Session,
+    userId: UserId,
+    verifiedHash: string,
+  ): Promise<boolean> {
+    const { transactionRunner, userRepository, sessionRepository } = this.deps;
+    try {
+      await transactionRunner.run(async () => {
+        await userRepository.lock(userId);
+        const current = await userRepository.findById(userId);
+        if (!current?.canSignIn || current.snapshot.passwordHash !== verifiedHash) {
+          throw new CredentialsChangedError();
+        }
+        await sessionRepository.save(session);
+      });
+      return true;
+    } catch (error) {
+      if (error instanceof CredentialsChangedError) return false;
+      throw error;
+    }
   }
 
   /**

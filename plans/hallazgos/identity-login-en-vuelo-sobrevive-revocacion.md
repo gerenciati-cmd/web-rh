@@ -1,5 +1,5 @@
 ---
-status: planned
+status: resolved
 module: identity
 found: 2026-09-30
 plan: identity-acceso/006

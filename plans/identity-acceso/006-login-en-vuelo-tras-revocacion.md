@@ -1,5 +1,5 @@
 ---
-status: draft
+status: testing
 module: identity
 min_implementer: mid
 depends_on: ['005']
@@ -116,6 +116,8 @@ This follows the lock-and-re-read shape of `ResetPassword`
 | e2e         | no      | (no e2e infrastructure yet)                                                                                                                                                  |
 
 ## Deviations
+
+None.
 
 ## Test coverage
 
