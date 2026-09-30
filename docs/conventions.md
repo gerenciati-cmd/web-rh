@@ -58,7 +58,9 @@ Lo de alto nivel depende de abstracciones; los detalles se inyectan.
   [ADR 0008](adr/0008-endpoints-de-dispositivos-fuera-de-contratos.md)).
 - **OpenAPI**: `packages/contracts/openapi.json` se genera desde `apiRoutes`. Cambiar un contrato
   exige regenerarlo (`pnpm --filter @rrhh/contracts openapi`); `pnpm check` falla si quedó
-  desactualizado. La referencia `/api/v1/docs` (fuera de producción) admite dos logins:
+  desactualizado. Los modelos de cuerpo (request/response) se nombran en su contrato con
+  `.meta({ id: 'Company' })` para emitirse una sola vez en `components.schemas`; los esquemas
+  de params/query no se nombran (se expanden como parámetros). La referencia `/api/v1/docs` (fuera de producción) admite dos logins:
   `client: "web"` usa la cookie (requiere `http://localhost:3001` en `CORS_ORIGINS`) y
   `client: "mobile"` devuelve un token para pegar en Bearer.
 - **Validación compartida**: `CreateCompanySchema` usa `TaxId.isValid` y `RegisterEmployeeSchema`

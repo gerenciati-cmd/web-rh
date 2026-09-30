@@ -1,5 +1,5 @@
 ---
-status: verify
+status: testing
 module: platform
 min_implementer: mid
 depends_on: []
@@ -165,6 +165,25 @@ openapi.json tras cambiar un contrato` and a line pointing to `http://localhost:
      into Bearer.
    - Observable result: `pnpm format:check` passes.
 
+6. **Repair round 1 (2026-09-30, README decision 6): dedup, pinned CDN, review findings.**
+   - Files: `packages/contracts/src/openapi.ts` (modify), `packages/contracts/openapi.json` (modify), `packages/contracts/src/common.ts` (modify), `packages/contracts/src/organization/company.contract.ts` (modify), `packages/contracts/src/employees/employee.contract.ts` (modify), `packages/contracts/src/identity/auth.contract.ts` (modify), `apps/api/src/http/docs.router.ts` (modify), `.prettierignore` (modify), `apps/api/tests/docs.test.ts` (create), `packages/contracts/src/openapi.test.ts` (modify)
+   - Name the models with `.meta({ id })` in their contracts: `ApiError`, `Created`, `Company`,
+     `CreateCompanyInput`, `EmployeeListItem`, `RegisterEmployeeInput`, `SessionUser`,
+     `LogInInput`, `LogInResponse`. Query and params schemas stay unnamed (they are expanded
+     into parameters).
+   - Builder: hoist each conversion's `$defs` into `components.schemas` and rewrite
+     `#/$defs/X` to `#/components/schemas/X`. Throw a clear error if a hoisted id already exists
+     with a different JSON (the same name with two shapes, e.g. input vs output io), or if a
+     def has no explicit id (Zod's anonymous `__schemaN`). This fixes review finding 2. Replace
+     the five per-operation error responses with one `components.responses.Error` referenced
+     as `default`. Throw on two operations with the same method and path (review finding 3).
+   - `docs.router.ts`: pin `cdn` to `https://cdn.jsdelivr.net/npm/@scalar/api-reference@1.72.2`,
+     the version observed rendering without CSP errors during verification (Deviation 6).
+   - `.prettierignore` and `apps/api/tests/docs.test.ts` are listed here to close review
+     finding 1. The CSP assertion (finding 4) belongs to the tester.
+   - Observable result: `openapi.json` much shorter, with `$ref`s to named models; Scalar lists
+     the models; `pnpm check` green.
+
 ## Acceptance criteria
 
 - [ ] `GET http://localhost:3001/api/v1/openapi.json` (dev) returns an OpenAPI 3.1 document with
@@ -250,6 +269,40 @@ Observable results checked:
   `packages/contracts/src/index.ts` is a hot file with an append-only addition.
 - Not exercised by the implementer: rendering in a browser, the login flows and the production 404. These belong to the tester (http layer) and the verifier. The cookie flow also needs
   the user to add `http://localhost:3001` to their own `apps/api/.env` `CORS_ORIGINS`.
+
+### Repair round 1 (2026-09-30)
+
+Reason: after the PASS verification, the user asked to pin the CDN version, fix the review
+findings and reduce the document size (README decision 6). Status went verify → implementing.
+The previous Test coverage, Review findings and Verification entries remain as history. They
+**do not cover** the code below; a new tests → review → verify cycle follows (step 6).
+
+- **Dedup.** Nine models are named with `.meta({ id })` in their contracts (`common.ts`,
+  `company.contract.ts`, `employee.contract.ts`, `auth.contract.ts`). `toSchema` hoists Zod's
+  `$defs` into `components.schemas` (sorted by key for a stable file) and rewrites
+  `#/$defs/X` to `#/components/schemas/X`. `openapi.json` went from **1119 to 713 lines**.
+  Operations now reference `Company`, `CreateCompanyInput`, `Created`, `EmployeeListItem`,
+  `RegisterEmployeeInput`, `LogInInput`, `LogInResponse` and `SessionUser`.
+- **Errors.** The 5 per-operation error responses (40 copies) became one
+  `components.responses.Error`, referenced as `default`. **Behaviour change vs plan step 1**
+  (which listed 400/401/404/409/500 per operation): `default` is also more accurate, since not
+  every route can return every code. The Error description lists the codes.
+- **Finding 2.** A `$def` without an explicit id (`__schemaN`) throws. The same id with two
+  different JSON shapes throws. A params/query schema carrying an id (which would silently
+  drop parameters) throws.
+- **Finding 3.** A duplicate method+path throws instead of overwriting.
+- **Finding 1.** `.prettierignore` and `apps/api/tests/docs.test.ts` are now listed in step 6.
+- **Deviation 6 closed.** `cdn` is pinned to `@scalar/api-reference@1.72.2`. Live check:
+  `<script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference@1.72.2"`. Headless Chrome
+  console shows `"@scalar/api-reference@1.72.2"` and 0 CSP/"Refused" lines. The DOM shows the
+  "Models" section.
+- `docs/conventions.md`: model naming rule added (bodies named, params/query not).
+- **Checks.** Contracts/api typecheck+lint green. Web and mobile typecheck green (contracts
+  changed). `@rrhh/api` 184/184. `arch:check` clean.
+  **`@rrhh/contracts`: 1 failing test**, `cada operación referencia ApiError en los códigos de
+error declarados`, which asserts the removed 5-code shape. It is a test-only correction for
+  the tester (role purity), together with finding 4 (CSP assertion) and tests for the new
+  throws.
 
 ## Test coverage
 

@@ -7,15 +7,17 @@ import { defineRoute } from '../http';
 export const EmployeeStatusSchema = z.enum(EMPLOYEE_STATUSES);
 
 // ── Modelos de lectura ─────────────────────────────────────────────────────
-export const EmployeeListItemSchema = z.object({
-  id: z.uuid(),
-  fullName: z.string(),
-  nationalId: z.string().describe('Formateado para mostrar, p. ej. GOMA850101HQRRRN04'),
-  email: z.email(),
-  positionTitle: z.string().nullable(),
-  hireDate: z.iso.date(),
-  status: EmployeeStatusSchema,
-});
+export const EmployeeListItemSchema = z
+  .object({
+    id: z.uuid(),
+    fullName: z.string(),
+    nationalId: z.string().describe('Formateado para mostrar, p. ej. GOMA850101HQRRRN04'),
+    email: z.email(),
+    positionTitle: z.string().nullable(),
+    hireDate: z.iso.date(),
+    status: EmployeeStatusSchema,
+  })
+  .meta({ id: 'EmployeeListItem' });
 export type EmployeeListItem = z.infer<typeof EmployeeListItemSchema>;
 
 // ── Entradas ───────────────────────────────────────────────────────────────
@@ -31,7 +33,8 @@ export const RegisterEmployeeSchema = z
   .refine((input) => NationalId.isValid(input.nationalId.country, input.nationalId.number), {
     path: ['nationalId', 'number'],
     message: 'Documento de identidad inválido',
-  });
+  })
+  .meta({ id: 'RegisterEmployeeInput' });
 export type RegisterEmployeeInput = z.input<typeof RegisterEmployeeSchema>;
 
 export const ListEmployeesQuerySchema = PageQuerySchema.extend({
