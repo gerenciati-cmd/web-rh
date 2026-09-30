@@ -368,3 +368,47 @@ path params required, no stray `$ref`/`$defs` besides `ApiError`.
 No findings require code changes. Plan to `verify`.
 
 ## Verification
+
+**PASS** — 2026-09-30, main session (verifier role), code at `ea950ea`. The API was run by the
+user (`pnpm dev:api`, with `http://localhost:3001` added to their `CORS_ORIGINS` and the seed
+user created). The user also exercised the flows in their own browser and reported them
+working. The evidence below is the verifier's own.
+
+Suites (run once): `pnpm check` gives `Tasks: 19 successful, 19 total`,
+`no dependency violations found (156 modules)`, harness `pass 161 / fail 0`, bootstrap
+`pass 17 / fail 0`, quality `pass 9 / fail 0`.
+
+Acceptance criteria:
+
+- [x] `GET /api/v1/openapi.json` returns `200`, with 8 operations, `{companyId}` path params
+      and `ApiError` in components (curl; shape also covered by the contract tests).
+- [x] `/api/v1/docs` in headless Chrome (`google-chrome-stable --headless=new --dump-dom`,
+      console logged to stderr). Console:
+      `"@scalar/api-reference@1.72.2", source: https://cdn.jsdelivr.net/npm/@scalar/api-reference`.
+      **No CSP violation or "Refused" lines**; the only other console lines come from a KDE
+      browser extension in the profile. The rendered DOM (367 KB) contains
+      `API RRHH APS Holding` and the route summaries.
+- [x] Bearer flow (same requests Scalar sends, `Origin: http://localhost:3001`):
+      `POST /auth/login` with `client: "mobile"` returns 200 with `token`;
+      `GET /auth/me` with the Bearer returns 200 `admin@example.com`; `POST /auth/logout`
+      returns 204; `GET /auth/me` with the revoked token returns 401 `AUTHENTICATION_REQUIRED`.
+- [x] Cookie flow: `POST /auth/login` with `client: "web"` returns 200, `token: null`, and
+      `Set-Cookie: __Host-rrhh_session=…; Path=/; HttpOnly; Secure; SameSite=Lax`. Then
+      `GET /auth/me` with the cookie returns 200. `POST /auth/logout` with
+      `Origin: http://localhost:3001` returns 204, and the next `GET /auth/me` returns 401.
+      Unhappy path: the same logout with `Origin: http://evil.example.com` returns 401 and
+      `/auth/me` still returns 200 afterwards, so the CSRF Origin check still rejects foreign
+      origins. The browser's handling of a `__Host-`/`Secure` cookie over `http://localhost`
+      was reported working by the user (not observed directly by the verifier).
+- [x] `GET /companies` lists the 3 seeded companies. `POST /companies` with `taxId: "123"`
+      returns 400 `VALIDATION_ERROR` in the `ApiError` shape.
+- [~] Production 404: covered by `apps/api/tests/docs.test.ts` (real app built with a
+  production `Env`, both routes 404). **NOT VERIFIED live**: launching a second API with
+  `NODE_ENV=production PORT=3099` was blocked by the bash guard (multiple inline env
+  assignments). Not worked around.
+- [x] Stale `openapi.json` makes `pnpm check` fail: observed during implementation
+      (Deviation 2: snapshot mismatch until `pnpm --filter @rrhh/contracts openapi`).
+- [x] `pnpm check` passes; `arch:check` shows no violations.
+
+Verification data: no rows were created by the verifier. The `admin@example.com` user and its
+sessions come from the user's seed. The sessions created by these checks were logged out.
