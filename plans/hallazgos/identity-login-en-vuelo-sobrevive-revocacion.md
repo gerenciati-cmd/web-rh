@@ -1,7 +1,8 @@
 ---
-status: open
+status: planned
 module: identity
 found: 2026-09-30
+plan: identity-acceso/006
 ---
 
 # Hallazgo: un login en vuelo sobrevive a "cerrar todas las sesiones"

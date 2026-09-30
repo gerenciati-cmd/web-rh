@@ -20,6 +20,7 @@ endpoint is open (`apps/api/src/http/app.ts:43-47` mounts module routers with no
 | 003  | Invitación, activación y baja de accesos    | 002        | Invitations (RRHH/Admin), activation links `User.employeeId` + EMPLOYEE role, disable on termination, email queue        |
 | 004  | Login en web y mobile (TBD, deferred)       | 001        | Login screens, cookie handling in Next, `expo-secure-store` token in mobile — not before a UI design exists (decision 9) |
 | 005  | Reseteo de contraseña                       | 003        | "Forgot password" (1 h link), staff-forced reset by email, all sessions closed on reset; fixes hallazgo L3               |
+| 006  | Login en vuelo tras revocación              | 005        | A login verified before a reset/termination can no longer keep a session afterwards (hallazgo from 005 review)           |
 
 ## Dependency notes
 
@@ -107,6 +108,10 @@ endpoint is open (`apps/api/src/http/app.ts:43-47` mounts module routers with no
 30. (2026-09-30) "Forgot my password" sends at most one email per account every **3 minutes**
     (`PASSWORD_RESET_COOLDOWN_SECONDS=180`); a repeated request inside that window still answers
     204 but sends nothing. Staff-forced resets are not subject to it.
+31. (2026-09-30) The hallazgo "un login en vuelo sobrevive a cerrar todas las sesiones" (plan 005
+    review) is fixed now, in plan 006 on the same branch as 005. The user asked for it without a
+    plan, but it touches authentication, which the fast lane excludes. Approach: lock the user and
+    re-check before saving the session.
 
 ## Delivered
 
