@@ -1,5 +1,5 @@
 ---
-status: testing
+status: review
 module: identity
 min_implementer: mid
 depends_on: ['003']
@@ -334,7 +334,7 @@ from 003. Serialization:
    - Observable result: `pnpm check` green.
 
 7. **Test files of this plan** (declared for `pnpm plans:scope`; the tester writes them)
-   - Files: `packages/contracts/src/identity/password-reset.contract.test.ts` (create), `apps/api/src/modules/identity/domain/password-reset.test.ts` (create), `apps/api/src/modules/identity/domain/user.test.ts` (modify), `apps/api/src/modules/identity/application/password-reset-issuer.test.ts` (create), `apps/api/src/modules/identity/application/commands/request-password-reset.command.test.ts` (create), `apps/api/src/modules/identity/application/commands/force-employee-password-reset.command.test.ts` (create), `apps/api/src/modules/identity/application/commands/force-user-password-reset.command.test.ts` (create), `apps/api/src/modules/identity/application/commands/reset-password.command.test.ts` (create), `apps/api/src/modules/identity/application/jobs/send-password-reset-email.job.test.ts` (create), `apps/api/tests/integration/identity/prisma-password-reset.int.test.ts` (create), `apps/api/tests/integration/identity/prisma-user.int.test.ts` (modify), `apps/api/tests/integration/identity/prisma-invitation.int.test.ts` (modify)
+   - Files: `packages/contracts/src/identity/password-reset.contract.test.ts` (create), `apps/api/src/modules/identity/domain/password-reset.test.ts` (create), `apps/api/src/modules/identity/domain/user.test.ts` (modify), `apps/api/src/modules/identity/application/password-reset-issuer.test.ts` (create), `apps/api/src/modules/identity/application/commands/request-password-reset.command.test.ts` (create), `apps/api/src/modules/identity/application/commands/force-employee-password-reset.command.test.ts` (create), `apps/api/src/modules/identity/application/commands/force-user-password-reset.command.test.ts` (create), `apps/api/src/modules/identity/application/commands/reset-password.command.test.ts` (create), `apps/api/src/modules/identity/application/jobs/send-password-reset-email.job.test.ts` (create), `apps/api/tests/password-resets.test.ts` (create), `apps/api/tests/integration/identity/prisma-password-reset.int.test.ts` (create), `apps/api/tests/integration/identity/prisma-user.int.test.ts` (modify), `apps/api/tests/integration/identity/prisma-invitation.int.test.ts` (modify)
    - Do: nothing for the implementer.
    - Observable result: suites green.
 
@@ -406,8 +406,58 @@ from 003. Serialization:
   throw an internal `Error` if it ever returned `null` (unreachable) rather than use `!`.
 - Checks: `pnpm check` green, `pnpm test:integration` green (84). Web/mobile typecheck green
   as part of `pnpm check`.
+- Tester: the http layer is required by the table but step 7 declares no http file, so the tester
+  added `apps/api/tests/password-resets.test.ts` (pattern of `tests/invitations.test.ts`).
+  `prisma-invitation.int.test.ts` now also truncates `identity.users` (the L3 tests run the real
+  commands, which read users, and other suites leave rows behind).
+- Tester: `apps/api/tests/integration/identity/zz-control.int.test.ts` is a temporary control
+  file the tester could not delete (the untracked-file guard blocked `rm`). It now holds only an
+  `it.skip('NOT CONFIRMED: …')`. The main session must delete it before committing.
 
 ## Test coverage
+
+Runs (tester): baseline `pnpm check` green (api 410 passed / 2 skipped) and `pnpm test:integration`
+green (84). Closing `pnpm check` green (api 516 passed / 3 skipped, contracts 133) and
+`pnpm test:integration` green (110 passed / 1 skipped). Tests added: contract 22, domain 14
+(12 `password-reset.test.ts` + 2 in `user.test.ts`), application 56 (issuer 11, request 8,
+force-employee 8, force-user 5, reset 19, job 5), http 36 (+1 skip), integration 26. No GAP found.
+
+| Behavior (plan / code)                                                                                            | Source                                                             | Layer       | Test                                                                          | State                   |
+| ----------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ | ----------- | ----------------------------------------------------------------------------- | ----------------------- |
+| Reset born pending, expires at now + ttl, event without token hash                                                | `password-reset.ts:44-67`                                          | domain      | `password-reset.test.ts › PasswordReset.issue`                                | CONFIRMED               |
+| `isPendingAt` exclusive at `expiresAt`; `use`/`supersede` lifecycle and no-ops                                    | `password-reset.ts:74-101`                                         | domain      | `password-reset.test.ts › isPendingAt / use / supersede / restore`            | CONFIRMED               |
+| `User.changePassword` replaces hash, event without hash                                                           | `user.ts:66-70`                                                    | domain      | `user.test.ts › changePassword`                                               | CONFIRMED               |
+| Issuer: lock inside tx, supersede pending, cooldown (null, exclusive edge)                                        | `password-reset-issuer.ts:58-92`                                   | application | `password-reset-issuer.test.ts`                                               | CONFIRMED               |
+| Issuer: sensitive job, `/restablecer?token=` link, only hash persisted                                            | `password-reset-issuer.ts:96-106`                                  | application | `password-reset-issuer.test.ts › encola el correo como sensible…`             | CONFIRMED               |
+| Forgot: always ok; unknown / invalid / disabled do nothing; cooldown                                              | `request-password-reset.command.ts:24-34`                          | application | `request-password-reset.command.test.ts`                                      | CONFIRMED               |
+| Force employee: company mismatch = not found; no account; disabled; no cooldown                                   | `force-employee-password-reset.command.ts:37-62`                   | application | `force-employee-password-reset.command.test.ts`                               | CONFIRMED               |
+| Force user: any user incl. external; not found; disabled                                                          | `force-user-password-reset.command.ts:29-49`                       | application | `force-user-password-reset.command.test.ts`                                   | CONFIRMED               |
+| Confirm: policy first, token invalid cases share one body                                                         | `reset-password.command.ts:56-63`                                  | application | `reset-password.command.test.ts`                                              | CONFIRMED               |
+| Confirm: hash changed, all sessions revoked, email throttle cleared, IP not                                       | `reset-password.command.ts:84-94`                                  | application | `reset-password.command.test.ts`                                              | CONFIRMED               |
+| Confirm: lost race (reset closed, user disabled at lock) rolled back, no events                                   | `reset-password.command.ts:68-102`                                 | application | `reset-password.command.test.ts › carrera` (x2)                               | CONFIRMED               |
+| Email text: forced-by-staff line, Cancún time, single-use notice                                                  | `send-password-reset-email.job.ts:26-48`                           | application | `send-password-reset-email.job.test.ts`                                       | CONFIRMED               |
+| Four routes: method, path, status, access, `companyParam`, schemas                                                | `password-reset.contract.ts:21-58`                                 | contract    | `password-reset.contract.test.ts`                                             | CONFIRMED               |
+| OpenAPI count 19, public routes, HR grants 5                                                                      | step 6 expectation edits                                           | contract    | existing `openapi.test.ts`, `access.contract.test.ts`, `role-catalog.test.ts` | CONFIRMED (implementer) |
+| Forgot answers 204 empty for active/unknown/disabled/cooldown; email only first                                   | router + `request-password-reset.command.ts`                       | http        | `password-resets.test.ts › POST /auth/password-reset`                         | CONFIRMED               |
+| Confirm then login new ok / old 401; old sessions 401; blocked email (429) lifted                                 | `reset-password.command.ts`                                        | http        | `password-resets.test.ts › POST /auth/password-reset/confirm`                 | CONFIRMED               |
+| Reuse / superseded / expired / unknown same 422; disabled after request 422; weak keeps token                     | `reset-password.command.ts`                                        | http        | `password-resets.test.ts › confirm`                                           | CONFIRMED               |
+| Force employee matrix: HR own 201, other company 403, foreign/unknown 404, no account 404, disabled 422, anon 401 | `bind-route.ts`, `force-employee-password-reset.command.ts`        | http        | `password-resets.test.ts › POST /companies/…/password-reset`                  | CONFIRMED               |
+| Force user: admin 201 (also external), HR 403, unknown 404, disabled 422, anon 401                                | `bind-route.ts`, `force-user-password-reset.command.ts`            | http        | `password-resets.test.ts › POST /users/:userId/password-reset`                | CONFIRMED               |
+| Conditional save of resets (used/superseded never overwritten; race)                                              | `prisma-password-reset.repository.ts:27-44`                        | integration | `prisma-password-reset.int.test.ts › save condicional`                        | CONFIRMED               |
+| Unique token hash, FK to users, `findPendingForUser` filters                                                      | migration + `prisma-password-reset.repository.ts:16-22`            | integration | `prisma-password-reset.int.test.ts`                                           | CONFIRMED               |
+| Concurrent requests leave one pending reset (user-row lock)                                                       | `password-reset-issuer.ts:76-80`, `prisma-user.repository.ts`      | integration | `prisma-password-reset.int.test.ts › solicitudes concurrentes` (x2)           | CONFIRMED               |
+| `UserRepository.lock`: true/false, blocks a second tx, re-read sees DISABLED                                      | `prisma-user.repository.ts:35-40`                                  | integration | `prisma-user.int.test.ts › PrismaUserRepository.lock`                         | CONFIRMED               |
+| `lockIssuance` serializes shared keys, not distinct ones, no deadlock                                             | `prisma-invitation.repository.ts:47-54`                            | integration | `prisma-invitation.int.test.ts › lockIssuance`                                | CONFIRMED               |
+| L3: parallel InviteEmployee / InviteExternal leave exactly one pending                                            | `invite-employee.command.ts:102-108`, `invite-external.command.ts` | integration | `prisma-invitation.int.test.ts › invitaciones concurrentes (hallazgo L3)`     | CONFIRMED               |
+| Reset email reaches Mailpit and the job is not left in Valkey                                                     | adapters outside `pnpm check`                                      | http        | `password-resets.test.ts › NOT CONFIRMED…` (`it.skip`)                        | NOT CONFIRMED           |
+
+Discrimination check of the L3 tests: a throwaway control (same `InviteExternal` x5 in parallel
+with `lockIssuance` replaced by a no-op) left more than one pending invitation, so the parallel
+tests do detect a missing lock. The control was not kept (see Deviations).
+
+Not covered (recorded, not a GAP): a confirmation racing a real termination against Postgres is
+covered only at the pieces (`UserRepository.lock` re-read test plus the in-memory race in
+`reset-password.command.test.ts`), not as one end-to-end parallel test.
 
 ## Review findings
 

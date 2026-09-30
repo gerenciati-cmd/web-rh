@@ -1,14 +1,28 @@
 import { Email } from '@rrhh/domain';
 import { describe, expect, it } from 'vitest';
 
+import { PrismaTransactionRunner } from '@/infrastructure/database/prisma-transaction-runner';
+import { InviteEmployee } from '@/modules/identity/application/commands/invite-employee.command';
+import { InviteExternal } from '@/modules/identity/application/commands/invite-external.command';
+import type {
+  EmployeeDirectory,
+  InvitableEmployee,
+} from '@/modules/identity/application/ports/employee-directory';
 import { Invitation, type InvitationId } from '@/modules/identity/domain/invitation';
 import type { UserId } from '@/modules/identity/domain/user';
+import { CryptoInvitationTokens } from '@/modules/identity/infrastructure/crypto-invitation-tokens';
 import { PrismaInvitationRepository } from '@/modules/identity/infrastructure/prisma-invitation.repository';
-import { SequentialIdGenerator } from '@/shared/testing/fakes';
+import { PrismaUserRepository } from '@/modules/identity/infrastructure/prisma-user.repository';
+import {
+  FixedClock,
+  RecordingEventBus,
+  RecordingJobQueue,
+  SequentialIdGenerator,
+} from '@/shared/testing/fakes';
 
 import { useTestDatabase } from '../support';
 
-const database = useTestDatabase(['identity.invitations']);
+const database = useTestDatabase(['identity.invitations', 'identity.users']);
 const repository = new PrismaInvitationRepository({ database });
 const ids = new SequentialIdGenerator();
 const NOW = new Date('2026-01-15T12:00:00Z');
@@ -226,5 +240,200 @@ describe('PrismaInvitationRepository', () => {
 
       expect(found.map((i) => i.id).sort()).toEqual([forEmployee.id, external.id].sort());
     });
+  });
+});
+
+// `lockIssuance` debe llamarse dentro de `transactionRunner.run`: el lock consultivo de
+// transacción se suelta al terminar (hallazgo L3).
+describe('PrismaInvitationRepository.lockIssuance', () => {
+  const transactionRunner = new PrismaTransactionRunner({ database });
+
+  /** Espera (sin dormir un tiempo fijo) a que alguna sesión quede esperando un lock consultivo. */
+  async function waitForBlockedSession(): Promise<void> {
+    for (let attempt = 0; attempt < 100; attempt++) {
+      const rows = await database.client.$queryRaw<{ waiting: number }[]>`
+        SELECT count(*)::int AS waiting FROM pg_locks
+        WHERE NOT granted AND locktype = 'advisory'
+      `;
+      if ((rows[0]?.waiting ?? 0) > 0) return;
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    throw new Error('ninguna transacción quedó esperando el lock consultivo');
+  }
+
+  async function holdThenRelease(
+    firstKeys: string[],
+    secondKeys: string[],
+  ): Promise<{ order: string[]; blocked: boolean }> {
+    const order: string[] = [];
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let acquired!: () => void;
+    const holding = new Promise<void>((resolve) => {
+      acquired = resolve;
+    });
+
+    const first = transactionRunner.run(async () => {
+      await repository.lockIssuance(firstKeys);
+      acquired();
+      await gate;
+      order.push('primera-termina');
+    });
+    await holding;
+    const second = transactionRunner.run(async () => {
+      await repository.lockIssuance(secondKeys);
+      order.push('segunda-bloquea');
+    });
+    let blocked = true;
+    try {
+      await waitForBlockedSession();
+    } catch {
+      blocked = false;
+    }
+    release();
+    await Promise.all([first, second]);
+    return { order, blocked };
+  }
+
+  it('dos transacciones con la misma clave se serializan: la segunda espera a la primera', async () => {
+    const { order, blocked } = await holdThenRelease(['employee:e1'], ['employee:e1']);
+
+    expect(blocked).toBe(true);
+    expect(order).toEqual(['primera-termina', 'segunda-bloquea']);
+  });
+
+  it('basta con compartir una de varias claves (colaborador o correo)', async () => {
+    const { order, blocked } = await holdThenRelease(
+      ['employee:e1', 'email:ana@aps.cl'],
+      ['email:ana@aps.cl'],
+    );
+
+    expect(blocked).toBe(true);
+    expect(order).toEqual(['primera-termina', 'segunda-bloquea']);
+  });
+
+  it('claves distintas no se bloquean entre sí', async () => {
+    const { order, blocked } = await holdThenRelease(['employee:e1'], ['employee:e2']);
+
+    expect(blocked).toBe(false);
+    expect(order).toEqual(['segunda-bloquea', 'primera-termina']);
+  });
+
+  it('claves compartidas en distinto orden no producen interbloqueo', async () => {
+    const lockBoth = (keys: string[]) => transactionRunner.run(() => repository.lockIssuance(keys));
+
+    await expect(
+      Promise.all([
+        lockBoth(['employee:e1', 'email:ana@aps.cl']),
+        lockBoth(['email:ana@aps.cl', 'employee:e1']),
+        lockBoth(['employee:e1', 'email:ana@aps.cl']),
+        lockBoth(['email:ana@aps.cl', 'employee:e1']),
+      ]),
+    ).resolves.toHaveLength(4);
+  });
+});
+
+// Hallazgo L3 (plans/hallazgos/identity-invitaciones-concurrentes.md): con Postgres real y
+// transacciones paralelas, las invitaciones simultáneas deben dejar UNA sola pendiente.
+describe('invitaciones concurrentes (hallazgo L3)', () => {
+  const transactionRunner = new PrismaTransactionRunner({ database });
+  const APP_URL = 'https://rrhh.example.test';
+  const PARALLEL = 5;
+  const ana: InvitableEmployee = {
+    id: EMPLOYEE,
+    companyId: COMPANY,
+    email: 'ana@aps.cl',
+    fullName: 'Ana Rojas',
+    active: true,
+  };
+  const employeeDirectory: EmployeeDirectory = {
+    find: (employeeId) => Promise.resolve(employeeId === ana.id ? ana : null),
+  };
+  const commandDeps = () => ({
+    userRepository: new PrismaUserRepository({ database }),
+    invitationRepository: repository,
+    invitationTokens: new CryptoInvitationTokens(),
+    invitationPolicy: { ttlMs: TTL_MS, appPublicUrl: APP_URL },
+    idGenerator: new SequentialIdGenerator(),
+    transactionRunner,
+    clock: new FixedClock(NOW),
+    eventBus: new RecordingEventBus(),
+    jobQueue: new RecordingJobQueue(),
+  });
+
+  it('InviteEmployee en paralelo al mismo colaborador: exactamente una invitación pendiente', async () => {
+    const invite = new InviteEmployee({ ...commandDeps(), employeeDirectory });
+
+    const results = await Promise.all(
+      Array.from({ length: PARALLEL }, () =>
+        invite.execute({ companyId: COMPANY, employeeId: ana.id, invitedBy: INVITER }),
+      ),
+    );
+
+    expect(results.every((result) => result.ok)).toBe(true);
+    expect(await repository.findPendingForEmployee(ana.id, NOW)).toHaveLength(1);
+    expect(await database.client.invitation.count()).toBe(PARALLEL);
+  });
+
+  it('InviteEmployee en paralelo al mismo correo con la misma ficha: una sola pendiente por correo', async () => {
+    const invite = new InviteEmployee({ ...commandDeps(), employeeDirectory });
+
+    await Promise.all(
+      Array.from({ length: PARALLEL }, () =>
+        invite.execute({
+          companyId: COMPANY,
+          employeeId: ana.id,
+          email: 'compartido@aps.cl',
+          invitedBy: INVITER,
+        }),
+      ),
+    );
+
+    expect(await repository.findPendingForEmail(mustEmail('compartido@aps.cl'), NOW)).toHaveLength(
+      1,
+    );
+  });
+
+  it('InviteExternal en paralelo al mismo correo: exactamente una invitación pendiente', async () => {
+    const invite = new InviteExternal(commandDeps());
+
+    const results = await Promise.all(
+      Array.from({ length: PARALLEL }, () =>
+        invite.execute({ email: 'contador@externo.com', invitedBy: INVITER }),
+      ),
+    );
+
+    expect(results.every((result) => result.ok)).toBe(true);
+    expect(
+      await repository.findPendingForEmail(mustEmail('contador@externo.com'), NOW),
+    ).toHaveLength(1);
+    expect(await database.client.invitation.count()).toBe(PARALLEL);
+  });
+
+  it('InviteEmployee e InviteExternal simultáneos al mismo correo: una sola pendiente', async () => {
+    const deps = commandDeps();
+    const employeeInvite = new InviteEmployee({ ...deps, employeeDirectory });
+    const externalInvite = new InviteExternal(deps);
+
+    await Promise.all([
+      employeeInvite.execute({
+        companyId: COMPANY,
+        employeeId: ana.id,
+        email: 'mixto@aps.cl',
+        invitedBy: INVITER,
+      }),
+      externalInvite.execute({ email: 'mixto@aps.cl', invitedBy: INVITER }),
+      employeeInvite.execute({
+        companyId: COMPANY,
+        employeeId: ana.id,
+        email: 'mixto@aps.cl',
+        invitedBy: INVITER,
+      }),
+      externalInvite.execute({ email: 'mixto@aps.cl', invitedBy: INVITER }),
+    ]);
+
+    expect(await repository.findPendingForEmail(mustEmail('mixto@aps.cl'), NOW)).toHaveLength(1);
   });
 });
