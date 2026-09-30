@@ -299,4 +299,93 @@ application 39 (`actor` 9, `assign-role` 11, `revoke` 8,
 
 ## Review findings
 
+Reviewer, 2026-09-30. Diff `main...HEAD` (commits 07f4b0f, a0361c3) más el árbol de trabajo. El
+cambio sin commitear en `plans/platform-openapi/001-documento-y-referencia-scalar.md` es del
+usuario y ajeno a este plan: se ignora.
+
+### Checklist (11/13)
+
+- [ ] **`pnpm plans:scope`: FALLA** (exit 1). "Declarados sin cambios":
+      `apps/api/prisma/migrations/<timestamp>_create_role_assignments/migration.sql`; "Fuera de
+      alcance": `get-current-user.query.test.ts` y `apps/api/tests/zkteco-adms.test.ts` (y el
+      archivo del usuario, que no cuenta). Hot files (`schema.prisma`, `test-app.ts`,
+      `contracts/src/index.ts`) revisados: los cambios no puramente aditivos están en la lista del
+      plan y son los pedidos (relación en `User`, línea de `userQueries`). Ver R2.
+- [x] `pnpm check` verde (19/19 tareas turbo, `arch:check` sin violaciones, plans/harness/quality ok).
+- [x] `pnpm test:integration` verde (8 archivos, 55 tests), ejecutado en vivo en esta revisión.
+- [x] Reglas de negocio en `domain/` (catálogo, alcance y revocación en `RoleAssignment`); el
+      conteo del último admin y el duplicado viven en los commands porque necesitan el repositorio.
+- [x] CQRS: commands → agregado → `RoleAssignmentRepository` → `Result`; lecturas por
+      `UserQueries`/`CompanyQueries` con DTOs de contrato; el repositorio no tiene métodos de pantalla.
+- [x] Tipos de request/response desde `@rrhh/contracts`.
+- [x] Errores esperados como `Result` + errores de dominio con `code` estable; 403 como error de adaptador.
+- [x] Fechas UTC (`Timestamptz`), tiempo e ids por `Clock`/`IdGenerator`; sin dinero.
+- [x] Migración nueva `20260930150447_create_role_assignments`: solo enum, tabla, dos índices y FK a
+      `identity.users` (mismo schema); sin DROP; `company_id` sin FK.
+- [x] DI: registros nuevos resuelven (`tests/container.test.ts` verde); módulo registrado una vez.
+- [x] Sin secretos ni datos personales reales (seed referencia `SEED_USER_PASSWORD` por nombre).
+- [x] Deviations honestas: comprobadas la 2 (`Grant` en `packages/domain/src/identity/access.ts`,
+      re-exportado en `actor.ts`), la 3 (`toHaveLength(12)`, `openapi.test.ts:49`) y la 5 (los dos
+      tests tocados son mecánicos).
+- [ ] **Docs existentes al día: FALLA**. Ver R3.
+
+### Hallazgos
+
+**Medium**
+
+- **R1 — Se valida antes de autorizar: un anónimo recibe 400 con el detalle del esquema, no 401**
+  (`apps/api/src/http/bind-route.ts:42-44` parsea, `:56` autoriza). Escenario: `POST
+/api/v1/companies` sin sesión y con `{}` → 400 `VALIDATION_ERROR` con los issues de Zod;
+  `GET /users/no-es-uuid/role-assignments` anónimo → 400. Contradice el criterio de aceptación 3
+  ("sin sesión, toda ruta de negocio → 401") y en producción (donde `/openapi.json` no se sirve)
+  revela la forma de las entradas a quien no tiene sesión. El paso 9 y ADR 0012 ("después de
+  validar") piden justamente este orden, así que es un conflicto interno del plan, no un error
+  del implementer: **requiere decisión del usuario** entre (a) autorizar antes de parsear
+  query/body (con `companyParam`, validar solo `params` primero; 401 siempre antes que 400) y
+  ajustar ADR 0012, `docs/architecture.md` (diagrama del flujo) y los dos `it.fails` del tester
+  (`apps/api/tests/authorization.test.ts:135,142`); o (b) enmendar el criterio 3 a "con entrada
+  válida" y que el tester convierta los `it.fails` en aserciones del 400. Ya lo reportó el tester
+  como GAP 1.
+
+**Low**
+
+- **R2 — Lista de archivos del plan desactualizada** (plan, paso 8 `Files`; pasos 12/14).
+  El paso 8 pedía reemplazar `<timestamp>` por el directorio real y solo se anotó en Deviations 1;
+  `get-current-user.query.test.ts` y `zkteco-adms.test.ts` se tocaron (Deviation 5, cambios
+  mecánicos y correctos) sin estar declarados. Consecuencia: `plans:scope` sale con 1. Arreglo:
+  poner `20260930150447_create_role_assignments` en el paso 8 y añadir los dos tests al paso 12.
+- **R3 — Receta desactualizada** (`.claude/skills/new-use-case/SKILL.md:52`: "aquí irán luego los
+  chequeos de permisos" en el caso de uso; `:15`/`:41` y `.claude/skills/new-module/SKILL.md:20,61,72`
+  no mencionan `access`). Escenario: quien agregue un endpoint siguiendo la receta no sabe que debe
+  declarar `access` con `requires(...)`, añadir el permiso a `PERMISSIONS`
+  (`packages/domain/src/identity/access.ts`) y a `ROLE_DEFINITIONS`, ni probar 401/403 con
+  `signInAs`; y pondría el chequeo en el caso de uso contra ADR 0012. El paso 13 no listó las
+  recetas: añadirlas al plan (son escritas a mano, no generadas) y actualizarlas.
+- **R4 — Doble asignación concurrente** (`assign-role.command.ts:69-73`): el duplicado se comprueba
+  leyendo y luego insertando, sin índice único parcial. Dos `POST .../role-assignments` idénticos
+  simultáneos crean dos asignaciones activas iguales; revocar una deja el rol vigente (el admin ve
+  que "sigue" teniéndolo y debe revocar otra vez). No da privilegios de más ni rompe
+  `LAST_HOLDING_ADMIN`. No lo exigía el plan; no bloquea. Opción: aceptarlo como riesgo residual en
+  ADR 0012 (como el de la revocación mutua) o, en un plan posterior, índice único parcial
+  `WHERE revoked_at IS NULL` mapeado a `ROLE_ALREADY_ASSIGNED`.
+- **R5 — (incierto, solo seed) búsqueda del usuario existente con `pageSize: 1`**
+  (`apps/api/prisma/seed.ts:81`): `search` es `contains`, así que si existiera un correo que
+  contenga `admin@example.com` y ordene antes (p. ej. `a.admin@example.com`), el único resultado no
+  es el buscado y el seed lanza "No se encontró el usuario ya existente". Solo en datos de
+  desarrollo y el plan fijó `pageSize: 1`; no bloquea (subir `pageSize` lo evitaría).
+
+**Nota para el plan 003 (no es hallazgo hoy)**: `countActiveByRole('HOLDING_ADMIN')`
+(`revoke-role-assignment.command.ts:42`) cuenta asignaciones sin mirar el estado del usuario. Hoy no
+hay forma de deshabilitar usuarios por HTTP; cuando exista, un admin DISABLED contaría como
+"otro administrador" y se podría revocar al último activo.
+
+Recorridos sin hallazgos: `hasPermission`/`companiesWith` (niega por defecto, `in: []` vacío no
+filtra de más), sondeo de empresas (403 antes del caso de uso), revocación inmediata vía
+`SessionAuthenticator`, transacción de la revocación (los repositorios usan `database.client`, que
+toma la transacción de AsyncLocalStorage), L3 del throttle (se detiene en la primera llave
+bloqueada y libera solo lo reservado), OpenAPI (`security: []`, `x-permission`, 403).
+
+**Resultado**: el estado sigue en `review`. R1 necesita decisión del usuario; R2 y R3 son cambios
+del plan/docs; R4 y R5 no bloquean.
+
 ## Verification
