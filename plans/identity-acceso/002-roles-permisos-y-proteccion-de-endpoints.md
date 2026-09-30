@@ -529,3 +529,63 @@ externa si la hubiera).
 **Resultado ronda 2**: sin hallazgos que requieran código. Estado → `verify`.
 
 ## Verification
+
+**Verifier inline (sesión principal), 2026-09-30. Resultado: PASS.** Cubre el código tras la
+reparación de la ronda 1 (commits `004b287`, `3134c5d`, `5728523`).
+
+**Suites (una corrida cada una)**
+
+- `pnpm check`: verde. `@rrhh/api` 32 archivos / 311 tests; `@rrhh/contracts` 83; turbo 19/19;
+  `arch:check` "no dependency violations found (177 modules, 604 dependencies cruised)".
+- `pnpm test:integration`: 8 archivos / 59 tests passed.
+- `pnpm --filter @rrhh/api db:deploy` en `rrhh`: "3 migrations found … No pending migrations".
+  `20260930150447_create_role_assignments/migration.sql`: 0 ocurrencias de `DROP`; la única FK de
+  `identity.role_assignments` es `user_id → identity.users(id)`; `company_id UUID` sin FK.
+- `pnpm db:seed` dos veces: ambas terminan en "seed completado", sin errores.
+  `identity.role_assignments` queda con exactamente una asignación activa por usuario sembrado:
+  `admin@example.com` HOLDING_ADMIN sin empresa y `rrhh@example.com` HR con empresa, ambas con
+  `assigned_by` nulo (sistema).
+
+**App corriendo** (`pnpm dev:api`, `fetch` desde scripts del scratchpad). No se leyó `.env`, así
+que se crearon por los casos de uso reales tres usuarios de verificación: `verif-admin`
+(HOLDING_ADMIN), `verif-hr` (HR en APS Holding) y `verif-none` (sin rol), todos en
+`@example.test`.
+
+| Caso                                                                                                                   | Observado                                                                                                                                                                                         |
+| ---------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Anónimo en `GET/POST /companies`, `GET /companies/:id`, `GET/POST …/employees`, `GET /users`, `GET …/role-assignments` | 401 `AUTHENTICATION_REQUIRED` en las 8                                                                                                                                                            |
+| Anónimo `POST /companies {}` y `GET /users?page=0` (R1)                                                                | 401, no 400                                                                                                                                                                                       |
+| Anónimo `GET /users/no-uuid/role-assignments`                                                                          | 400 `VALIDATION_ERROR` en `params` (por diseño, ADR 0012)                                                                                                                                         |
+| `POST /auth/login` anónimo / `GET /health/live`                                                                        | público (401 `INVALID_CREDENTIALS` con credenciales malas) / 200                                                                                                                                  |
+| Sin rol: `/auth/me` · rutas de negocio y `/users`                                                                      | 200 · 403 `FORBIDDEN`                                                                                                                                                                             |
+| HR: `GET /companies`                                                                                                   | 200, solo APS Holding                                                                                                                                                                             |
+| HR: su empresa (`GET /companies/:id`, `GET …/employees`)                                                               | 200                                                                                                                                                                                               |
+| HR: otra empresa, empresa inexistente, `POST` a otra empresa con `{}`                                                  | 403 (el `POST {}` a otra empresa da 403 antes de validar)                                                                                                                                         |
+| HR: `POST …/employees {}` en su empresa                                                                                | 400 `VALIDATION_ERROR` (con permiso sí valida)                                                                                                                                                    |
+| HR: `POST /companies`, `GET /users`, rutas de roles                                                                    | 403                                                                                                                                                                                               |
+| Admin: `GET /companies` · otra empresa · `GET /users?search=verif` · `POST /companies {}`                              | total 3 · 200 · 200 · 400                                                                                                                                                                         |
+| Asignar HR sin empresa / HOLDING_ADMIN con empresa                                                                     | 422 `INVALID_ROLE_SCOPE`                                                                                                                                                                          |
+| Asignar DIRECT_MANAGER / EMPLOYEE                                                                                      | 422 `ROLE_NOT_ASSIGNABLE`                                                                                                                                                                         |
+| Empresa inexistente / usuario inexistente                                                                              | 404 `COMPANY_NOT_FOUND` / 404 `USER_NOT_FOUND`                                                                                                                                                    |
+| Asignar HR (otra empresa) a `verif-none` → duplicado                                                                   | 201 → 409 `ROLE_ALREADY_ASSIGNED`                                                                                                                                                                 |
+| Efecto en la siguiente petición                                                                                        | `verif-none` pasa a 200 en la otra empresa y sigue con 403 en APS Holding                                                                                                                         |
+| Revocar → reuso                                                                                                        | 204 → la siguiente petición da 403; la fila conserva `revoked_at` y `revoked_by`                                                                                                                  |
+| Revocar de nuevo / por la ruta de otro usuario                                                                         | 404 `ROLE_ASSIGNMENT_NOT_FOUND`                                                                                                                                                                   |
+| R4: dos `POST` idénticos en paralelo                                                                                   | `201` + `409`; el listado muestra una sola asignación activa                                                                                                                                      |
+| `GET /api/v1/openapi.json`                                                                                             | global `[bearerAuth, cookieAuth]`; `/auth/login` `security: []`; `x-permission` en `/companies` (read/create) y en employees; `x-company-param: companyId`; la descripción del Error menciona 403 |
+| Revocarse su propio HOLDING_ADMIN (queda el de `admin@example.com`)                                                    | 204, y la siguiente petición a `GET /users` da 403                                                                                                                                                |
+
+**Criterios de aceptación**: todos confirmados en la app, con estas salvedades:
+
+- `LAST_HOLDING_ADMIN` (criterio 8): **NOT VERIFIED en vivo**. Probarlo exigía revocar el
+  HOLDING_ADMIN de `admin@example.com`, que es dato del usuario. Está cubierto por los tests HTTP e
+  integración (ver `## Test coverage`).
+- Throttle L3 (criterio 10): por tests, como pide el criterio; el hallazgo está `planned`.
+- Web y mobile: solo typecheck (dentro de `pnpm check`). Las pantallas reciben 401 hasta el plan
+  004, consecuencia aceptada en Out of scope.
+
+**Datos que quedaron en la base de desarrollo**: el hook bloquea `DELETE` por SQL, así que la
+limpieza se hizo por API. Se revocaron todas las asignaciones de los tres usuarios de verificación
+y se cerraron sus sesiones. Los tres usuarios `verif-*@example.test` siguen existiendo, sin
+ningún rol activo. Sus filas de asignación revocadas se conservan como historial (ADR 0010). No se
+tocaron `admin@example.com`, `rrhh@example.com` ni sus asignaciones.
