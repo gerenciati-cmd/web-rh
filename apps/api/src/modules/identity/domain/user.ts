@@ -15,6 +15,7 @@ export interface UserProps {
 
 export const USER_REGISTERED = 'identity.user.registered';
 export const USER_DISABLED = 'identity.user.disabled';
+export const USER_PASSWORD_CHANGED = 'identity.user.password-changed';
 
 /**
  * Cuenta de acceso. Separada del colaborador (README decisión 2): el vínculo opcional
@@ -60,6 +61,12 @@ export class User extends AggregateRoot<UserId> {
     if (this.props.status === 'DISABLED') return;
     this.props = { ...this.props, status: 'DISABLED' };
     this.record(createEvent(USER_DISABLED, { userId: this.id }, now));
+  }
+
+  /** El evento nunca lleva el hash: solo avisa que la contraseña cambió. */
+  changePassword(passwordHash: string, now: Date): void {
+    this.props = { ...this.props, passwordHash };
+    this.record(createEvent(USER_PASSWORD_CHANGED, { userId: this.id }, now));
   }
 
   get snapshot(): Readonly<UserProps> {

@@ -292,4 +292,63 @@ describe('LogIn', () => {
     const ipThrottle = throttleRepository.throttles.get(LoginThrottle.keyForIp(input.ip!));
     expect(ipThrottle?.snapshot.failures).toBeLessThan(separatePolicies.ip.maxFailures);
   });
+
+  // Plan 006: `revokeAllForUser` solo revoca sesiones existentes; el login relee al usuario bajo
+  // lock tras verificar la contraseña. El doble cambia al usuario justo después de la verificación.
+  describe('usuario modificado tras verificar la contraseña (plan 006)', () => {
+    function changeUserAfterVerify(replacement: User | null): void {
+      const original = hasher.verify.bind(hasher);
+      vi.spyOn(hasher, 'verify').mockImplementation(async (plain, hash) => {
+        const matches = await original(plain, hash);
+        const id = `user-${input.email}`;
+        if (replacement) userRepository.users.set(id, replacement);
+        else userRepository.users.delete(id);
+        return matches;
+      });
+    }
+
+    function restored(props: { passwordHash: string; status: 'ACTIVE' | 'DISABLED' }): User {
+      return User.restore(`user-${input.email}` as UserId, {
+        email: email(input.email),
+        employeeId: null,
+        ...props,
+      });
+    }
+
+    async function expectRejectedWithoutSession(): Promise<void> {
+      const result = await logIn.execute(input);
+
+      expect(!result.ok && result.error.code).toBe('INVALID_CREDENTIALS');
+      expect(sessionRepository.sessions.size).toBe(0);
+      expect(eventBus.names()).toEqual([]);
+      // La reserva sigue contada, como en cualquier login fallido: no se limpió el throttle.
+      const emailThrottle = throttleRepository.throttles.get(
+        LoginThrottle.keyForEmail(email(input.email)),
+      );
+      expect(emailThrottle?.snapshot.failures).toBe(1);
+      const ipThrottle = throttleRepository.throttles.get(LoginThrottle.keyForIp(input.ip!));
+      expect(ipThrottle?.snapshot.failures).toBe(1);
+    }
+
+    it('la contraseña cambió: INVALID_CREDENTIALS, sin sesión ni evento y sin limpiar el throttle', async () => {
+      registerUser(input.email);
+      changeUserAfterVerify(restored({ passwordHash: 'fake:otra-nueva', status: 'ACTIVE' }));
+
+      await expectRejectedWithoutSession();
+    });
+
+    it('el usuario quedó DISABLED: INVALID_CREDENTIALS, sin sesión ni evento y sin limpiar el throttle', async () => {
+      registerUser(input.email);
+      changeUserAfterVerify(restored({ passwordHash: `fake:${PASSWORD}`, status: 'DISABLED' }));
+
+      await expectRejectedWithoutSession();
+    });
+
+    it('el usuario ya no existe: INVALID_CREDENTIALS, sin sesión ni evento y sin limpiar el throttle', async () => {
+      registerUser(input.email);
+      changeUserAfterVerify(null);
+
+      await expectRejectedWithoutSession();
+    });
+  });
 });

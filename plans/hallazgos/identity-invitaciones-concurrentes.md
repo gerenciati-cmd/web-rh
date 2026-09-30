@@ -1,7 +1,8 @@
 ---
-status: open
+status: resolved
 module: identity
 found: 2026-09-30
+plan: identity-acceso/005
 ---
 
 # Hallazgo: dos invitaciones simultáneas al mismo colaborador quedan ambas pendientes

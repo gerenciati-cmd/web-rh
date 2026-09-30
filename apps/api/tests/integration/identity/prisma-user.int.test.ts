@@ -1,6 +1,7 @@
 import { Email } from '@rrhh/domain';
 import { describe, expect, it } from 'vitest';
 
+import { PrismaTransactionRunner } from '@/infrastructure/database/prisma-transaction-runner';
 import {
   EmployeeAlreadyLinkedError,
   UserAlreadyExistsError,
@@ -142,5 +143,117 @@ describe('PrismaUserRepository', () => {
     await repository.save(disabled);
 
     expect((await repository.findById(ana.id))?.snapshot.status).toBe('DISABLED');
+  });
+
+  it('changePassword persiste el hash nuevo y conserva el resto del usuario', async () => {
+    const ana = user('cambia@aps.cl');
+    await repository.save(ana);
+
+    ana.changePassword('hash-nuevo', NOW);
+    await repository.save(ana);
+
+    const found = await repository.findById(ana.id);
+    expect(found?.snapshot).toMatchObject({
+      passwordHash: 'hash-nuevo',
+      status: 'ACTIVE',
+      employeeId: null,
+    });
+    expect(found?.snapshot.email.value).toBe('cambia@aps.cl');
+  });
+});
+
+// `lock` debe llamarse dentro de `transactionRunner.run`: fuera de una transacción el
+// `SELECT … FOR UPDATE` suelta el lock de inmediato.
+describe('PrismaUserRepository.lock', () => {
+  const transactionRunner = new PrismaTransactionRunner({ database });
+
+  /** Espera (sin dormir un tiempo fijo) a que alguna sesión quede esperando un lock de fila. */
+  async function waitForBlockedSession(): Promise<void> {
+    for (let attempt = 0; attempt < 100; attempt++) {
+      const rows = await database.client.$queryRaw<{ waiting: number }[]>`
+        SELECT count(*)::int AS waiting FROM pg_locks
+        WHERE NOT granted AND locktype IN ('transactionid', 'tuple')
+      `;
+      if ((rows[0]?.waiting ?? 0) > 0) return;
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    throw new Error('ninguna transacción quedó esperando el lock');
+  }
+
+  it('devuelve true si el usuario existe y false si no', async () => {
+    const ana = user('lock@aps.cl');
+    await repository.save(ana);
+
+    const existing = await transactionRunner.run(() => repository.lock(ana.id));
+    const missing = await transactionRunner.run(() =>
+      repository.lock('00000000-0000-4000-8000-00000000dead' as UserId),
+    );
+
+    expect(existing).toBe(true);
+    expect(missing).toBe(false);
+  });
+
+  it('una segunda transacción espera a que la primera termine antes de obtener el lock', async () => {
+    const ana = user('espera@aps.cl');
+    await repository.save(ana);
+    const order: string[] = [];
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let acquired!: () => void;
+    const holding = new Promise<void>((resolve) => {
+      acquired = resolve;
+    });
+
+    const first = transactionRunner.run(async () => {
+      await repository.lock(ana.id);
+      acquired();
+      await gate;
+      order.push('primera-termina');
+    });
+    await holding;
+    const second = transactionRunner.run(async () => {
+      await repository.lock(ana.id);
+      order.push('segunda-bloquea');
+    });
+    await waitForBlockedSession();
+    expect(order).toEqual([]);
+    release();
+    await Promise.all([first, second]);
+
+    expect(order).toEqual(['primera-termina', 'segunda-bloquea']);
+  });
+
+  it('la relectura tras el lock ve la baja confirmada por la transacción que lo tenía (no se pisa DISABLED)', async () => {
+    const ana = user('baja-carrera@aps.cl');
+    await repository.save(ana);
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let acquired!: () => void;
+    const holding = new Promise<void>((resolve) => {
+      acquired = resolve;
+    });
+
+    const disabling = transactionRunner.run(async () => {
+      await repository.lock(ana.id);
+      const current = await repository.findById(ana.id);
+      current?.disable(NOW);
+      if (current) await repository.save(current);
+      acquired();
+      await gate;
+    });
+    await holding;
+    const confirming = transactionRunner.run(async () => {
+      await repository.lock(ana.id);
+      return (await repository.findById(ana.id))?.snapshot.status;
+    });
+    await waitForBlockedSession();
+    release();
+    const [, seen] = await Promise.all([disabling, confirming]);
+
+    expect(seen).toBe('DISABLED');
   });
 });

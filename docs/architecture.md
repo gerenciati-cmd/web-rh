@@ -132,6 +132,12 @@ transacción activa (AsyncLocalStorage) o el cliente raíz, así los repositorio
 - **Jobs sensibles**: si el payload lleva un secreto (p. ej. el token de un enlace de activación),
   se encola con `{ sensitive: true }`: BullMQ lo elimina de Valkey al terminar, con éxito o con fallo.
   El correo sale siempre por un job (`EmailSender` en el worker), nunca dentro de la petición HTTP.
+  Los correos de restablecimiento de contraseña siguen la misma regla.
+- **Serialización en identity**: los restablecimientos de contraseña (solicitud y confirmación)
+  bloquean la fila del usuario (`UserRepository.lock`, `SELECT … FOR UPDATE`) dentro de la
+  transacción. La emisión de invitaciones no tiene fila previa que bloquear, así que toma locks
+  consultivos de transacción (`pg_advisory_xact_lock`) por colaborador y por correo
+  (`InvitationRepository.lockIssuance`).
 - **Primera suscripción entre módulos**: `identity` escucha `employees.employee.terminated`
   (`AppModule.subscribe`) y deshabilita el acceso del colaborador y cierra sus sesiones. Un evento
   perdido (ADR 0005) deja el acceso activo hasta la siguiente baja; el outbox lo resolverá.

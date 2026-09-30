@@ -4,6 +4,7 @@ export * from './http';
 export * from './identity/access.contract';
 export * from './identity/auth.contract';
 export * from './identity/invitation.contract';
+export * from './identity/password-reset.contract';
 export * from './organization/company.contract';
 export * from './openapi';
 
@@ -11,6 +12,7 @@ import { employeeRoutes } from './employees/employee.contract';
 import { accessRoutes } from './identity/access.contract';
 import { authRoutes } from './identity/auth.contract';
 import { invitationRoutes } from './identity/invitation.contract';
+import { passwordResetRoutes } from './identity/password-reset.contract';
 import { organizationRoutes } from './organization/company.contract';
 
 /** Catálogo completo de la API. Agregar aquí las rutas de cada módulo nuevo. */
@@ -20,4 +22,5 @@ export const apiRoutes = {
   identity: authRoutes,
   access: accessRoutes,
   invitations: invitationRoutes,
+  passwordResets: passwordResetRoutes,
 } as const;

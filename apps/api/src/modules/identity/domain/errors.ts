@@ -114,6 +114,23 @@ export class InvitationNotValidError extends BusinessRuleViolationError {
   }
 }
 
+/** Mismo cuerpo para token desconocido, expirado, usado, reemplazado o de usuario deshabilitado. */
+export class PasswordResetNotValidError extends BusinessRuleViolationError {
+  override readonly code = 'PASSWORD_RESET_NOT_VALID';
+
+  constructor() {
+    super('El enlace para restablecer la contraseña no es válido o ya expiró');
+  }
+}
+
+export class UserDisabledError extends BusinessRuleViolationError {
+  override readonly code = 'USER_DISABLED';
+
+  constructor() {
+    super('El usuario está deshabilitado');
+  }
+}
+
 /** También cuando el colaborador es de otra empresa: responde igual que uno inexistente. */
 export class EmployeeNotFoundError extends NotFoundError {
   readonly code = 'EMPLOYEE_NOT_FOUND';

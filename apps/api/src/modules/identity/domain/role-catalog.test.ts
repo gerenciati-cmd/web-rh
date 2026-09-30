@@ -24,6 +24,7 @@ describe('ROLE_DEFINITIONS', () => {
         'employees:read',
         'employees:register',
         'identity.users:invite',
+        'identity.users:reset-password',
         'organization.companies:read',
       ].sort(),
     );
@@ -59,7 +60,7 @@ describe('grantsFor', () => {
   it('HR en una empresa: sus permisos quedan atados a esa empresa', () => {
     const grants = grantsFor([{ role: 'HR', companyId: 'company-a' }]);
 
-    expect(grants).toHaveLength(4);
+    expect(grants).toHaveLength(5);
     expect(grants.every((grant) => grant.companyId === 'company-a')).toBe(true);
     expect(grants.map((grant) => grant.permission)).not.toContain('organization.companies:create');
   });
@@ -70,7 +71,7 @@ describe('grantsFor', () => {
       { role: 'HR', companyId: 'company-b' },
     ]);
 
-    expect(grants).toHaveLength(8);
+    expect(grants).toHaveLength(10);
     expect(new Set(grants.map((grant) => grant.companyId))).toEqual(
       new Set(['company-a', 'company-b']),
     );

@@ -71,6 +71,8 @@ export class InviteExternal implements Command<InviteExternalInput, InvitationIs
     });
 
     await transactionRunner.run(async () => {
+      // Hallazgo L3: serializa invitaciones simultáneas al mismo correo antes de leer las pendientes.
+      await invitationRepository.lockIssuance([`email:${email.value.value}`]);
       for (const old of await invitationRepository.findPendingForEmail(email.value, now)) {
         old.supersede(now);
         await invitationRepository.save(old);

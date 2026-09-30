@@ -21,6 +21,10 @@ export class InMemoryUserRepository implements UserRepository {
     return Promise.resolve(found ?? null);
   }
 
+  lock(id: UserId): Promise<boolean> {
+    return Promise.resolve(this.users.has(id));
+  }
+
   save(user: User): Promise<Result<void, UserAlreadyExistsError | EmployeeAlreadyLinkedError>> {
     const duplicate = [...this.users.values()].some(
       (other) => other.id !== user.id && other.snapshot.email.equals(user.snapshot.email),

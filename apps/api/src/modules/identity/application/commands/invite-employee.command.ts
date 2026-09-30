@@ -96,6 +96,12 @@ export class InviteEmployee implements Command<InviteEmployeeInput, InvitationIs
     });
 
     await transactionRunner.run(async () => {
+      // Hallazgo L3: aún no hay fila que bloquear, así que dos invitaciones simultáneas al mismo
+      // colaborador o correo se serializan con un lock consultivo antes de leer las pendientes.
+      await invitationRepository.lockIssuance([
+        `employee:${employee.id}`,
+        `email:${email.value.value}`,
+      ]);
       const previous = new Map<string, Invitation>();
       for (const old of await invitationRepository.findPendingForEmployee(employee.id, now)) {
         previous.set(old.id, old);

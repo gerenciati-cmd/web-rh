@@ -1,7 +1,7 @@
 import { Email } from '@rrhh/domain';
 import { describe, expect, it } from 'vitest';
 
-import { USER_DISABLED, USER_REGISTERED, User, type UserId } from './user';
+import { USER_DISABLED, USER_PASSWORD_CHANGED, USER_REGISTERED, User, type UserId } from './user';
 
 const now = new Date('2026-01-15T12:00:00Z');
 
@@ -72,6 +72,41 @@ describe('User', () => {
     expect(User.register({ ...base, employeeId: 'employee-1' }).snapshot.employeeId).toBe(
       'employee-1',
     );
+  });
+
+  describe('changePassword', () => {
+    function active(): User {
+      const user = User.register({
+        id: 'user-1' as UserId,
+        email: email('ana@aps.cl'),
+        passwordHash: 'hash-viejo',
+        employeeId: 'employee-1',
+        now,
+      });
+      user.pullEvents();
+      return user;
+    }
+
+    it('reemplaza el hash y registra USER_PASSWORD_CHANGED sin el hash en el payload', () => {
+      const user = active();
+
+      user.changePassword('hash-nuevo', now);
+
+      expect(user.snapshot.passwordHash).toBe('hash-nuevo');
+      const events = user.pullEvents();
+      expect(events.map((e) => e.name)).toEqual([USER_PASSWORD_CHANGED]);
+      expect(events[0]?.payload).toEqual({ userId: 'user-1' });
+      expect(JSON.stringify(events[0]?.payload)).not.toContain('hash-nuevo');
+    });
+
+    it('conserva correo, estado y vínculo con el colaborador', () => {
+      const user = active();
+
+      user.changePassword('hash-nuevo', now);
+
+      expect(user.snapshot).toMatchObject({ status: 'ACTIVE', employeeId: 'employee-1' });
+      expect(user.snapshot.email.value).toBe('ana@aps.cl');
+    });
   });
 
   describe('disable', () => {
