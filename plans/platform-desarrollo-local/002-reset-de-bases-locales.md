@@ -322,3 +322,43 @@ Note: the `test` branch check at `database-reset.mjs:109-111` is unreachable (al
 by the name equality at `:106`), as the tester recorded; harmless defense in depth.
 
 ## Verification
+
+**PASS** — 2026-09-29, main session (verifier role), code at `7895fa6`. The development
+database flows were driven by the user in their own interactive terminal, because the hook
+blocks them for agents by design. Their output was pasted into the session.
+
+Suites (run once):
+
+- `pnpm check`: `Tasks: 19 successful, 19 total`; `no dependency violations found`;
+  harness `pass 161 / fail 0`; bootstrap `pass 17 / fail 0`; quality `pass 9 / fail 0`.
+- `pnpm db:reset --test` then `pnpm test:integration`: `rrhh_test recreada`, both migrations
+  applied from scratch, `✔ Listo.`; `Test Files 6 passed (6)`, `Tests 39 passed (39)`.
+
+Acceptance criteria:
+
+- [x] `--test`: dropped and recreated, migrations deployed, no prompt; integration passes
+      right after (above; also re-run by the user with the same output).
+- [x] `pnpm db:reset` + wrong name (`otra`): `Reset cancelado`, exit 1 (user).
+- [x] `pnpm db:reset` + `rrhh`: `rrhh recreada`, 2 migrations applied, seed ran (3
+      `empresa creada`, 2 `colaborador registrado`), `✔ Listo.` (user). Afterwards
+      `organization.companies` = `CO, DO, MX`, and `employees.employees` = 2.
+- [x] `--no-seed` + `rrhh`: recreated and migrated, no seed step ran, `✔ Listo.` (user). The
+      zero-row count was not queried separately. It follows from a fresh `CREATE DATABASE` plus
+      migrations with no seed step, and the next reset re-seeded it.
+- [x] `pnpm db:reset < /dev/null`: `…requiere una terminal interactiva` / `Reset cancelado`,
+      exit 1, nothing dropped (user).
+- [x] Non-local URL: `DATABASE_URL_TEST=…@db.remoto.example.com…` gives `DATABASE_URL_TEST no
+  apunta a localhost…`, exit 1, host not in the message. Name mismatch (`…/otra_test`)
+      gives `…no apunta a la base "rrhh_test" del contenedor`, exit 1. Afterwards `rrhh_test`
+      still had its 2 `_prisma_migrations` rows, so nothing was dropped.
+- [x] `--test --no-seed` and `--test --foo`: usage line, exit 1.
+- [x] Hook: `pnpm db:reset` blocked for agents (observed live on this session's own commands),
+      `--test` allowed. Hook suite green.
+- [x] `pnpm check` passes.
+
+NOT VERIFIED via the CLI: a malformed `DATABASE_URL_TEST`. The hook rejected the way the
+variable was passed on the command line. The case is covered by the unit test `rechaza una URL
+mal formada sin filtrar su contenido`.
+
+Cosmetic observation (no action): without a TTY, the CLI prints both the terminal message and
+`Reset cancelado`.
