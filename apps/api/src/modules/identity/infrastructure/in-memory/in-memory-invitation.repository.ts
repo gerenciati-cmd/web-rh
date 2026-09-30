@@ -34,8 +34,8 @@ export class InMemoryInvitationRepository implements InvitationRepository {
     );
   }
 
-  save(invitation: Invitation): Promise<void> {
+  save(invitation: Invitation): Promise<boolean> {
     this.invitations.set(invitation.id, invitation);
-    return Promise.resolve();
+    return Promise.resolve(true);
   }
 }

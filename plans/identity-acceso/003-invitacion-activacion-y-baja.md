@@ -1,5 +1,5 @@
 ---
-status: review
+status: testing
 module: identity
 min_implementer: mid
 depends_on: ['002']
@@ -151,12 +151,12 @@ cross-module adapter: `identity/infrastructure/organization-company-directory.ts
    - Observable result: `tests/container.test.ts` green; the worker lists `identity.send-invitation-email` on start.
 
 7. **Persistence and migration**
-   - Files: `apps/api/prisma/schema.prisma` (modify), `apps/api/prisma/migrations/<timestamp>_create_invitations/migration.sql` (create), `apps/api/src/modules/identity/infrastructure/invitation.mapper.ts` (create), `apps/api/src/modules/identity/infrastructure/prisma-invitation.repository.ts` (create), `apps/api/src/modules/identity/infrastructure/in-memory/in-memory-invitation.repository.ts` (create), `apps/api/src/modules/identity/infrastructure/user.mapper.ts` (modify), `apps/api/src/modules/identity/infrastructure/prisma-user.repository.ts` (modify), `apps/api/src/modules/identity/infrastructure/in-memory/in-memory-user.repository.ts` (modify), `apps/api/src/modules/identity/infrastructure/prisma-session.repository.ts` (modify), `apps/api/src/modules/identity/infrastructure/in-memory/in-memory-session.repository.ts` (modify), `apps/api/src/modules/identity/infrastructure/prisma-role-assignment.repository.ts` (modify), `apps/api/src/modules/identity/infrastructure/in-memory/in-memory-role-assignment.repository.ts` (modify), `apps/api/src/modules/identity/infrastructure/prisma-user.queries.ts` (modify), `apps/api/src/modules/identity/infrastructure/in-memory/in-memory-user.queries.ts` (modify)
+   - Files: `apps/api/prisma/schema.prisma` (modify), `apps/api/prisma/migrations/20260930165402_create_invitations/migration.sql` (create), `apps/api/src/modules/identity/infrastructure/invitation.mapper.ts` (create), `apps/api/src/modules/identity/infrastructure/prisma-invitation.repository.ts` (create), `apps/api/src/modules/identity/infrastructure/in-memory/in-memory-invitation.repository.ts` (create), `apps/api/src/modules/identity/infrastructure/user.mapper.ts` (modify), `apps/api/src/modules/identity/infrastructure/prisma-user.repository.ts` (modify), `apps/api/src/modules/identity/infrastructure/in-memory/in-memory-user.repository.ts` (modify), `apps/api/src/modules/identity/infrastructure/prisma-session.repository.ts` (modify), `apps/api/src/modules/identity/infrastructure/in-memory/in-memory-session.repository.ts` (modify), `apps/api/src/modules/identity/infrastructure/prisma-role-assignment.repository.ts` (modify), `apps/api/src/modules/identity/infrastructure/in-memory/in-memory-role-assignment.repository.ts` (modify), `apps/api/src/modules/identity/infrastructure/prisma-user.queries.ts` (modify), `apps/api/src/modules/identity/infrastructure/in-memory/in-memory-user.queries.ts` (modify)
    - Do (skill `db-change`): `User.employeeId String? @unique @map("employee_id") @db.Uuid /// referencia por id a employees, sin FK (ADR 0010)`; `model Invitation { id; email VarChar(254); employeeId String? @map("employee_id") @db.Uuid; companyId String? @map("company_id") @db.Uuid; tokenHash String @unique @map("token_hash") @db.Char(64); invitedBy String @map("invited_by") @db.Uuid; createdAt; expiresAt; acceptedAt?; revokedAt?; @@index([employeeId]) @@index([email]) @@map("invitations") @@schema("identity") }` (no FK to other schemas; `invitedBy` references `users` inside the module — FK allowed). `pnpm db:migrate --name create_invitations` (plain columns/indexes only — no hand-written SQL), `pnpm db:generate`; replace `<timestamp>` here and record it in Deviations. `revokeAllForUser` = `updateMany({ where: { userId, revokedAt: null }, data: { revokedAt: now } })`. `countActiveByRole` joins `user: { status: 'ACTIVE' }`. In-memory counterparts.
    - Observable result: migration adds the column, unique index and table, no DROP; `pnpm test:integration` green.
 
 8. **Seed, tests harness, docs**
-   - Files: `apps/api/tests/test-app.ts` (modify), `docs/architecture.md` (modify), `plans/identity-acceso/README.md` (modify)
+   - Files: `apps/api/tests/test-app.ts` (modify), `docs/architecture.md` (modify), `plans/identity-acceso/README.md` (modify), and, added during implementation (see Deviations): `apps/api/src/modules/identity/application/commands/log-in.command.ts` (modify), `apps/api/src/modules/identity/application/commands/log-in.command.test.ts` (modify), `apps/api/src/modules/identity/application/queries/get-current-user.query.test.ts` (modify), `apps/api/src/modules/identity/application/session-authenticator.test.ts` (modify), `apps/api/src/modules/identity/domain/role-catalog.test.ts` (modify), `apps/api/tests/auth.test.ts` (modify), `packages/contracts/src/identity/access.contract.test.ts` (modify), `packages/contracts/src/identity/auth.contract.test.ts` (modify), `packages/contracts/src/openapi.test.ts` (modify)
    - Do: `test-app.ts` registers `jobQueue: RecordingJobQueue`, `emailSender: RecordingEmailSender`, in-memory invitation repository and a fake `employeeDirectory` over the in-memory employee repository. `architecture.md`: first event subscription (identity ← `employees.employee.terminated`) and the sensitive-job rule. README: plan 003/005 rows (already added at planning time — only adjust if needed).
    - Observable result: `pnpm check` green.
 
@@ -202,6 +202,13 @@ Cosmetic, fixed forward (none changes design or scope):
 - Listed but unchanged: `application/queries/user.queries.ts` (its type derives from `SessionUser`; only the Prisma/in-memory adapters changed) and `application/commands/revoke-role-assignment.command.ts` (the repository change is enough). `identity/index.ts` only gained the new event-name exports.
 - `DisableTerminatedEmployee` runs its writes inside `transactionRunner.run` (not spelled out in the plan) so disable + session revoke + invitation supersede are atomic.
 - Unknown payload in the `EMPLOYEE_TERMINATED` subscription throws inside the handler: `InMemoryEventBus` already logs rejected handlers (`event handler failed`) and continues, which implements "log and ignore" without needing a logger in the module cradle.
+
+**Repair round 1 (review M1, L2, L1; L3 deferred to `plans/hallazgos/identity-invitaciones-concurrentes.md`):**
+
+- **M1**: `InvitationRepository.save` now returns `boolean`. `PrismaInvitationRepository.save` is conditional (`updateMany WHERE id AND accepted_at IS NULL AND revoked_at IS NULL`, else `create` if absent, else `false`), so an already accepted or superseded invitation is never overwritten. `ActivateAccount` throws an internal `InvitationLostError` inside the transaction when `save` returns `false` (rolls back the created `User`/role) and maps it to `InvitationNotValidError`.
+- **L2**: `DisableTerminatedEmployee` now supersedes the employee's pending invitations first, even when no `User` exists, and then looks up the user, all inside one transaction (so one of the two racing transactions always sees the other). Returns `ok` without events if there is no account.
+- Test updated minimally so `pnpm check` stays green: the no-op test in `disable-terminated-employee.command.test.ts` now asserts the pending invitation is superseded. The tester adds the regressions (conditional accept in integration, activation losing the race, repository `false` path).
+- **L1**: step 7 timestamp replaced; the nine test/fixture files and `log-in.command.ts` added to step 9's file list. Residual `plans:scope` output: the two "declared without changes" entries (recorded above).
 
 Risk for the tester (NOT CONFIRMED): `PrismaUserRepository.save` tells `employee_id` uniqueness from `email` uniqueness by looking for `employee_id` in the P2002 error's `meta` (Prisma 7 + `@prisma/adapter-pg`); confirm it against the real DB in `prisma-user.int.test.ts`.
 
@@ -307,5 +314,11 @@ Reviewer run (2026-09-30), diff `a19aa6d..HEAD` (commits 0344fd9, 2d25090, a2e9a
 - The two NOT CONFIRMED items (Mailpit delivery, sensitive job not kept in Valkey) are still for the verifier.
 
 Result: M1 requires a code change, so the status stays `review` (back to implementing via the main session). Count: 0 high, 1 medium, 3 low.
+
+### Repair decision (2026-09-30, user)
+
+- Fix in this plan: **M1**, **L2** (supersede pending invitations of the employee even when no user exists; one of the two transactions must always see the other) and **L1** (plan file lists: step 7 timestamp and the files recorded in Deviations).
+- **L3** is deferred to `plans/hallazgos/identity-invitaciones-concurrentes.md` (impact contained; not fixed here unless M1's repair adds an invitation lock anyway).
+- Circuit: review → implementing (implementer repairs) → testing (tester adds regressions and updates the L2 no-op test) → review (round 2) → verify.
 
 ## Verification

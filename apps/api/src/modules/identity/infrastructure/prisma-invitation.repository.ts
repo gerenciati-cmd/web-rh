@@ -34,12 +34,20 @@ export class PrismaInvitationRepository implements InvitationRepository {
     return rows.map((row) => InvitationMapper.toDomain(row));
   }
 
-  async save(invitation: Invitation): Promise<void> {
+  async save(invitation: Invitation): Promise<boolean> {
     const data = InvitationMapper.toPersistence(invitation);
-    await this.deps.database.client.invitation.upsert({
-      where: { id: data.id },
-      create: data,
-      update: data,
+    const client = this.deps.database.client;
+    // Condicional: solo una fila aún pendiente puede cambiar. Así un accept y un supersede
+    // concurrentes no se pisan; el segundo ve la decisión del primero (el UPDATE espera el lock).
+    const updated = await client.invitation.updateMany({
+      where: { id: data.id, acceptedAt: null, revokedAt: null },
+      data,
     });
+    if (updated.count > 0) return true;
+    if (await client.invitation.findUnique({ where: { id: data.id }, select: { id: true } })) {
+      return false;
+    }
+    await client.invitation.create({ data });
+    return true;
   }
 }

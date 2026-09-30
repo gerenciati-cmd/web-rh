@@ -36,6 +36,9 @@ interface Deps {
   eventBus: EventBus;
 }
 
+/** Señal interna para revertir la transacción cuando la invitación ya no está pendiente. */
+class InvitationLostError extends Error {}
+
 /**
  * Crea el `User` a partir de una invitación vigente. No abre sesión: la persona inicia sesión
  * normalmente después. Con colaborador, vincula la cuenta y le concede el rol EMPLOYEE.
@@ -94,20 +97,29 @@ export class ActivateAccount implements Command<ActivateAccountInput, void> {
             now,
           });
 
-    const saved = await transactionRunner.run(async () => {
-      const result = await userRepository.save(user);
-      if (!result.ok) {
-        // Dos activaciones simultáneas del mismo token: la segunda choca con el correo ya creado.
-        return err<DomainError>(
-          result.error instanceof EmployeeAlreadyLinkedError
-            ? result.error
-            : new EmailAlreadyRegisteredError(),
-        );
-      }
-      await invitationRepository.save(invitation);
-      if (assignment) await roleAssignmentRepository.save(assignment);
-      return ok(undefined);
-    });
+    const saved = await transactionRunner
+      .run(async () => {
+        const result = await userRepository.save(user);
+        if (!result.ok) {
+          // Dos activaciones simultáneas del mismo token: la segunda choca con el correo ya creado.
+          return err<DomainError>(
+            result.error instanceof EmployeeAlreadyLinkedError
+              ? result.error
+              : new EmailAlreadyRegisteredError(),
+          );
+        }
+        // Aceptación condicional: si la invitación fue reemplazada o consumida entre la lectura y
+        // aquí (p. ej. por la baja del colaborador), se aborta y se revierte el User creado.
+        if (!(await invitationRepository.save(invitation))) throw new InvitationLostError();
+        if (assignment) await roleAssignmentRepository.save(assignment);
+        return ok(undefined);
+      })
+      .catch((error: unknown) => {
+        if (error instanceof InvitationLostError) {
+          return err<DomainError>(new InvitationNotValidError());
+        }
+        throw error;
+      });
     if (!saved.ok) return saved;
 
     await eventBus.publish([

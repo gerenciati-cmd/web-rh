@@ -22,7 +22,7 @@ interface Deps {
 
 /**
  * Reacción a `employees.employee.terminated`: deshabilita el acceso y cierra todas las sesiones
- * al instante. Idempotente (el evento puede repetirse) y sin efecto si el colaborador no tenía cuenta.
+ * al instante. Idempotente (el evento puede repetirse) y y reemplaza sus invitaciones pendientes aunque aún no tuviera cuenta.
  */
 export class DisableTerminatedEmployee implements Command<DisableTerminatedEmployeeInput, void> {
   constructor(private readonly deps: Deps) {}
@@ -31,14 +31,10 @@ export class DisableTerminatedEmployee implements Command<DisableTerminatedEmplo
     const { userRepository, sessionRepository, invitationRepository, transactionRunner, clock } =
       this.deps;
 
-    const user = await userRepository.findByEmployeeId(input.employeeId);
-    if (!user) return ok(undefined);
-
     const now = clock.now();
-    await transactionRunner.run(async () => {
-      user.disable(now);
-      await userRepository.save(user);
-      await sessionRepository.revokeAllForUser(user.id, now);
+    const user = await transactionRunner.run(async () => {
+      // Primero las invitaciones, incluso sin cuenta aún: una activación en curso que las lea
+      // después falla, y una que ya confirmó deja un User que el findByEmployeeId de abajo ve.
       for (const pending of await invitationRepository.findPendingForEmployee(
         input.employeeId,
         now,
@@ -46,7 +42,14 @@ export class DisableTerminatedEmployee implements Command<DisableTerminatedEmplo
         pending.supersede(now);
         await invitationRepository.save(pending);
       }
+      const found = await userRepository.findByEmployeeId(input.employeeId);
+      if (!found) return null;
+      found.disable(now);
+      await userRepository.save(found);
+      await sessionRepository.revokeAllForUser(found.id, now);
+      return found;
     });
+    if (!user) return ok(undefined);
 
     await this.deps.eventBus.publish(user.pullEvents());
     return ok(undefined);

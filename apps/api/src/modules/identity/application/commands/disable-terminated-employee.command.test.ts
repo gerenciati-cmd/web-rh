@@ -131,14 +131,14 @@ describe('DisableTerminatedEmployee', () => {
     expect(foreign.isPendingAt(clock.now())).toBe(true);
   });
 
-  it('colaborador sin cuenta: ok y no toca nada (ni siquiera invitaciones ni eventos)', async () => {
+  it('colaborador sin cuenta: ok sin eventos, pero reemplaza su invitación pendiente', async () => {
     const pending = seedInvitation('inv-1', EMPLOYEE);
 
     const result = await disable.execute({ employeeId: EMPLOYEE });
 
     expect(result.ok).toBe(true);
     expect(eventBus.published).toEqual([]);
-    expect(pending.isPendingAt(clock.now())).toBe(true);
+    expect(pending.snapshot.revokedAt).toEqual(clock.now());
   });
 
   it('es idempotente: repetir el evento no vuelve a publicar ni cambia las marcas', async () => {
