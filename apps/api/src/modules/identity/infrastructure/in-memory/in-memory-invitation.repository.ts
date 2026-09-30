@@ -44,6 +44,11 @@ export class InMemoryInvitationRepository implements InvitationRepository {
     );
   }
 
+  /** Sin concurrencia real en memoria: no hay nada que serializar. */
+  lockIssuance(): Promise<void> {
+    return Promise.resolve();
+  }
+
   /** Igual que el adaptador Prisma: una invitación ya aceptada o anulada no se sobrescribe. */
   save(invitation: Invitation): Promise<boolean> {
     const stored = this.invitations.get(invitation.id);

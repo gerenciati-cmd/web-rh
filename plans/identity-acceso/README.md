@@ -110,6 +110,10 @@ endpoint is open (`apps/api/src/http/app.ts:43-47` mounts module routers with no
 
 ## Delivered
 
+- Plan 005 (implementado, pendiente de tests/review/verify): `PasswordReset` con enlace de 1 hora,
+  solicitud pública, restablecimiento forzado por RRHH/holding y cierre de todas las sesiones;
+  además serializa la emisión de invitaciones con locks consultivos (hallazgo L3).
+
 ## Considered and discarded
 
 - **JWT access + refresh tokens** (what `docs/architecture.md:131` anticipated): a stolen or

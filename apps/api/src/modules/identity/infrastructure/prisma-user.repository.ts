@@ -33,6 +33,13 @@ export class PrismaUserRepository implements UserRepository {
     return row ? UserMapper.toDomain(row) : null;
   }
 
+  async lock(id: UserId): Promise<boolean> {
+    const rows = await this.deps.database.client.$queryRaw<{ id: string }[]>`
+      SELECT id FROM identity.users WHERE id = ${id}::uuid FOR UPDATE
+    `;
+    return rows.length > 0;
+  }
+
   async save(
     user: User,
   ): Promise<Result<void, UserAlreadyExistsError | EmployeeAlreadyLinkedError>> {

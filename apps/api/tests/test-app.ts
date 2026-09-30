@@ -12,6 +12,7 @@ import type { EmployeeDirectory } from '@/modules/identity/application/ports/emp
 import { FakePasswordHasher } from '@/modules/identity/infrastructure/in-memory/fake-password-hasher';
 import { InMemoryInvitationRepository } from '@/modules/identity/infrastructure/in-memory/in-memory-invitation.repository';
 import { InMemoryLoginThrottleRepository } from '@/modules/identity/infrastructure/in-memory/in-memory-login-throttle.repository';
+import { InMemoryPasswordResetRepository } from '@/modules/identity/infrastructure/in-memory/in-memory-password-reset.repository';
 import { InMemoryRoleAssignmentRepository } from '@/modules/identity/infrastructure/in-memory/in-memory-role-assignment.repository';
 import { InMemorySessionRepository } from '@/modules/identity/infrastructure/in-memory/in-memory-session.repository';
 import { InMemoryUserQueries } from '@/modules/identity/infrastructure/in-memory/in-memory-user.queries';
@@ -104,6 +105,7 @@ export function buildTestContainer(env: Env = testEnv) {
     companyDirectory: asValue(companyDirectory),
     employeeDirectory: asValue(employeeDirectory),
     invitationRepository: asValue(new InMemoryInvitationRepository()),
+    passwordResetRepository: asValue(new InMemoryPasswordResetRepository()),
     // Sin Valkey ni SMTP: los tests inspeccionan lo encolado y lo enviado.
     jobQueue: asValue(new RecordingJobQueue()),
     emailSender: asValue(new RecordingEmailSender()),

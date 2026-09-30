@@ -34,6 +34,16 @@ export class PrismaInvitationRepository implements InvitationRepository {
     return rows.map((row) => InvitationMapper.toDomain(row));
   }
 
+  async lockIssuance(keys: readonly string[]): Promise<void> {
+    // Ordenadas para que dos transacciones con claves compartidas siempre bloqueen en el mismo
+    // orden (sin interbloqueo). Se sueltan solas al terminar la transacción.
+    for (const key of [...keys].sort()) {
+      await this.deps.database.client.$executeRaw`
+        SELECT pg_advisory_xact_lock(hashtextextended(${`identity.invitation:${key}`}, 0))
+      `;
+    }
+  }
+
   async save(invitation: Invitation): Promise<boolean> {
     const data = InvitationMapper.toPersistence(invitation);
     const client = this.deps.database.client;

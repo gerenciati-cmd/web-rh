@@ -12,6 +12,8 @@ export const PERMISSIONS = [
   'identity.roles:manage',
   'identity.users:invite',
   'identity.users:invite-external',
+  'identity.users:reset-password',
+  'identity.users:reset-password-any',
 ] as const;
 export type Permission = (typeof PERMISSIONS)[number];
 

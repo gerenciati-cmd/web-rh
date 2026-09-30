@@ -56,6 +56,10 @@ const EnvSchema = z.object({
   APP_PUBLIC_URL: z.url().default('http://localhost:3000'),
   // Vigencia de una invitación (168 h = 7 días).
   INVITATION_TTL_HOURS: z.coerce.number().int().positive().default(168),
+  // Vigencia del enlace de restablecer contraseña (60 min = 1 hora).
+  PASSWORD_RESET_TTL_MINUTES: z.coerce.number().int().positive().default(60),
+  // Espera mínima entre dos solicitudes públicas de "olvidé mi contraseña" del mismo usuario.
+  PASSWORD_RESET_COOLDOWN_SECONDS: z.coerce.number().int().positive().default(180),
   // Contraseña del usuario admin@example.com que crea `pnpm db:seed`; vacío = no se crea.
   // `process.loadEnvFile` convierte `SEED_USER_PASSWORD=` (línea vacía en .env) en `""`, no en
   // `undefined`, así que sin este preprocess un .env recién copiado de .env.example no arranca.

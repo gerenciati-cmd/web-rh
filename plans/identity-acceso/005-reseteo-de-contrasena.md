@@ -1,5 +1,5 @@
 ---
-status: draft
+status: testing
 module: identity
 min_implementer: mid
 depends_on: ['003']
@@ -117,11 +117,7 @@ from 003. Serialization:
 ## Steps
 
 1. **Vocabulary and contracts**
-   - Files:
-     - `packages/domain/src/identity/access.ts` (modify)
-     - `packages/contracts/src/identity/password-reset.contract.ts` (create)
-     - `packages/contracts/src/index.ts` (modify)
-     - `packages/contracts/openapi.json` (modify)
+   - Files: `packages/domain/src/identity/access.ts` (modify), `packages/contracts/src/identity/password-reset.contract.ts` (create), `packages/contracts/src/index.ts` (modify), `packages/contracts/openapi.json` (modify)
    - Do:
      - **Permissions.** Add `identity.users:reset-password` (force a reset for a colaborador of a
        company) and `identity.users:reset-password-any` (force a reset for any user, holding only).
@@ -152,14 +148,7 @@ from 003. Serialization:
    - Observable result: contracts typecheck; `openapi.json` has the 4 new operations.
 
 2. **Domain: PasswordReset, password change, errors**
-   - Files:
-     - `apps/api/src/modules/identity/domain/password-reset.ts` (create)
-     - `apps/api/src/modules/identity/domain/password-reset.repository.ts` (create)
-     - `apps/api/src/modules/identity/domain/user.ts` (modify)
-     - `apps/api/src/modules/identity/domain/user.repository.ts` (modify)
-     - `apps/api/src/modules/identity/domain/invitation.repository.ts` (modify)
-     - `apps/api/src/modules/identity/domain/role-catalog.ts` (modify)
-     - `apps/api/src/modules/identity/domain/errors.ts` (modify)
+   - Files: `apps/api/src/modules/identity/domain/password-reset.ts` (create), `apps/api/src/modules/identity/domain/password-reset.repository.ts` (create), `apps/api/src/modules/identity/domain/user.ts` (modify), `apps/api/src/modules/identity/domain/user.repository.ts` (modify), `apps/api/src/modules/identity/domain/invitation.repository.ts` (modify), `apps/api/src/modules/identity/domain/role-catalog.ts` (modify), `apps/api/src/modules/identity/domain/errors.ts` (modify)
    - Do:
      - **`password-reset.ts`**, shaped like `invitation.ts`:
        - `PasswordResetId`. Props: `{ userId: UserId; tokenHash: string; requestedBy: UserId | null; createdAt; expiresAt; usedAt: Date | null; revokedAt: Date | null }`.
@@ -199,16 +188,7 @@ from 003. Serialization:
    - Observable result: typecheck and `pnpm arch:check` pass.
 
 3. **Application: issuer, four commands, email job; L3 in the invite commands**
-   - Files:
-     - `apps/api/src/modules/identity/application/ports/password-reset-tokens.ts` (create)
-     - `apps/api/src/modules/identity/application/password-reset-issuer.ts` (create)
-     - `apps/api/src/modules/identity/application/commands/request-password-reset.command.ts` (create)
-     - `apps/api/src/modules/identity/application/commands/force-employee-password-reset.command.ts` (create)
-     - `apps/api/src/modules/identity/application/commands/force-user-password-reset.command.ts` (create)
-     - `apps/api/src/modules/identity/application/commands/reset-password.command.ts` (create)
-     - `apps/api/src/modules/identity/application/jobs/send-password-reset-email.job.ts` (create)
-     - `apps/api/src/modules/identity/application/commands/invite-employee.command.ts` (modify)
-     - `apps/api/src/modules/identity/application/commands/invite-external.command.ts` (modify)
+   - Files: `apps/api/src/modules/identity/application/ports/password-reset-tokens.ts` (create), `apps/api/src/modules/identity/application/password-reset-issuer.ts` (create), `apps/api/src/modules/identity/application/commands/request-password-reset.command.ts` (create), `apps/api/src/modules/identity/application/commands/force-employee-password-reset.command.ts` (create), `apps/api/src/modules/identity/application/commands/force-user-password-reset.command.ts` (create), `apps/api/src/modules/identity/application/commands/reset-password.command.ts` (create), `apps/api/src/modules/identity/application/jobs/send-password-reset-email.job.ts` (create), `apps/api/src/modules/identity/application/commands/invite-employee.command.ts` (modify), `apps/api/src/modules/identity/application/commands/invite-external.command.ts` (modify)
    - Do:
      - **`password-reset-tokens.ts`**: `PasswordResetTokens` has the same shape as
        `InvitationTokens` (`issue()`, `hashOf()`).
@@ -282,12 +262,7 @@ from 003. Serialization:
    - Observable result: typecheck and `pnpm arch:check` pass.
 
 4. **Module wiring, router, configuration**
-   - Files:
-     - `apps/api/src/modules/identity/http/password-reset.router.ts` (create)
-     - `apps/api/src/modules/identity/identity.module.ts` (modify)
-     - `apps/api/src/modules/identity/infrastructure/crypto-password-reset-tokens.ts` (create)
-     - `apps/api/src/config/env.ts` (modify)
-     - `apps/api/.env.example` (modify)
+   - Files: `apps/api/src/modules/identity/http/password-reset.router.ts` (create), `apps/api/src/modules/identity/identity.module.ts` (modify), `apps/api/src/modules/identity/infrastructure/crypto-password-reset-tokens.ts` (create), `apps/api/src/config/env.ts` (modify), `apps/api/.env.example` (modify)
    - Do:
      - **Router**, like `invitation.router.ts`:
        - The two force routes pass `requestedBy: requireActor(ctx).userId`.
@@ -312,16 +287,7 @@ from 003. Serialization:
      `identity.send-password-reset-email` on start.
 
 5. **Persistence and migration**
-   - Files:
-     - `apps/api/prisma/schema.prisma` (modify)
-     - `apps/api/prisma/migrations/<timestamp>_create_password_resets/migration.sql` (create)
-     - `apps/api/src/modules/identity/infrastructure/password-reset.mapper.ts` (create)
-     - `apps/api/src/modules/identity/infrastructure/prisma-password-reset.repository.ts` (create)
-     - `apps/api/src/modules/identity/infrastructure/in-memory/in-memory-password-reset.repository.ts` (create)
-     - `apps/api/src/modules/identity/infrastructure/prisma-user.repository.ts` (modify)
-     - `apps/api/src/modules/identity/infrastructure/in-memory/in-memory-user.repository.ts` (modify)
-     - `apps/api/src/modules/identity/infrastructure/prisma-invitation.repository.ts` (modify)
-     - `apps/api/src/modules/identity/infrastructure/in-memory/in-memory-invitation.repository.ts` (modify)
+   - Files: `apps/api/prisma/schema.prisma` (modify), `apps/api/prisma/migrations/20260930193302_create_password_resets/migration.sql` (create), `apps/api/src/modules/identity/infrastructure/password-reset.mapper.ts` (create), `apps/api/src/modules/identity/infrastructure/prisma-password-reset.repository.ts` (create), `apps/api/src/modules/identity/infrastructure/in-memory/in-memory-password-reset.repository.ts` (create), `apps/api/src/modules/identity/infrastructure/prisma-user.repository.ts` (modify), `apps/api/src/modules/identity/infrastructure/in-memory/in-memory-user.repository.ts` (modify), `apps/api/src/modules/identity/infrastructure/prisma-invitation.repository.ts` (modify), `apps/api/src/modules/identity/infrastructure/in-memory/in-memory-invitation.repository.ts` (modify)
    - Do (skill `db-change`):
      - **`model PasswordReset`**:
        - Columns: `id String @id @db.Uuid`, `userId String @map("user_id") @db.Uuid`,
@@ -351,17 +317,7 @@ from 003. Serialization:
      is green.
 
 6. **Test harness, docs, and existing tests whose expectations change**
-   - Files:
-     - Harness and docs:
-       - `apps/api/tests/test-app.ts` (modify)
-       - `docs/architecture.md` (modify)
-       - `plans/identity-acceso/README.md` (modify)
-       - `plans/hallazgos/identity-invitaciones-concurrentes.md` (modify)
-     - Existing tests:
-       - `packages/contracts/src/openapi.test.ts` (modify)
-       - `packages/contracts/src/identity/access.contract.test.ts` (modify)
-       - `apps/api/src/modules/identity/domain/role-catalog.test.ts` (modify)
-       - `apps/api/src/modules/identity/application/session-authenticator.test.ts` (modify)
+   - Files: `apps/api/tests/test-app.ts` (modify), `docs/architecture.md` (modify), `plans/identity-acceso/README.md` (modify), `plans/hallazgos/identity-invitaciones-concurrentes.md` (modify), `packages/contracts/src/openapi.test.ts` (modify), `packages/contracts/src/identity/access.contract.test.ts` (modify), `apps/api/src/modules/identity/domain/role-catalog.test.ts` (modify), `apps/api/src/modules/identity/application/session-authenticator.test.ts` (modify)
    - Do:
      - **`test-app.ts`**: register `passwordResetRepository: asValue(new InMemoryPasswordResetRepository())`.
      - **`architecture.md`**: in the email/sensitive-job section (around line 133), add that
@@ -378,23 +334,7 @@ from 003. Serialization:
    - Observable result: `pnpm check` green.
 
 7. **Test files of this plan** (declared for `pnpm plans:scope`; the tester writes them)
-   - Files:
-     - Contract and domain:
-       - `packages/contracts/src/identity/password-reset.contract.test.ts` (create)
-       - `apps/api/src/modules/identity/domain/password-reset.test.ts` (create)
-       - `apps/api/src/modules/identity/domain/user.test.ts` (modify)
-     - Application:
-       - `apps/api/src/modules/identity/application/password-reset-issuer.test.ts` (create)
-       - `apps/api/src/modules/identity/application/commands/request-password-reset.command.test.ts` (create)
-       - `apps/api/src/modules/identity/application/commands/force-employee-password-reset.command.test.ts` (create)
-       - `apps/api/src/modules/identity/application/commands/force-user-password-reset.command.test.ts` (create)
-       - `apps/api/src/modules/identity/application/commands/reset-password.command.test.ts` (create)
-       - `apps/api/src/modules/identity/application/jobs/send-password-reset-email.job.test.ts` (create)
-     - HTTP: `apps/api/tests/password-reset.test.ts` (create)
-     - Integration:
-       - `apps/api/tests/integration/identity/prisma-password-reset.int.test.ts` (create)
-       - `apps/api/tests/integration/identity/prisma-user.int.test.ts` (modify)
-       - `apps/api/tests/integration/identity/prisma-invitation.int.test.ts` (modify)
+   - Files: `packages/contracts/src/identity/password-reset.contract.test.ts` (create), `apps/api/src/modules/identity/domain/password-reset.test.ts` (create), `apps/api/src/modules/identity/domain/user.test.ts` (modify), `apps/api/src/modules/identity/application/password-reset-issuer.test.ts` (create), `apps/api/src/modules/identity/application/commands/request-password-reset.command.test.ts` (create), `apps/api/src/modules/identity/application/commands/force-employee-password-reset.command.test.ts` (create), `apps/api/src/modules/identity/application/commands/force-user-password-reset.command.test.ts` (create), `apps/api/src/modules/identity/application/commands/reset-password.command.test.ts` (create), `apps/api/src/modules/identity/application/jobs/send-password-reset-email.job.test.ts` (create), `apps/api/tests/integration/identity/prisma-password-reset.int.test.ts` (create), `apps/api/tests/integration/identity/prisma-user.int.test.ts` (modify), `apps/api/tests/integration/identity/prisma-invitation.int.test.ts` (modify)
    - Do: nothing for the implementer.
    - Observable result: suites green.
 
@@ -448,6 +388,24 @@ from 003. Serialization:
 | e2e         | no      | (no e2e infrastructure yet)                                                                                                                                                                                             |
 
 ## Deviations
+
+- Cosmetic: `role-catalog.test.ts` had a second expectation the plan did not list (two HR
+  assignments accumulate, `toHaveLength(8)`); it is now 10 because HR gained a permission.
+- Cosmetic: the plan's `Files:` lines are nested bullets, so `pnpm plans:scope` parses 0 declared
+  files and flags every change as out of scope. The diff was checked by hand against the step
+  file lists: only listed files changed (plus the regenerated `openapi.json` snapshot).
+  - Fixed after implementation by the main session (plan text only, 2026-09-30): each step's
+    `Files:` is now one line and step 5 names the real migration. `pnpm plans:scope --base main`
+    now passes (54 declared, 43 changed; the undeclared-but-unchanged ones are the step 7 test
+    files).
+- Migration timestamp: `20260930193302_create_password_resets`. No DROP; FK only to `identity.users`.
+- `lockIssuance` used `$executeRaw` as planned and Prisma accepted the `void` result (no
+  `$queryRaw` fallback needed). Existing integration suites (84 tests) pass; the new parallel-lock
+  integration tests are the tester's job (step 7).
+- `PasswordResetIssuer.issue` returns `null` only with `respectCooldown`; the two force commands
+  throw an internal `Error` if it ever returned `null` (unreachable) rather than use `!`.
+- Checks: `pnpm check` green, `pnpm test:integration` green (84). Web/mobile typecheck green
+  as part of `pnpm check`.
 
 ## Test coverage
 

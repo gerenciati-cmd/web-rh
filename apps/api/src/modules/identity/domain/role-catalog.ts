@@ -20,6 +20,7 @@ export const ROLE_DEFINITIONS: Readonly<Record<Role, RoleDefinition>> = {
       'employees:read',
       'employees:register',
       'identity.users:invite',
+      'identity.users:reset-password',
     ],
     assignable: true,
   },
