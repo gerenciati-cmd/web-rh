@@ -56,6 +56,11 @@ Lo de alto nivel depende de abstracciones; los detalles se inyectan.
   (tipos + cliente) lo derivan. Nunca redeclarar tipos de request/response. Excepción: rutas
   de equipos físicos con protocolo propio (`deviceRouter`,
   [ADR 0008](adr/0008-endpoints-de-dispositivos-fuera-de-contratos.md)).
+- **OpenAPI**: `packages/contracts/openapi.json` se genera desde `apiRoutes`. Cambiar un contrato
+  exige regenerarlo (`pnpm --filter @rrhh/contracts openapi`); `pnpm check` falla si quedó
+  desactualizado. La referencia `/api/v1/docs` (fuera de producción) admite dos logins:
+  `client: "web"` usa la cookie (requiere `http://localhost:3001` en `CORS_ORIGINS`) y
+  `client: "mobile"` devuelve un token para pegar en Bearer.
 - **Validación compartida**: `CreateCompanySchema` usa `TaxId.isValid` y `RegisterEmployeeSchema`
   usa `NationalId.isValid` del dominio: el formulario y el backend fallan con la misma regla.
 - **`bindRoute`**: validación de entrada, status y verificación de respuesta en un solo lugar.

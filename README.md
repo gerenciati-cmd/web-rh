@@ -36,8 +36,11 @@ pnpm db:migrate --name add_positions  # nueva migración tras editar schema.pris
 pnpm db:studio                        # explorar la BD
 pnpm db:reset                         # reconstruye la BD de desarrollo (pide confirmación; --no-seed la deja vacía)
 pnpm db:reset --test                  # reconstruye rrhh_test
+pnpm --filter @rrhh/contracts openapi # regenera openapi.json tras cambiar un contrato
 docker build -f apps/api/Dockerfile .  # imagen del API (web: apps/web/Dockerfile)
 ```
+
+Referencia interactiva del API (solo fuera de producción): `http://localhost:3001/api/v1/docs`.
 
 ## Arquitectura en una frase
 

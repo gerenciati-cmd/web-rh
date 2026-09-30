@@ -1,5 +1,5 @@
 ---
-status: draft
+status: testing
 module: platform
 min_implementer: mid
 depends_on: []
@@ -198,6 +198,58 @@ openapi.json tras cambiar un contrato` and a line pointing to `http://localhost:
 | e2e         | no      | (no e2e infrastructure yet)                                                                                                               |
 
 ## Deviations
+
+Implemented 2026-09-30, inline in the main session. Zod's `toJSONSchema` options (`io`,
+`unrepresentable`) exist as planned (`zod/v4/core/to-json-schema.d.ts:34,44`).
+
+1. **Step 1, builder signature.** The plan had `buildOpenApiDocument(routes = apiRoutes)`.
+   The implementation is `buildOpenApiDocument(routes)` with a required argument, and callers
+   pass `apiRoutes`. A default would force `openapi.ts` to import `index.ts`, which
+   re-exports `openapi.ts`: a circular import. Cosmetic.
+2. **Step 2, `.prettierignore` (file not listed in the plan).** `JSON.stringify(…, 2)` and
+   Prettier format arrays differently. `prettier --check` rejected the generated file, and a
+   Prettier pass breaks the snapshot. Following the existing pattern for generated files
+   (`**/generated/**`, harness adapters), `packages/contracts/openapi.json` was added to
+   `.prettierignore`. Without this, `pnpm check` cannot be green. This happened once during
+   implementation: the file got Prettier-formatted before the ignore entry existed, the
+   snapshot test failed as designed, and `pnpm --filter @rrhh/contracts openapi` regenerated
+   it.
+3. **Step 3, Scalar version `0.10.23` instead of `0.10.24`.** `0.10.24` and its 4 `@scalar/*`
+   dependencies were published 2026-09-29 09:36 UTC, inside pnpm's minimum release age. pnpm
+   auto-added them to `minimumReleaseAgeExclude` in `pnpm-workspace.yaml`. That exception was
+   removed. `0.10.23` (2026-09-25) installs with no exception, so `pnpm-workspace.yaml` is
+   unchanged.
+4. **Step 3, CSP uses a per-request nonce instead of `'unsafe-inline'`.** The installed
+   `@scalar/client-side-rendering` supports `nonce`. With it, the page loads the UMD bundle
+   from `https://cdn.jsdelivr.net/npm/@scalar/api-reference` (`DEFAULT_CDN`) plus a nonced
+   inline init script. `script-src` is `'self' https://cdn.jsdelivr.net 'nonce-<random>'`.
+   `upgradeInsecureRequests` is disabled for this page only: on `http://localhost` it would
+   rewrite the reference's "try it" requests to https. Helmet's other defaults are kept. The
+   nonce uses `node:crypto` `randomBytes` directly, like `app.ts:1,29` does for request ids.
+5. **Step 3, router signature.** `createDocsRouter({ openApiUrl })` instead of
+   `createDocsRouter()`. The spec URL depends on `API_PREFIX`, which lives in `app.ts`, and
+   importing it from the router would be circular. The route is typed
+   `router.get<never, string>` to match Scalar's `RequestHandler<never, string>` without
+   casts.
+6. **Observation, not changed: the CDN bundle is unpinned.** Scalar's default CDN URL has no
+   version, so the page loads the latest `@scalar/api-reference` at runtime. This is dev-only
+   (not served in production). Pinning via the `cdn` option needs a known-compatible
+   version, which was not verified.
+
+Observable results checked:
+
+- `pnpm dev:api` gives `GET /api/v1/openapi.json`: `200 application/json`.
+  `GET /api/v1/docs`: `200 text/html`, CSP
+  `script-src 'self' https://cdn.jsdelivr.net 'nonce-…'` with no `upgrade-insecure-requests`,
+  and both `<script>` tags carry the same nonce.
+- `openapi.json`: 8 operations, path params as `{companyId}`, pagination query params with
+  defaults, `logOut` 204 without content, `ApiError` and both security schemes in components.
+- `pnpm check`: `Tasks: 19 successful`, arch `no dependency violations (156 modules)`,
+  harness 161/161, bootstrap 17/17, quality 9/9.
+- `pnpm plans:scope … --base origin/main`: `.prettierignore` is out of scope (deviation 2).
+  `packages/contracts/src/index.ts` is a hot file with an append-only addition.
+- Not exercised by the implementer: rendering in a browser, the login flows and the production 404. These belong to the tester (http layer) and the verifier. The cookie flow also needs
+  the user to add `http://localhost:3001` to their own `apps/api/.env` `CORS_ORIGINS`.
 
 ## Test coverage
 
