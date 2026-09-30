@@ -19,7 +19,7 @@ endpoint is open (`apps/api/src/http/app.ts:43-47` mounts module routers with no
 | 002  | Roles, permisos y protección de endpoints   | 001        | Role catalog, `(user, role, scope)` assignments, route access in contracts, row filtering, 403, ADR 0012                 |
 | 003  | Invitación, activación y baja de accesos    | 002        | Invitations (RRHH/Admin), activation links `User.employeeId` + EMPLOYEE role, disable on termination, email queue        |
 | 004  | Login en web y mobile (TBD, deferred)       | 001        | Login screens, cookie handling in Next, `expo-secure-store` token in mobile — not before a UI design exists (decision 9) |
-| 005  | Reseteo de contraseña (TBD)                 | 003        | "Forgot password" by email with a single-use token, reusing 003's email queue; revokes sessions on reset                 |
+| 005  | Reseteo de contraseña                       | 003        | "Forgot password" (1 h link), staff-forced reset by email, all sessions closed on reset; fixes hallazgo L3               |
 
 ## Dependency notes
 
@@ -91,6 +91,22 @@ endpoint is open (`apps/api/src/http/app.ts:43-47` mounts module routers with no
 22. (2026-09-30) Activating an account linked to a colaborador grants the `EMPLOYEE` role
     automatically. For now it grants no permission beyond `/auth/me`; self-service endpoints come
     with their modules.
+23. (2026-09-30) A password-reset link is valid for **1 hour** and can be used once.
+24. (2026-09-30) Setting a new password through a reset closes **all** the user's sessions.
+25. (2026-09-30) "Forgot my password" answers the same whether or not the email exists (no
+    account enumeration).
+26. (2026-09-30) Admin holding (any user) and RRHH (colaboradores of their companies) can force a
+    reset for someone who cannot do it themselves. Forcing only **sends the reset email**; staff
+    never choose or see the password.
+27. (2026-09-30) The hallazgo "dos invitaciones simultáneas quedan ambas pendientes" (plan 003
+    review L3) is fixed in plan 005.
+28. (2026-09-30) A successful password reset also lifts the login block on that email (the IP
+    block stays, since the IP is shared — decision 12).
+29. (2026-09-30) Changing the password while signed in (current + new password) is not part of
+    plan 005: it comes with the colaborador's self-service endpoints over their own data.
+30. (2026-09-30) "Forgot my password" sends at most one email per account every **3 minutes**
+    (`PASSWORD_RESET_COOLDOWN_SECONDS=180`); a repeated request inside that window still answers
+    204 but sends nothing. Staff-forced resets are not subject to it.
 
 ## Delivered
 
