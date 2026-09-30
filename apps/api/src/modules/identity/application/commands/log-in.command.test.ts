@@ -75,6 +75,7 @@ describe('LogIn', () => {
     const user = User.restore(`user-${rawEmail}` as UserId, {
       email: email(rawEmail),
       passwordHash: `fake:${PASSWORD}`,
+      employeeId: null,
       status,
     });
     userRepository.users.set(user.id, user);
@@ -219,7 +220,11 @@ describe('LogIn', () => {
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.value.user).toEqual({ id: `user-${input.email}`, email: input.email });
+    expect(result.value.user).toEqual({
+      id: `user-${input.email}`,
+      email: input.email,
+      employeeId: null,
+    });
     expect(typeof result.value.token).toBe('string');
     expect(result.value.token.length).toBeGreaterThan(0);
     expect(result.value.expiresAt).toEqual(new Date(now.getTime() + SESSION_POLICY.WEB.absoluteMs));

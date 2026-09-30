@@ -1,4 +1,5 @@
 import type { Session, SessionId } from './session';
+import type { UserId } from './user';
 
 export interface SessionRepository {
   findById(id: SessionId): Promise<Session | null>;
@@ -10,4 +11,9 @@ export interface SessionRepository {
    * volver a poner `revokedAt` en `null` y resucitar una sesión que el cliente ya dio por cerrada.
    */
   recordActivity(session: Session): Promise<void>;
+  /**
+   * Actualización masiva de las sesiones no revocadas del usuario; devuelve cuántas cerró. La usa
+   * la baja del acceso: la siguiente petición con cualquiera de sus tokens da 401.
+   */
+  revokeAllForUser(userId: UserId, now: Date): Promise<number>;
 }

@@ -13,6 +13,7 @@ export const UserMapper = {
       email: email.value,
       passwordHash: row.passwordHash,
       status: row.status,
+      employeeId: row.employeeId,
     });
   },
 
@@ -23,6 +24,7 @@ export const UserMapper = {
       email: s.email.value,
       passwordHash: s.passwordHash,
       status: s.status,
+      employeeId: s.employeeId,
     };
   },
 };

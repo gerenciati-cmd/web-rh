@@ -28,7 +28,7 @@ describe('access de cada ruta (negado por defecto)', () => {
       .filter(([, route]) => route.access.kind === 'public')
       .map(([name]) => name);
 
-    expect(publicRoutes).toEqual(['identity.logIn']);
+    expect(publicRoutes).toEqual(['identity.logIn', 'invitations.activateAccount']);
   });
 
   it('logOut y me exigen solo sesión', () => {

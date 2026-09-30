@@ -104,3 +104,45 @@ export class AssignmentCompanyInactiveError extends BusinessRuleViolationError {
     super('No se puede asignar un rol en una empresa inactiva', { companyId });
   }
 }
+
+/** Mismo cuerpo para token desconocido, expirado, usado o reemplazado: no se puede sondear tokens. */
+export class InvitationNotValidError extends BusinessRuleViolationError {
+  override readonly code = 'INVITATION_NOT_VALID';
+
+  constructor() {
+    super('La invitación no es válida o ya expiró');
+  }
+}
+
+/** También cuando el colaborador es de otra empresa: responde igual que uno inexistente. */
+export class EmployeeNotFoundError extends NotFoundError {
+  readonly code = 'EMPLOYEE_NOT_FOUND';
+
+  constructor() {
+    super('El colaborador no existe');
+  }
+}
+
+export class EmployeeInactiveError extends BusinessRuleViolationError {
+  override readonly code = 'EMPLOYEE_INACTIVE';
+
+  constructor() {
+    super('No se puede invitar a un colaborador desvinculado');
+  }
+}
+
+export class EmployeeAlreadyLinkedError extends ConflictError {
+  readonly code = 'EMPLOYEE_ALREADY_HAS_ACCESS';
+
+  constructor() {
+    super('El colaborador ya tiene acceso');
+  }
+}
+
+export class EmailAlreadyRegisteredError extends ConflictError {
+  readonly code = 'EMAIL_ALREADY_REGISTERED';
+
+  constructor() {
+    super('Ya existe un usuario con ese correo');
+  }
+}

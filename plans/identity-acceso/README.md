@@ -17,8 +17,9 @@ endpoint is open (`apps/api/src/http/app.ts:43-47` mounts module routers with no
 | ---- | ------------------------------------------- | ---------- | ------------------------------------------------------------------------------------------------------------------------ |
 | 001  | Módulo identity: usuarios, login y sesiones | —          | `User`, argon2id, `identity.sessions`, login/logout/me, request `Actor`, throttle, ADR 0011                              |
 | 002  | Roles, permisos y protección de endpoints   | 001        | Role catalog, `(user, role, scope)` assignments, route access in contracts, row filtering, 403, ADR 0012                 |
-| 003  | Invitación, activación y reseteo (TBD)      | 002        | RRHH invites a colaborador (links `User.employeeId`), set/reset password by email, revoke on baja                        |
+| 003  | Invitación, activación y baja de accesos    | 002        | Invitations (RRHH/Admin), activation links `User.employeeId` + EMPLOYEE role, disable on termination, email queue        |
 | 004  | Login en web y mobile (TBD, deferred)       | 001        | Login screens, cookie handling in Next, `expo-secure-store` token in mobile — not before a UI design exists (decision 9) |
+| 005  | Reseteo de contraseña (TBD)                 | 003        | "Forgot password" by email with a single-use token, reusing 003's email queue; revokes sessions on reset                 |
 
 ## Dependency notes
 
@@ -26,6 +27,8 @@ endpoint is open (`apps/api/src/http/app.ts:43-47` mounts module routers with no
 - 003 needs 002: inviting users and assigning roles must itself be permission-protected; until
   then users are created only by the dev seed (plan 001), never over HTTP.
 - 004 only needs 001's endpoints, but is deferred until there is a UI design (decision 9).
+- Password reset was split out of 003 into 005 to keep each review small; it only needs 003's
+  email queue and token infrastructure.
 
 ## Decisions with the user
 
@@ -78,6 +81,16 @@ endpoint is open (`apps/api/src/http/app.ts:43-47` mounts module routers with no
     unique index was the first choice, but Prisma 7.10 cannot declare partial indexes and a
     hand-written one risks being dropped by a later migration (plan 002 review R4, deviation 9).
     Note for plan 003: once users can be disabled, the last-admin rule must ignore disabled admins.
+19. (2026-09-30) RRHH (for their companies) and Admin holding invite colaboradores. The
+    invitation proposes the ficha's email but it can be changed (e.g. to a personal one); that
+    email becomes the login email. Admin holding can also invite someone who is not a colaborador.
+20. (2026-09-30) When a colaborador is terminated, their account is disabled at once and all
+    their sessions are closed (reacting to `employees.employee.terminated`).
+21. (2026-09-30) Emails (invitation, later reset) are sent through the job queue and the worker
+    (BullMQ + SMTP; Mailpit in development), not synchronously from the API.
+22. (2026-09-30) Activating an account linked to a colaborador grants the `EMPLOYEE` role
+    automatically. For now it grants no permission beyond `/auth/me`; self-service endpoints come
+    with their modules.
 
 ## Delivered
 

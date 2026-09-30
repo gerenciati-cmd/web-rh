@@ -8,7 +8,9 @@ import { createLogger } from '@/infrastructure/logging/pino-logger';
 import type { EmployeeQueries } from '@/modules/employees/application/queries/employee.queries';
 import { InMemoryEmployeeRepository } from '@/modules/employees/infrastructure/in-memory/in-memory-employee.repository';
 import type { CompanyDirectory } from '@/modules/identity/application/ports/company-directory';
+import type { EmployeeDirectory } from '@/modules/identity/application/ports/employee-directory';
 import { FakePasswordHasher } from '@/modules/identity/infrastructure/in-memory/fake-password-hasher';
+import { InMemoryInvitationRepository } from '@/modules/identity/infrastructure/in-memory/in-memory-invitation.repository';
 import { InMemoryLoginThrottleRepository } from '@/modules/identity/infrastructure/in-memory/in-memory-login-throttle.repository';
 import { InMemoryRoleAssignmentRepository } from '@/modules/identity/infrastructure/in-memory/in-memory-role-assignment.repository';
 import { InMemorySessionRepository } from '@/modules/identity/infrastructure/in-memory/in-memory-session.repository';
@@ -20,6 +22,7 @@ import {
   InMemoryCompanyStore,
 } from '@/modules/organization/infrastructure/in-memory/in-memory-company.store';
 import type { TransactionRunner } from '@/shared/application/ports';
+import { RecordingEmailSender, RecordingJobQueue } from '@/shared/testing/fakes';
 
 /**
  * `LogIn` (plan 001, paso 15/H3) usa `transactionRunner` para el row lock del throttle de login;
@@ -53,6 +56,22 @@ export function buildTestContainer(env: Env = testEnv) {
     },
   };
 
+  // Directorio falso respaldado por el mismo almacén de colaboradores del contenedor de test.
+  const employeeDirectory: EmployeeDirectory = {
+    find: (employeeId) => {
+      const employee = employees.employees.get(employeeId);
+      if (!employee) return Promise.resolve(null);
+      const s = employee.snapshot;
+      return Promise.resolve({
+        id: employee.id,
+        companyId: s.companyId,
+        email: s.email.value,
+        fullName: `${s.firstName} ${s.lastName}`,
+        active: s.status === 'ACTIVE',
+      });
+    },
+  };
+
   const employeeQueries: EmployeeQueries = {
     listDirectory: ({ companyId, page, pageSize }) => {
       const items = [...employees.employees.values()]
@@ -83,6 +102,11 @@ export function buildTestContainer(env: Env = testEnv) {
     loginThrottleRepository: asValue(new InMemoryLoginThrottleRepository()),
     roleAssignmentRepository: asValue(roleAssignments),
     companyDirectory: asValue(companyDirectory),
+    employeeDirectory: asValue(employeeDirectory),
+    invitationRepository: asValue(new InMemoryInvitationRepository()),
+    // Sin Valkey ni SMTP: los tests inspeccionan lo encolado y lo enviado.
+    jobQueue: asValue(new RecordingJobQueue()),
+    emailSender: asValue(new RecordingEmailSender()),
     userQueries: asValue(
       new InMemoryUserQueries({ userRepository: users, roleAssignmentRepository: roleAssignments }),
     ),

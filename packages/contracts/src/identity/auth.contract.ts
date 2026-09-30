@@ -6,7 +6,7 @@ export const SessionClientSchema = z.enum(['web', 'mobile']);
 export type SessionClient = z.infer<typeof SessionClientSchema>;
 
 export const SessionUserSchema = z
-  .object({ id: z.uuid(), email: z.email() })
+  .object({ id: z.uuid(), email: z.email(), employeeId: z.uuid().nullable() })
   .meta({ id: 'SessionUser' });
 export type SessionUser = z.infer<typeof SessionUserSchema>;
 

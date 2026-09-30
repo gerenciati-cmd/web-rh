@@ -25,7 +25,9 @@ export class PrismaRoleAssignmentRepository implements RoleAssignmentRepository 
   }
 
   countActiveByRole(role: Role): Promise<number> {
-    return this.deps.database.client.roleAssignment.count({ where: { role, revokedAt: null } });
+    return this.deps.database.client.roleAssignment.count({
+      where: { role, revokedAt: null, user: { status: 'ACTIVE' } },
+    });
   }
 
   async lockUser(userId: UserId): Promise<boolean> {

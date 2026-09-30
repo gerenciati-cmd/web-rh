@@ -1,7 +1,10 @@
 import { Email } from '@rrhh/domain';
 import { describe, expect, it } from 'vitest';
 
-import { UserAlreadyExistsError } from '@/modules/identity/domain/errors';
+import {
+  EmployeeAlreadyLinkedError,
+  UserAlreadyExistsError,
+} from '@/modules/identity/domain/errors';
 import { User, type UserId } from '@/modules/identity/domain/user';
 import { PrismaUserRepository } from '@/modules/identity/infrastructure/prisma-user.repository';
 import { SequentialIdGenerator } from '@/shared/testing/fakes';
@@ -59,6 +62,76 @@ describe('PrismaUserRepository', () => {
     const result = await repository.save(user('dup@aps.cl'));
 
     expect(result).toMatchObject({ ok: false, error: expect.any(UserAlreadyExistsError) });
+  });
+
+  describe('vínculo con el colaborador (employee_id)', () => {
+    const EMPLOYEE = '00000000-0000-4000-8000-0000000000e1';
+
+    function linked(rawEmail: string, employeeId: string | null): User {
+      return User.register({
+        id: ids.next() as UserId,
+        email: mustEmail(rawEmail),
+        passwordHash: 'hash-de-prueba',
+        employeeId,
+        now: NOW,
+      });
+    }
+
+    it('guarda y rehidrata employeeId; sin vínculo queda null', async () => {
+      const withLink = linked('vinculado@aps.cl', EMPLOYEE);
+      const external = linked('externo@aps.cl', null);
+      await repository.save(withLink);
+      await repository.save(external);
+
+      expect((await repository.findById(withLink.id))?.snapshot.employeeId).toBe(EMPLOYEE);
+      expect((await repository.findById(external.id))?.snapshot.employeeId).toBeNull();
+    });
+
+    it('findByEmployeeId encuentra al usuario vinculado y devuelve null si no hay', async () => {
+      const withLink = linked('vinculado@aps.cl', EMPLOYEE);
+      await repository.save(withLink);
+
+      expect((await repository.findByEmployeeId(EMPLOYEE))?.id).toBe(withLink.id);
+      expect(await repository.findByEmployeeId('00000000-0000-4000-8000-0000000000e2')).toBeNull();
+    });
+
+    it('dos usuarios sin vínculo (null) conviven: el índice único no cuenta los null', async () => {
+      const first = await repository.save(linked('uno@aps.cl', null));
+      const second = await repository.save(linked('dos@aps.cl', null));
+
+      expect(first.ok && second.ok).toBe(true);
+    });
+
+    // Riesgo declarado en el plan (Deviations): el repositorio distingue el índice de employee_id
+    // del de email buscando `employee_id` en `meta` del P2002 (Prisma 7 + adapter-pg).
+    it('dos usuarios con el mismo colaborador: EMPLOYEE_ALREADY_HAS_ACCESS (no USER_ALREADY_EXISTS)', async () => {
+      await repository.save(linked('primero@aps.cl', EMPLOYEE));
+
+      const result = await repository.save(linked('segundo@aps.cl', EMPLOYEE));
+
+      expect(result).toMatchObject({ ok: false, error: expect.any(EmployeeAlreadyLinkedError) });
+    });
+
+    it('mismo correo y colaborador distinto sigue siendo USER_ALREADY_EXISTS', async () => {
+      await repository.save(linked('mismo@aps.cl', EMPLOYEE));
+
+      const result = await repository.save(
+        linked('mismo@aps.cl', '00000000-0000-4000-8000-0000000000e2'),
+      );
+
+      expect(result).toMatchObject({ ok: false, error: expect.any(UserAlreadyExistsError) });
+    });
+
+    it('disable persiste el estado DISABLED y conserva el vínculo', async () => {
+      const user = linked('baja@aps.cl', EMPLOYEE);
+      await repository.save(user);
+
+      user.disable(NOW);
+      await repository.save(user);
+
+      const found = await repository.findById(user.id);
+      expect(found?.snapshot).toMatchObject({ status: 'DISABLED', employeeId: EMPLOYEE });
+    });
   });
 
   it('save vuelve a guardar (upsert) y refleja el nuevo estado', async () => {

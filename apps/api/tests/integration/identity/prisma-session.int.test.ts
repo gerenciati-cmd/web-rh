@@ -113,6 +113,68 @@ describe('PrismaSessionRepository', () => {
     expect((await sessions.findById(session.id))?.snapshot.revokedAt).toEqual(revokedAt);
   });
 
+  describe('revokeAllForUser', () => {
+    function start(userId: UserId, hash: string): Session {
+      return Session.start({
+        id: ids.next() as SessionId,
+        userId,
+        tokenHash: hash.repeat(64),
+        client: 'WEB',
+        lifetime: { absoluteMs: 3_600_000, idleMs: null },
+        now: NOW,
+        ip: null,
+        userAgent: null,
+      });
+    }
+
+    it('revoca todas las sesiones abiertas del usuario y devuelve cuántas cerró', async () => {
+      const userId = await seedUser('revoca1@aps.cl');
+      const first = start(userId, '1');
+      const second = start(userId, '2');
+      await sessions.save(first);
+      await sessions.save(second);
+      const at = new Date(NOW.getTime() + 5000);
+
+      const closed = await sessions.revokeAllForUser(userId, at);
+
+      expect(closed).toBe(2);
+      expect((await sessions.findById(first.id))?.snapshot.revokedAt).toEqual(at);
+      expect((await sessions.findById(second.id))?.snapshot.revokedAt).toEqual(at);
+    });
+
+    it('no toca las sesiones de otros usuarios', async () => {
+      const userId = await seedUser('revoca2@aps.cl');
+      const otherId = await seedUser('revoca3@aps.cl');
+      const foreign = start(otherId, '3');
+      await sessions.save(start(userId, '4'));
+      await sessions.save(foreign);
+
+      await sessions.revokeAllForUser(userId, new Date(NOW.getTime() + 5000));
+
+      expect((await sessions.findById(foreign.id))?.snapshot.revokedAt).toBeNull();
+    });
+
+    it('conserva la marca de las ya revocadas y no las cuenta', async () => {
+      const userId = await seedUser('revoca4@aps.cl');
+      const already = start(userId, '5');
+      const earlier = new Date(NOW.getTime() + 1000);
+      already.revoke(earlier);
+      await sessions.save(already);
+      await sessions.save(start(userId, '6'));
+
+      const closed = await sessions.revokeAllForUser(userId, new Date(NOW.getTime() + 5000));
+
+      expect(closed).toBe(1);
+      expect((await sessions.findById(already.id))?.snapshot.revokedAt).toEqual(earlier);
+    });
+
+    it('usuario sin sesiones: devuelve 0', async () => {
+      const userId = await seedUser('revoca5@aps.cl');
+
+      expect(await sessions.revokeAllForUser(userId, NOW)).toBe(0);
+    });
+  });
+
   it('trunca el user agent a 500 caracteres antes de guardar', async () => {
     const userId = await seedUser('sesion5@aps.cl');
     const session = Session.start({

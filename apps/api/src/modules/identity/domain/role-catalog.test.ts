@@ -20,7 +20,12 @@ describe('ROLE_DEFINITIONS', () => {
     expect(ROLE_DEFINITIONS.HR.scope).toBe('COMPANY');
     expect(ROLE_DEFINITIONS.HR.assignable).toBe(true);
     expect([...ROLE_DEFINITIONS.HR.permissions].sort()).toEqual(
-      ['employees:read', 'employees:register', 'organization.companies:read'].sort(),
+      [
+        'employees:read',
+        'employees:register',
+        'identity.users:invite',
+        'organization.companies:read',
+      ].sort(),
     );
   });
 
@@ -54,7 +59,7 @@ describe('grantsFor', () => {
   it('HR en una empresa: sus permisos quedan atados a esa empresa', () => {
     const grants = grantsFor([{ role: 'HR', companyId: 'company-a' }]);
 
-    expect(grants).toHaveLength(3);
+    expect(grants).toHaveLength(4);
     expect(grants.every((grant) => grant.companyId === 'company-a')).toBe(true);
     expect(grants.map((grant) => grant.permission)).not.toContain('organization.companies:create');
   });
@@ -65,7 +70,7 @@ describe('grantsFor', () => {
       { role: 'HR', companyId: 'company-b' },
     ]);
 
-    expect(grants).toHaveLength(6);
+    expect(grants).toHaveLength(8);
     expect(new Set(grants.map((grant) => grant.companyId))).toEqual(
       new Set(['company-a', 'company-b']),
     );

@@ -20,7 +20,7 @@ export class PrismaUserQueries implements UserQueries {
   async findSessionUser(userId: string): Promise<SessionUser | null> {
     const row = await this.deps.database.client.user.findUnique({
       where: { id: userId },
-      select: { id: true, email: true },
+      select: { id: true, email: true, employeeId: true },
     });
     return row;
   }

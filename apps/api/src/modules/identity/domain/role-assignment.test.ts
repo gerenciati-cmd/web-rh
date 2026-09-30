@@ -76,6 +76,37 @@ describe('RoleAssignment.assign', () => {
   });
 });
 
+describe('RoleAssignment.grantSelf', () => {
+  it('concede EMPLOYEE con la empresa del colaborador, assignedBy null y emite ROLE_ASSIGNED', () => {
+    const assignment = RoleAssignment.grantSelf({
+      id: ID,
+      userId: USER,
+      companyId: COMPANY,
+      now: NOW,
+    });
+
+    expect(assignment.isActive).toBe(true);
+    expect(assignment.snapshot).toEqual({
+      userId: USER,
+      role: 'EMPLOYEE',
+      companyId: COMPANY,
+      assignedAt: NOW,
+      assignedBy: null,
+      revokedAt: null,
+      revokedBy: null,
+    });
+    const events = assignment.pullEvents();
+    expect(events.map((event) => event.name)).toEqual([ROLE_ASSIGNED]);
+    expect(events[0]?.payload).toMatchObject({ role: 'EMPLOYEE', companyId: COMPANY });
+  });
+
+  it('no abre la puerta a asignar EMPLOYEE a mano: assign sigue rechazándolo', () => {
+    const result = assign('EMPLOYEE', COMPANY);
+
+    expect(!result.ok && result.error.code).toBe('ROLE_NOT_ASSIGNABLE');
+  });
+});
+
 describe('RoleAssignment.revoke', () => {
   it('registra quién y cuándo, deja de estar activa y emite ROLE_REVOKED', () => {
     const assignment = assigned();

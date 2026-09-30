@@ -6,7 +6,7 @@ import type { UserId } from '../../domain/user';
 
 /** Estructura mínima del almacén de usuarios (evita importar otro doble de `/in-memory/`). */
 interface UserStore {
-  readonly users: ReadonlyMap<string, unknown>;
+  readonly users: ReadonlyMap<string, { readonly snapshot: { readonly status: string } }>;
 }
 
 export class InMemoryRoleAssignmentRepository implements RoleAssignmentRepository {
@@ -26,7 +26,12 @@ export class InMemoryRoleAssignmentRepository implements RoleAssignmentRepositor
 
   countActiveByRole(role: Role): Promise<number> {
     return Promise.resolve(
-      [...this.assignments.values()].filter((a) => a.snapshot.role === role && a.isActive).length,
+      [...this.assignments.values()].filter(
+        (a) =>
+          a.snapshot.role === role &&
+          a.isActive &&
+          this.deps.userRepository.users.get(a.snapshot.userId)?.snapshot.status === 'ACTIVE',
+      ).length,
     );
   }
 

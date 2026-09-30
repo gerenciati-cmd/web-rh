@@ -10,6 +10,8 @@ export const PERMISSIONS = [
   'employees:register',
   'identity.users:read',
   'identity.roles:manage',
+  'identity.users:invite',
+  'identity.users:invite-external',
 ] as const;
 export type Permission = (typeof PERMISSIONS)[number];
 

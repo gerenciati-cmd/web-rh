@@ -3,6 +3,7 @@ import { asClass } from 'awilix';
 import type { AppModule } from '@/shared/app-module';
 
 import { RegisterEmployee } from './application/commands/register-employee.command';
+import { EmployeesFacade, type EmployeesApi } from './application/employees.facade';
 import type { EmployerDirectory } from './application/ports/employer-directory';
 import type { EmployeeQueries } from './application/queries/employee.queries';
 import { ListEmployees } from './application/queries/list-employees.query';
@@ -16,6 +17,7 @@ export interface EmployeesCradle {
   employeeRepository: EmployeeRepository;
   employeeQueries: EmployeeQueries;
   employerDirectory: EmployerDirectory;
+  employeesApi: EmployeesApi;
   registerEmployee: RegisterEmployee;
   listEmployees: ListEmployees;
 }
@@ -26,6 +28,7 @@ export const employeesModule: AppModule<EmployeesCradle> = {
     employeeRepository: asClass(PrismaEmployeeRepository).singleton(),
     employeeQueries: asClass(PrismaEmployeeQueries).singleton(),
     employerDirectory: asClass(OrganizationEmployerDirectory).singleton(),
+    employeesApi: asClass(EmployeesFacade).singleton(),
     registerEmployee: asClass(RegisterEmployee).singleton(),
     listEmployees: asClass(ListEmployees).singleton(),
   },

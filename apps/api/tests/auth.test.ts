@@ -148,7 +148,11 @@ describe('identity — HTTP', () => {
         .set('Authorization', `Bearer ${loginResponse.body.token}`)
         .expect(200);
 
-      expect(response.body).toEqual({ id: loginResponse.body.user.id, email: EMAIL });
+      expect(response.body).toEqual({
+        id: loginResponse.body.user.id,
+        email: EMAIL,
+        employeeId: null,
+      });
     });
 
     it('con la cookie web responde 200', async () => {
@@ -162,7 +166,11 @@ describe('identity — HTTP', () => {
         .set('Cookie', cookie)
         .expect(200);
 
-      expect(response.body).toEqual({ id: loginResponse.body.user.id, email: EMAIL });
+      expect(response.body).toEqual({
+        id: loginResponse.body.user.id,
+        email: EMAIL,
+        employeeId: null,
+      });
     });
 
     it('sin credenciales responde 401 AUTHENTICATION_REQUIRED', async () => {

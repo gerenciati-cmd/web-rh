@@ -2,6 +2,7 @@ import type { PrismaDatabase } from '@/infrastructure/database/prisma-database';
 
 import type { Session, SessionId } from '../domain/session';
 import type { SessionRepository } from '../domain/session.repository';
+import type { UserId } from '../domain/user';
 
 import { SessionMapper } from './session.mapper';
 
@@ -25,6 +26,14 @@ export class PrismaSessionRepository implements SessionRepository {
       create: data,
       update: data,
     });
+  }
+
+  async revokeAllForUser(userId: UserId, now: Date): Promise<number> {
+    const { count } = await this.deps.database.client.session.updateMany({
+      where: { userId, revokedAt: null },
+      data: { revokedAt: now },
+    });
+    return count;
   }
 
   async recordActivity(session: Session): Promise<void> {

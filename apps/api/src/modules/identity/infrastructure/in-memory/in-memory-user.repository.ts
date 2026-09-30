@@ -1,6 +1,6 @@
 import { err, ok, type Email, type Result } from '@rrhh/domain';
 
-import { UserAlreadyExistsError } from '../../domain/errors';
+import { EmployeeAlreadyLinkedError, UserAlreadyExistsError } from '../../domain/errors';
 import type { User, UserId } from '../../domain/user';
 import type { UserRepository } from '../../domain/user.repository';
 
@@ -16,11 +16,23 @@ export class InMemoryUserRepository implements UserRepository {
     return Promise.resolve(found ?? null);
   }
 
-  save(user: User): Promise<Result<void, UserAlreadyExistsError>> {
+  findByEmployeeId(employeeId: string): Promise<User | null> {
+    const found = [...this.users.values()].find((user) => user.snapshot.employeeId === employeeId);
+    return Promise.resolve(found ?? null);
+  }
+
+  save(user: User): Promise<Result<void, UserAlreadyExistsError | EmployeeAlreadyLinkedError>> {
     const duplicate = [...this.users.values()].some(
       (other) => other.id !== user.id && other.snapshot.email.equals(user.snapshot.email),
     );
     if (duplicate) return Promise.resolve(err(new UserAlreadyExistsError()));
+    const { employeeId } = user.snapshot;
+    const linked =
+      employeeId !== null &&
+      [...this.users.values()].some(
+        (other) => other.id !== user.id && other.snapshot.employeeId === employeeId,
+      );
+    if (linked) return Promise.resolve(err(new EmployeeAlreadyLinkedError()));
     this.users.set(user.id, user);
     return Promise.resolve(ok(undefined));
   }

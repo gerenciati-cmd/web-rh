@@ -7,6 +7,7 @@ export interface RoleAssignmentRepository {
   findById(id: RoleAssignmentId): Promise<RoleAssignment | null>;
   /** Solo asignaciones sin revocar. */
   findActiveByUser(userId: UserId): Promise<RoleAssignment[]>;
+  /** Solo asignaciones activas de usuarios ACTIVE: un administrador deshabilitado no cuenta (decisión 18). */
   countActiveByRole(role: Role): Promise<number>;
   /**
    * Debe llamarse dentro de `transactionRunner.run`: bloquea la fila del usuario hasta el fin de

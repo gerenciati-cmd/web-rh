@@ -72,6 +72,40 @@ export class RoleAssignment extends AggregateRoot<RoleAssignmentId> {
     return ok(assignment);
   }
 
+  /**
+   * Rol EMPLOYEE del propio colaborador, concedido solo al activar su invitación. Se salta la
+   * comprobación `assignable` a propósito: ese rol no se asigna a mano sobre nadie.
+   */
+  static grantSelf(input: {
+    id: RoleAssignmentId;
+    userId: UserId;
+    companyId: string;
+    now: Date;
+  }): RoleAssignment {
+    const assignment = new RoleAssignment(input.id, {
+      userId: input.userId,
+      role: 'EMPLOYEE',
+      companyId: input.companyId,
+      assignedAt: input.now,
+      assignedBy: null,
+      revokedAt: null,
+      revokedBy: null,
+    });
+    assignment.record(
+      createEvent(
+        ROLE_ASSIGNED,
+        {
+          assignmentId: input.id,
+          userId: input.userId,
+          role: 'EMPLOYEE',
+          companyId: input.companyId,
+        },
+        input.now,
+      ),
+    );
+    return assignment;
+  }
+
   static restore(id: RoleAssignmentId, props: RoleAssignmentProps): RoleAssignment {
     return new RoleAssignment(id, props);
   }

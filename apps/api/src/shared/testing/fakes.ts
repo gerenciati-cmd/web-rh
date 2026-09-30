@@ -1,5 +1,7 @@
 import type { DomainEvent } from '@rrhh/domain';
 
+import type { EmailSender, OutgoingEmail } from '../application/email';
+import type { EnqueueOptions, JobQueue } from '../application/jobs';
 import type { Clock, EventBus, EventHandler, IdGenerator, Logger } from '../application/ports';
 
 /**
@@ -41,6 +43,25 @@ export class RecordingEventBus implements EventBus {
 
   names(): string[] {
     return this.published.map((event) => event.name);
+  }
+}
+
+/** Registra lo encolado sin tocar Valkey: los tests verifican nombre, payload y opciones. */
+export class RecordingJobQueue implements JobQueue {
+  readonly jobs: { name: string; data: object; options: EnqueueOptions | undefined }[] = [];
+
+  enqueue(name: string, data: object, options?: EnqueueOptions): Promise<void> {
+    this.jobs.push({ name, data, options });
+    return Promise.resolve();
+  }
+}
+
+export class RecordingEmailSender implements EmailSender {
+  readonly sent: OutgoingEmail[] = [];
+
+  send(email: OutgoingEmail): Promise<void> {
+    this.sent.push(email);
+    return Promise.resolve();
   }
 }
 

@@ -41,6 +41,7 @@ describe('SessionAuthenticator', () => {
     const user = User.restore(USER_ID, {
       email: mustEmail('ana@aps.cl'),
       passwordHash: 'hash',
+      employeeId: null,
       status: 'ACTIVE',
     });
     userRepository.users.set(user.id, user);
@@ -99,6 +100,7 @@ describe('SessionAuthenticator', () => {
       User.restore(USER_ID, {
         email: mustEmail('ana@aps.cl'),
         passwordHash: 'hash',
+        employeeId: null,
         status: 'DISABLED',
       }),
     );
@@ -136,7 +138,7 @@ describe('SessionAuthenticator', () => {
 
     const actor = await authenticator.authenticate(token);
 
-    expect(actor?.grants).toHaveLength(3);
+    expect(actor?.grants).toHaveLength(4);
     expect(actor?.grants).toContainEqual({ permission: 'employees:read', companyId: 'company-a' });
     expect(actor?.grants.map((grant) => grant.permission)).not.toContain(
       'organization.companies:create',
@@ -166,7 +168,7 @@ describe('SessionAuthenticator', () => {
   it('revocar el rol surte efecto en la siguiente autenticación con el mismo token', async () => {
     const { token } = issueSession();
     const assignment = assignRole('a1', 'HR', 'company-a');
-    expect((await authenticator.authenticate(token))?.grants).toHaveLength(3);
+    expect((await authenticator.authenticate(token))?.grants).toHaveLength(4);
 
     assignment.revoke(USER_ID, now);
 

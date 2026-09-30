@@ -28,7 +28,12 @@ describe('RevokeRoleAssignment', () => {
   let revoke: RevokeRoleAssignment;
 
   beforeEach(() => {
-    repository = new InMemoryRoleAssignmentRepository({ userRepository: { users: new Map() } });
+    // El conteo de administradores solo cuenta usuarios ACTIVE (README decisión 18).
+    const users = new Map([
+      [USER, { snapshot: { status: 'ACTIVE' } }],
+      [OTHER_USER, { snapshot: { status: 'ACTIVE' } }],
+    ]);
+    repository = new InMemoryRoleAssignmentRepository({ userRepository: { users } });
     eventBus = new RecordingEventBus();
     revoke = new RevokeRoleAssignment({
       roleAssignmentRepository: repository,
@@ -119,6 +124,27 @@ describe('RevokeRoleAssignment', () => {
     const result = await revoke.execute({ userId: USER, assignmentId: 'a1', revokedBy: REVOKER });
 
     expect(!result.ok && result.error.code).toBe('LAST_HOLDING_ADMIN');
+  });
+
+  it('un HOLDING_ADMIN de un usuario DISABLED no cuenta como "otro" administrador (decisión 18)', async () => {
+    const users = new Map([
+      [USER, { snapshot: { status: 'ACTIVE' } }],
+      [OTHER_USER, { snapshot: { status: 'DISABLED' } }],
+    ]);
+    repository = new InMemoryRoleAssignmentRepository({ userRepository: { users } });
+    revoke = new RevokeRoleAssignment({
+      roleAssignmentRepository: repository,
+      transactionRunner: new NoopTransactionRunner(),
+      clock: new FixedClock(NOW),
+      eventBus,
+    });
+    seed('a1', USER, 'HOLDING_ADMIN', null);
+    seed('a2', OTHER_USER, 'HOLDING_ADMIN', null);
+
+    const result = await revoke.execute({ userId: USER, assignmentId: 'a1', revokedBy: REVOKER });
+
+    expect(!result.ok && result.error.code).toBe('LAST_HOLDING_ADMIN');
+    expect(repository.assignments.get('a1')?.isActive).toBe(true);
   });
 
   it('la regla del último administrador no aplica a HR', async () => {
