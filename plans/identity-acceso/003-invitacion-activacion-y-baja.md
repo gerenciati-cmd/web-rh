@@ -253,4 +253,59 @@ Notes for review/verify: the two NOT CONFIRMED items are exactly the acceptance 
 
 ## Review findings
 
+Reviewer run (2026-09-30), diff `a19aa6d..HEAD` (commits 0344fd9, 2d25090, a2e9a86), working tree clean.
+
+### Pass 1 — Checklist: 12/13
+
+- [ ] `pnpm plans:scope` — **FAIL** (exit 1). 9 files out of scope (the test/fixture files and `log-in.command.ts` listed in Deviations) and 3 "declared without changes" (`user.queries.ts`, `revoke-role-assignment.command.ts`, and the literal `apps/api/prisma/migrations/<timestamp>_create_invitations/migration.sql`, because step 7's `<timestamp>` was never replaced as step 7 instructs). All are recorded honestly in Deviations, and the hot-file changes (`schema.prisma`, `container.ts`, `test-app.ts`, `contracts/src/index.ts`) are append-only. So this is a gap in the plan text only (see L1), not in the code.
+- [x] `pnpm check` green (api 409 passed + 2 skipped, contracts 107, domain 51; arch, plans lint, harness, hooks all ok).
+- [x] `pnpm test:integration` green (9 files, 80 tests).
+- [x] Business rules are in `domain/` (`Invitation`, `User.disable`, `RoleAssignment.grantSelf`, role catalog). The router, mappers and adapters contain none.
+- [x] CQRS-lite: the commands go aggregate → repository → `Result`. `findSessionUser` goes through `UserQueries`. No screen-specific repository methods.
+- [x] Types come from `@rrhh/contracts` (`invitationRoutes`, `SessionUserSchema.employeeId`), with nothing duplicated. The `InvitationIssued` command output matches the contract shape.
+- [x] Expected errors use `Result` plus stable codes (`INVITATION_NOT_VALID`, `EMPLOYEE_NOT_FOUND`, `EMPLOYEE_INACTIVE`, `EMPLOYEE_ALREADY_HAS_ACCESS`, `EMAIL_ALREADY_REGISTERED`). Token probing gets one uniform body.
+- [x] Time and IDs go through `Clock`/`IdGenerator`. Dates are UTC `timestamptz`. No money involved.
+- [x] The migration is new (`20260930165402_create_invitations`). Its SQL is only an ADD COLUMN, a CREATE TABLE and indexes. No DROP and no cross-schema FK.
+- [x] DI resolves (`container.test.ts` green). `employeesApi` and the identity registrations each appear once. Importing `EMPLOYEE_TERMINATED` into `identity.module.ts` through `@/modules/employees` (index) is allowed by `.dependency-cruiser.cjs`, which restricts only domain/application/http.
+- [x] No secrets. `.env.example` has only empty/default values. Fixtures are synthetic. The job payload is never logged: the worker logs only `job.name`/`jobId`, and pino-http does not log bodies.
+- [x] Deviations exist and are honest. Spot-checks: `InMemoryEventBus` does log rejected handlers (`in-memory-event-bus.ts:27-32`, `event handler failed`), and "listed but unchanged" matches the scope output.
+- [x] Docs: `docs/architecture.md` covers sensitive jobs and the first cross-module subscription. README rows and decisions 19-22 are added. No stale doc found (ADR 0012's "EMPLOYEE inert" still holds, since EMPLOYEE grants no permission).
+
+### Pass 2 — Findings
+
+**Medium**
+
+- **M1 — Activation racing with a termination can leave a terminated colaborador with an ACTIVE account that is never disabled.**
+  - Where: `apps/api/src/modules/identity/application/commands/activate-account.command.ts:73-107` together with `disable-terminated-employee.command.ts:35`.
+  - What fails: `ActivateAccount` checks that the employee is active (`:128`, via the directory, outside any lock), then runs argon2 (`:77`, about 100 ms or more), then commits the user, the accepted invitation and the EMPLOYEE role (`:97-107`). If `employees.employee.terminated` is published inside that window, `DisableTerminatedEmployee` runs `findByEmployeeId` → no user yet → returns `ok` at `:35` without doing anything. The activation then commits.
+  - Result: an ACTIVE `User` linked to a terminated colaborador, holding an active EMPLOYEE assignment. Nothing ever disables it, because the event was already consumed and there is no re-enable/disable endpoint. This breaks README decision 20 ("disabled at once").
+  - Related root cause: the invitation `accept` is persisted with an unconditional upsert (`prisma-invitation.repository.ts:37-44`, full snapshot), so a supersede committed concurrently (by a re-invite or by the baja) is overwritten back to `revokedAt: null` + `acceptedAt`. Nothing at commit time re-validates that the invitation is still pending.
+  - Reachability: not reachable over HTTP today, because no terminate command exists (Out of scope). It becomes live as soon as `employees` ships termination. The window includes the password hash, so it is not negligible.
+  - Suggested direction (the implementer decides): make acceptance conditional inside the transaction (an update `WHERE id AND accepted_at IS NULL AND revoked_at IS NULL`, or `SELECT … FOR UPDATE` on the invitation, with failure → `InvitationNotValidError`). Also have `DisableTerminatedEmployee` supersede pending invitations for the employee **even when no user exists yet** (see L2), so that one of the two transactions always sees the other.
+  - Certainty: confirmed by reading the code; not reproduced by a test (it needs interleaving).
+
+**Low**
+
+- **L1 — The plan's file lists do not match the diff, so `pnpm plans:scope` fails.**
+  - Where: plan step 7 (`<timestamp>` still literal) and steps 1/5/9, which lack the 9 files listed in Deviations.
+  - Scenario: the scope gate stays red for this plan, and any later phase (repair, verify) cannot use it as a clean signal.
+  - Fix (plan text only): replace `<timestamp>` with `20260930165402` in step 7, and add the 9 test/fixture files and `log-in.command.ts` to the file lists as deviation entries.
+- **L2 — The "supersede pending invitations" branch of `DisableTerminatedEmployee` is effectively dead, and the case where it matters is skipped.**
+  - Where: `disable-terminated-employee.command.ts:35-49`.
+  - A linked colaborador cannot normally have a pending invitation: `InviteEmployee` rejects linked employees, and activation accepts the only pending one. An unlinked colaborador with a pending invitation, which is the common "invited, not yet activated" case, returns early at `:35`, so their invitation stays pending. The test `disable-terminated-employee.command.test.ts:134-142` cements this.
+  - Today `ActivateAccount` re-checks `active` (`:128`), so the leftover token is rejected and this is not exploitable alone. It does mean the acceptance criterion "supersedes pending invitations" is only met in a state the flows cannot produce, and it is part of what makes M1 possible.
+  - The plan's own step 5 text says "none: ok (no-op)", so this is a plan-literal vs. intent mismatch. The fix can go through M1's repair; the tester would then update the no-op test.
+- **L3 — Two concurrent `InviteEmployee` calls for the same colaborador (or email) both commit a pending invitation.**
+  - Where: `invite-employee.command.ts:98-110` (same pattern in `invite-external.command.ts:73-79`). The supersede is read-then-write with no lock or uniqueness.
+  - Scenario: a double-clicked "Invitar" sends two emails with two valid tokens.
+  - Impact is contained. The first activation links the account, and the second token then fails with 409 `EMPLOYEE_ALREADY_HAS_ACCESS`, or with `EMAIL_ALREADY_REGISTERED` for an external invitation. There is no duplicate user or role.
+  - Informational; fix only if M1's repair adds an invitation lock anyway.
+
+**Notes for the verifier (not findings)**
+
+- The acceptance criterion names `pnpm dev:worker`, but the root `package.json` has no such script. Use `pnpm --filter @rrhh/api dev:worker`.
+- The two NOT CONFIRMED items (Mailpit delivery, sensitive job not kept in Valkey) are still for the verifier.
+
+Result: M1 requires a code change, so the status stays `review` (back to implementing via the main session). Count: 0 high, 1 medium, 3 low.
+
 ## Verification
