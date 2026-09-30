@@ -36,7 +36,6 @@ class RollbackSpyTransactionRunner implements TransactionRunner {
   }
 }
 
-/** Simula que otra transacción (baja, nueva invitación) cerró la invitación antes del commit. */
 /** Simula la baja que anula la invitación justo después de que la activación la leyó. */
 class RacingInvitationRepository extends InMemoryInvitationRepository {
   constructor(private readonly now: () => Date) {

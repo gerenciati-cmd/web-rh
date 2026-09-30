@@ -1,5 +1,5 @@
 ---
-status: review
+status: verify
 module: identity
 min_implementer: mid
 depends_on: ['002']
@@ -387,5 +387,36 @@ No interleaving leaves an ACTIVE user for a terminated colaborador. The lock ord
 Result: M1, L2 and L1 are resolved. The two new lows need no code change for this plan. Count for round 2: 0 high, 0 medium, 2 low (non-blocking). Status → `verify`.
 
 **Repair decision (2026-09-30, user):** fix L4 and L5 before verifying. Repaired inline by the main session (see Deviations › Repair round 2); status verify → implementing → testing → review for a short round 3.
+
+### Round 3 (repair of L4, L5; diff 28d0d70..825465f)
+
+**Pass 1 — Checklist 4/4**
+
+- [x] `pnpm plans:scope`: all 82 changed files declared; hot files unchanged in this round.
+- [x] `pnpm check` green (format, typecheck, lint, tests, arch, plans, harness).
+- [x] Fake matches the port. `in-memory-invitation.repository.ts` returns copies from all four
+      reads and stores a copy on `save`. `save` returns `false` without writing when the stored
+      invitation has `acceptedAt` or `revokedAt`, and inserts when the id is absent. This is the
+      same guard as `prisma-invitation.repository.ts:42-51` (`updateMany where acceptedAt: null,
+revokedAt: null`, then `false` if the row exists, else `create`). Neither adapter checks
+      expiry, so they agree there too. A shallow snapshot copy is safe: `Invitation` replaces
+      `props` and never mutates it in place (`domain/invitation.ts:103-106`).
+- [x] Tests not weakened. The seven re-read assertions check the same property as before
+      (`revokedAt` / `isPendingAt`), now on the stored invitation by id instead of the aliased
+      object. The race test is stronger: it keeps the previous four assertions
+      (`INVITATION_NOT_VALID`, one rollback, no role, no events). The `false` now comes from the
+      fake's real guard (the invitation is superseded after the read) instead of a stub that always
+      returned `false`. It also asserts the stored invitation stays superseded and not accepted. The
+      HTTP test `tests/invitations.test.ts:376-383` already replaces the stored row through
+      `Invitation.restore`, so the copy semantics do not affect it.
+
+**Pass 2 — Findings**
+
+- **L4 resolved. L5 resolved** (`disable-terminated-employee.command.ts:23-27`).
+- **Nit (non-blocking):** `activate-account.command.test.ts:39-40` has two stacked docblocks. The
+  first one ("Simula que otra transacción … cerró la invitación antes del commit.") is left over
+  from the removed `LosingInvitationRepository` and could be deleted. Cosmetic only.
+
+Count for round 3: 0 high, 0 medium, 0 low, 1 nit. Status → `verify`.
 
 ## Verification
