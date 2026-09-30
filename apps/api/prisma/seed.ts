@@ -11,7 +11,7 @@ import { createLogger } from '@/infrastructure/logging/pino-logger';
 const env = loadEnv();
 const logger = createLogger(env);
 const container = buildContainer(env, logger);
-const { createCompany, registerEmployee, listCompanies } = container.cradle;
+const { createCompany, registerEmployee, listCompanies, registerUser } = container.cradle;
 
 // Identificadores sintéticos válidos (uno por país soportado, ADR 0009).
 const companies = [
@@ -56,6 +56,17 @@ if (holding) {
     if (result.ok) logger.info({ employee: employee.email }, 'colaborador registrado');
     else if (result.error.code !== 'EMPLOYEE_ALREADY_EXISTS') throw result.error;
   }
+}
+
+if (env.SEED_USER_PASSWORD) {
+  const result = await registerUser.execute({
+    email: 'admin@example.com',
+    password: env.SEED_USER_PASSWORD,
+  });
+  if (result.ok) logger.info({ email: 'admin@example.com' }, 'usuario creado');
+  else if (result.error.code !== 'USER_ALREADY_EXISTS') throw result.error;
+} else {
+  logger.info('SEED_USER_PASSWORD no está definida: se omite la creación del usuario admin');
 }
 
 await container.dispose();

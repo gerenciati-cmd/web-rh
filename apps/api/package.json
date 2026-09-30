@@ -29,6 +29,7 @@
     "@rrhh/domain": "workspace:*",
     "awilix": "13.0.5",
     "bullmq": "6.3.9",
+    "cookie-parser": "1.4.7",
     "cors": "2.8.6",
     "express": "5.2.1",
     "helmet": "8.3.0",
@@ -40,6 +41,7 @@
   "devDependencies": {
     "@rrhh/eslint-config": "workspace:*",
     "@rrhh/tsconfig": "workspace:*",
+    "@types/cookie-parser": "1.4.10",
     "@types/cors": "2.8.19",
     "@types/express": "5.0.6",
     "@types/node": "catalog:",

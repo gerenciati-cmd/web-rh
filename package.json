@@ -4,7 +4,7 @@
   "description": "Plataforma de RRHH de APS Holding (web, m\u00f3vil y API)",
   "packageManager": "pnpm@12.6.0",
   "engines": {
-    "node": ">=24",
+    "node": ">=24.7",
     "pnpm": ">=12"
   },
   "scripts": {

@@ -1,16 +1,33 @@
 import { asValue } from 'awilix';
 
-import { loadEnv } from '@/config/env';
+import { loadEnv, type Env } from '@/config/env';
 import { buildContainer } from '@/container';
 import { createApp } from '@/http/app';
 import { createLogger } from '@/infrastructure/logging/pino-logger';
 import type { EmployeeQueries } from '@/modules/employees/application/queries/employee.queries';
 import { InMemoryEmployeeRepository } from '@/modules/employees/infrastructure/in-memory/in-memory-employee.repository';
+import { FakePasswordHasher } from '@/modules/identity/infrastructure/in-memory/fake-password-hasher';
+import { InMemoryLoginThrottleRepository } from '@/modules/identity/infrastructure/in-memory/in-memory-login-throttle.repository';
+import { InMemorySessionRepository } from '@/modules/identity/infrastructure/in-memory/in-memory-session.repository';
+import { InMemoryUserQueries } from '@/modules/identity/infrastructure/in-memory/in-memory-user.queries';
+import { InMemoryUserRepository } from '@/modules/identity/infrastructure/in-memory/in-memory-user.repository';
 import {
   InMemoryCompanyQueries,
   InMemoryCompanyRepository,
   InMemoryCompanyStore,
 } from '@/modules/organization/infrastructure/in-memory/in-memory-company.store';
+import type { TransactionRunner } from '@/shared/application/ports';
+
+/**
+ * `LogIn` (plan 001, paso 15/H3) usa `transactionRunner` para el row lock del throttle de login;
+ * el real abre una transacción de Postgres de verdad, que aquí no hay (persistencia en memoria
+ * para el resto del contenedor de test), así que se reemplaza por un no-op.
+ */
+class NoopTransactionRunner implements TransactionRunner {
+  run<T>(work: () => Promise<T>): Promise<T> {
+    return work();
+  }
+}
 
 export const testEnv = loadEnv({
   NODE_ENV: 'test',
@@ -19,10 +36,11 @@ export const testEnv = loadEnv({
 });
 
 /** Contenedor real con los adaptadores de persistencia reemplazados por memoria. */
-export function buildTestContainer() {
-  const container = buildContainer(testEnv, createLogger(testEnv));
+export function buildTestContainer(env: Env = testEnv) {
+  const container = buildContainer(env, createLogger(env));
   const companies = new InMemoryCompanyStore();
   const employees = new InMemoryEmployeeRepository();
+  const users = new InMemoryUserRepository();
 
   const employeeQueries: EmployeeQueries = {
     listDirectory: ({ companyId, page, pageSize }) => {
@@ -49,6 +67,12 @@ export function buildTestContainer() {
     companyQueries: asValue(new InMemoryCompanyQueries(companies)),
     employeeRepository: asValue(employees),
     employeeQueries: asValue(employeeQueries),
+    userRepository: asValue(users),
+    sessionRepository: asValue(new InMemorySessionRepository()),
+    loginThrottleRepository: asValue(new InMemoryLoginThrottleRepository()),
+    userQueries: asValue(new InMemoryUserQueries({ userRepository: users })),
+    passwordHasher: asValue(new FakePasswordHasher()),
+    transactionRunner: asValue(new NoopTransactionRunner()),
   });
 
   return container;
