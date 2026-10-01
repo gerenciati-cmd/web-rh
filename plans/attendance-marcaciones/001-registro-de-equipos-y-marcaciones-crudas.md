@@ -338,28 +338,28 @@ PrismaPunchRepository`, `attendanceQueries: PrismaAttendanceQueries`, `registerD
 
 ## Acceptance criteria
 
-- [ ] `POST /api/v1/attendance/devices` as HOLDING_ADMIN with `{ serialNumber, name, timeZone:
+- [x] `POST /api/v1/attendance/devices` as HOLDING_ADMIN with `{ serialNumber, name, timeZone:
 'America/Cancun' }` → 201 `{ id }`; same serial again → 409 `DEVICE_ALREADY_REGISTERED`;
       `timeZone: 'Mars/Olympus'` → 400; as HR → 403.
-- [ ] `GET /iclock/cdata?SN=<registered>` answers the options block as today;
+- [x] `GET /iclock/cdata?SN=<registered>` answers the options block as today;
       `SN=<unregistered>` → the same rejection as today and the warn log
       `zkteco: dispositivo no autorizado`.
-- [ ] `POST /iclock/cdata?SN=<registered>&table=ATTLOG` with two ATTLOG lines → `OK: 2`; the same
+- [x] `POST /iclock/cdata?SN=<registered>&table=ATTLOG` with two ATTLOG lines → `OK: 2`; the same
       body again → `OK: 2` and `attendance.punches` still has 2 rows; the log shows
       `zkteco: marcaciones guardadas` with `inserted: 2` then `inserted: 0, duplicates: 2`.
-- [ ] A stored punch with `deviceTime 2026-09-28 12:17:29` on an `America/Cancun` device has
+- [x] A stored punch with `deviceTime 2026-09-28 12:17:29` on an `America/Cancun` device has
       `occurred_at = 2026-09-28 17:17:29+00` and `device_local_time = '2026-09-28 12:17:29'`.
-- [ ] An ATTLOG line with an impossible date (`2026-02-30 08:00:00`) is not stored, is logged as
+- [x] An ATTLOG line with an impossible date (`2026-02-30 08:00:00`) is not stored, is logged as
       `zkteco: marcación rechazada`, and still counts in `OK: <n>`.
-- [ ] `GET /api/v1/attendance/devices` (HOLDING_ADMIN or HR) lists the device with a non-null
+- [x] `GET /api/v1/attendance/devices` (HOLDING_ADMIN or HR) lists the device with a non-null
       `lastSeenAt` after a contact and `lastPunchAt` after an ATTLOG push; anonymous → 401.
-- [ ] `GET /api/v1/attendance/punches` as HOLDING_ADMIN lists punches newest first, filterable by
+- [x] `GET /api/v1/attendance/punches` as HOLDING_ADMIN lists punches newest first, filterable by
       `deviceId`, `pin`, `from`, `to`; as HR → 403.
-- [ ] Pushes of `OPLOG`/`USER`/`BIODATA` are logged as today and write no rows.
+- [x] Pushes of `OPLOG`/`USER`/`BIODATA` are logged as today and write no rows.
 - [ ] The real SenseFace 2A, once registered, is shown with a recent `lastSeenAt` and a real
       marcación appears in `/attendance/punches` (verifier with the user and the device; NOT
       VERIFIED if unavailable).
-- [ ] `/api/v1/docs` (Scalar) shows the three new endpoints.
+- [x] `/api/v1/docs` (Scalar) shows the three new endpoints.
 
 ## Test layers required
 
@@ -530,3 +530,41 @@ after they are resolved the main session can move the plan to `verify` without a
 Plan to `verify`.
 
 ## Verification
+
+Verifier (main session, inline), 2026-10-01, on `660e049`.
+
+**Suites** (run after the review repair, same code):
+
+- `pnpm check`: green. api `588 passed | 3 skipped`, contracts `158 passed`, domain
+  `75 passed`; `no dependency violations found (246 modules…)`; `plans:lint` ✔.
+- `pnpm test:integration`: `Tests 130 passed (130)`.
+- `pnpm plans:scope`: `✔ Todos los cambios están dentro del alcance del plan.`
+- Migrations: `pnpm --filter @rrhh/api db:deploy` → `No pending migrations to apply.`
+  (`20261001151824_create_attendance` already applied on the dev DB).
+
+**App running** (`pnpm dev:api`, listening on the `PORT` of the local `.env`, `3000`). `.env` was
+not read: three verification users were created through the real use cases
+(`verif-att-admin` HOLDING_ADMIN, `verif-att-hr` HR on APS Holding S.A. de C.V.,
+`verif-att-none`, all `@example.test`), then logged in with `client: mobile`. Requests from a
+scratchpad `fetch` script; fictitious serial `VERIFSN466451`. 20/20 checks passed:
+
+| Criterion                    | Observed                                                                                                                                            |
+| ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Register device              | admin 201 `{id}`; same serial 409 `DEVICE_ALREADY_REGISTERED`; `Mars/Olympus` 400 `VALIDATION_ERROR`; HR 403 `FORBIDDEN`                            |
+| Handshake                    | registered 200 `GET OPTION FROM: VERIFSN466451`; unregistered `NOREGISTRADO1` 403 `ERROR: dispositivo no autorizado` + warn log                     |
+| ATTLOG push and resend       | `OK: 2` then `OK: 2`; log `marcaciones guardadas` `inserted: 2, duplicates: 0` then `inserted: 0, duplicates: 2`; 2 rows in `psql`                  |
+| UTC conversion               | `psql`: pin 2 `2026-09-28 12:17:29` → `2026-09-28 17:17:29+00`, `verify_mode 1`; pin 3 `12:21:34` → `17:21:34+00`, `verify_mode 15`                 |
+| Impossible date `2026-02-30` | `OK: 1`; warn `marcación rechazada` `reason: "Fecha y hora del equipo inválida"`; `inserted: 0, rejected: 1`; still 2 rows                          |
+| Devices list                 | HR 200: `lastSeenAt=2026-10-01T21:51:06.689Z`, `lastPunchAt=2026-09-28T17:21:34.000Z`; `psql` `active t`, `time_zone America/Cancun`; anonymous 401 |
+| Punches list                 | admin 200 `total=2`, order `3,2` (newest first); `pin=3` → 1; `from/to` window → 1 (pin 3); HR 403 `FORBIDDEN`                                      |
+| OPERLOG push                 | `OK: 1`, logged `datos recibidos`, no `marcaciones guardadas`, punch count unchanged                                                                |
+| OpenAPI / Scalar             | `/api/v1/openapi.json` has `/attendance/devices` and `/attendance/punches`; `/api/v1/docs` 200                                                      |
+
+**NOT VERIFIED:** the real SenseFace 2A criterion. It needs the physical device registered with
+its serial and pointed at this API; to be driven by the user. Until then the plan stays `verify`.
+
+**Left in the dev DB** (seeded by this verification, not removed because deleting rows is
+blocked by the hooks): users `verif-att-*@example.test` with their role assignments, device
+`VERIFSN466451` and its 2 punches. Harmless synthetic data; the user may remove them.
+
+Result: **PASS** on every criterion exercisable without the device. Status stays `verify`.
