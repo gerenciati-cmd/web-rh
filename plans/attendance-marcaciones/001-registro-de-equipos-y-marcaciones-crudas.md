@@ -1,5 +1,5 @@
 ---
-status: review
+status: verify
 module: attendance
 min_implementer: mid
 depends_on: []
@@ -329,6 +329,13 @@ PrismaPunchRepository`, `attendanceQueries: PrismaAttendanceQueries`, `registerD
      "Today: device registry and raw marcaciones from ZKTeco ADMS."
    - Observable result: `pnpm check` (harness/plans checks) passes.
 
+9. **Test files and review repair of this plan** (declared for `pnpm plans:scope` after review
+   L1/L2; added by the main session, see Deviation 6)
+   - Files: `packages/domain/src/time-zone.test.ts` (create), `apps/api/src/modules/attendance/domain/device.test.ts` (create), `apps/api/src/modules/attendance/domain/punch.test.ts` (create), `apps/api/src/modules/attendance/application/commands/register-device.command.test.ts` (create), `apps/api/src/modules/attendance/application/queries/list-punches.query.test.ts` (create), `packages/contracts/src/attendance/device.contract.test.ts` (create), `packages/contracts/src/attendance/punch.contract.test.ts` (create), `packages/contracts/src/identity/access.contract.test.ts` (modify), `apps/api/tests/attendance.test.ts` (create), `apps/api/tests/integration/attendance/prisma-attendance.int.test.ts` (create), `apps/api/src/config/env.test.ts` (modify), `apps/api/src/modules/identity/application/session-authenticator.test.ts` (modify), `packages/contracts/src/openapi.test.ts` (modify), `docs/architecture.md` (modify)
+   - Do: nothing for the implementer (tests by the tester; the three count-only edits are
+     Deviation 2; `docs/architecture.md` legend is review L1).
+   - Observable result: `pnpm plans:scope` passes.
+
 ## Acceptance criteria
 
 - [ ] `POST /api/v1/attendance/devices` as HOLDING_ADMIN with `{ serialNumber, name, timeZone:
@@ -394,6 +401,9 @@ Implemented 2026-10-01. All steps 1-8 done. Cosmetic deviations (fixed forward, 
 5. **Stale doc left untouched**: `docs/adr/0008-endpoints-de-dispositivos-fuera-de-contratos.md:24`
    still says the device allowlist is `ZKTECO_ALLOWED_SERIALS` (out of the plan's scope). See
    finding `plans/hallazgos/` (filed).
+6. **Step 9 added after review** (main session): declares the test files and
+   `docs/architecture.md` so `plans:scope` can check them (review L2), and records the L1/L3
+   repairs. No plan behavior changed.
 
 Commands: `pnpm check` green; `pnpm test:integration` green (115 tests, existing suites; the
 attendance Prisma adapters have no integration tests yet, that is the tester's job);
@@ -434,5 +444,89 @@ ejercitable en local está implementado y se confirmó por ejecución. Lo que re
 | Marcación real del SenseFace 2A visible tras registrar el equipo                    | criterio de aceptación                 | —           | —                                                                                        | NOT CONFIRMED (requiere el equipo físico; verifier) |
 
 ## Review findings
+
+Reviewer, 2026-10-01. Diff `main...HEAD` (07fd79a, 24e4730, 686353c), working tree clean.
+
+**Checklist: 11/13** (2 failed, both bookkeeping/docs; no product-code failure).
+
+- [ ] `pnpm plans:scope`: **FAILS** (exit 1), 13 files flagged. 3 are the documented Deviation 2
+      (`env.test.ts`, `session-authenticator.test.ts`, `openapi.test.ts`). The other 10 are the
+      tester's new/modified test files (`time-zone.test.ts`, `device.test.ts`, `punch.test.ts`,
+      `register-device.command.test.ts`, `list-punches.query.test.ts`, `device.contract.test.ts`,
+      `punch.contract.test.ts`, `access.contract.test.ts`, `tests/attendance.test.ts`,
+      `tests/integration/attendance/prisma-attendance.int.test.ts`): the plan has no "Test files"
+      step declaring them (plans `identity-acceso/005` and `006` do). All 13 reviewed by hand: they
+      are legit tests for this plan. Hot files are add-only (`contracts/src/index.ts`,
+      `test-app.ts`, `modules.json` summary line as planned); `schema.prisma` also edits the
+      `schemas` line, as the `db-change` recipe requires.
+- [x] `pnpm check` green (turbo 19/19 tasks, arch, plans, harness, quality).
+- [x] `pnpm test:integration` green (12 files, 130 tests, includes the new attendance suite).
+- [x] Business rules in `domain/` (`Device.register`/`markSeen`, `Punch.fromDevice`,
+      `localDateTimeToUtc`); router and mappers have none.
+- [x] CQRS-lite: `RegisterDevice` → aggregate → repository → `Result`; reads via
+      `AttendanceQueries` returning contract DTOs; repositories have no screen methods.
+- [x] Types from `@rrhh/contracts`; nothing duplicated.
+- [x] Expected errors are `Result` + `DEVICE_ALREADY_REGISTERED` / `DEVICE_NOT_ALLOWED`.
+- [x] Dates UTC (`timestamptz`), time and ids via `Clock`/`IdGenerator`. No money involved.
+- [x] New migration `20261001151824_create_attendance`: creates schema, two tables, indexes, a
+      same-module FK. No `DROP`, no cross-module FK.
+- [x] DI resolves (`container.test.ts` green); `attendanceModule` registered once.
+- [x] No secrets, `.env` contents or real personal data (fictitious `TESTSN001`, PINs).
+- [x] Deviations honest: spot-checked item 2 (`role-catalog.test.ts` 10 → 12,
+      `session-authenticator.test.ts` 5 → 6 twice, `openapi.test.ts` 19 → 22, the env describe
+      removed) against the diff; matches.
+- [ ] Docs: **stale** `docs/architecture.md:25` (see L1). Runbook and `modules.json` updated;
+      ADR 0008 already filed as a hallazgo.
+
+### Findings
+
+**Critical / High / Medium:** none.
+
+**L1 (Low, docs, needs a change): `docs/architecture.md:25` still marks attendance as "† = solo
+sonda ZKTeco (log)".** After this plan the module persists devices and ATTLOG punches, so the
+diagram legend is wrong. Scenario: a reader of the architecture doc assumes attendance writes
+nothing to Postgres and that there is no `attendance` schema. The file is not in the plan's
+`Files:` lists; resolution needs a main-session call: add it to Step 8 as a deviation and fix the
+legend, or file it as a hallazgo next to the ADR 0008 one.
+
+**L2 (Low, plan bookkeeping, no code change): `pnpm plans:scope` fails on the 10 undeclared test
+files** listed in the checklist. Scenario: the scope gate stays red for this plan and later
+phases. Resolution: main session adds a "Test files of this plan" step (same shape as
+`identity-acceso/006` step 3) or a Deviations note listing them. No test needs changes.
+
+**L3 (Low, non-blocking, no change required by this plan): `listDevices` orders only by `name`**
+(`apps/api/src/modules/attendance/infrastructure/prisma-attendance.queries.ts:16`;
+in-memory `in-memory-attendance.store.ts:68` uses `localeCompare`). Scenario: two checadores
+with the same name ("Entrada") on a page boundary can repeat or vanish between pages, because
+Postgres gives no stable order for ties; Postgres collation and `localeCompare` can also order
+mixed-case names differently, so the http and integration tests could disagree. Follows the
+plan as written (`name asc`). Low impact with a handful of devices; an `id` tiebreak would fix
+it. Recorded for awareness; the main session decides whether it goes into this repair or a
+follow-up.
+
+Bug hunt otherwise clean: traced contract → `RegisterDevice` → `Device.register` → upsert (unique
+race mapped to 409); `/iclock` contact/push → registry lookup (unregistered and inactive both
+403 + warn) → `Punch.fromDevice` (UTC via two-pass offset; impossible dates rejected, still
+counted in `OK: n`) → `createMany skipDuplicates` (unique index `(device_id, pin,
+device_local_time)` makes the resend from `Stamp=None` idempotent, including duplicates inside one
+batch, since `ON CONFLICT DO NOTHING` skips them) → `markSeen` throttled write. Large batches:
+Prisma 7 runtime chunks by bind-value limit (`maxBindValues` present in
+`@prisma/client/runtime`), so a big history push does not exceed Postgres' 65535 params.
+Tenancy: `listPunches` needs a holding-wide grant (route 403 for HR; company-scoped grants get an
+empty page); `listDevices` visible to HR of any company, as README decision 5 intends.
+
+Status stays `review` because L1 and L2 need edits (doc + plan); neither touches product code, so
+after they are resolved the main session can move the plan to `verify` without a new testing pass.
+
+### Resolution (main session, 2026-10-01)
+
+- **L1 fixed**: `docs/architecture.md:25` legend now reads "† = solo marcaciones crudas ZKTeco".
+- **L2 fixed**: Step 9 declares the tester's files, the three Deviation 2 tests and
+  `docs/architecture.md`; `pnpm plans:scope` passes.
+- **L3 fixed**: `listDevices` orders by `name`, then `id`, in
+  `prisma-attendance.queries.ts` and `in-memory-attendance.store.ts` (comment explains why).
+  Product change of one line per adapter; existing http and integration suites rerun green.
+
+Plan to `verify`.
 
 ## Verification

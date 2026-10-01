@@ -65,7 +65,7 @@ export class InMemoryAttendanceQueries implements AttendanceQueries {
 
   listDevices({ page, pageSize }: PageQuery): Promise<Page<DeviceDto>> {
     const all = [...this.store.devices.values()]
-      .sort((a, b) => a.name.localeCompare(b.name))
+      .sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id))
       .map((device) => this.toDeviceDto(device));
     const items = all.slice((page - 1) * pageSize, page * pageSize);
     return Promise.resolve({ items, total: all.length, page, pageSize });

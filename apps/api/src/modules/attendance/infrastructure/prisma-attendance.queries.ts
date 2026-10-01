@@ -13,7 +13,8 @@ export class PrismaAttendanceQueries implements AttendanceQueries {
     const db = this.deps.database.client;
     const [rows, total] = await Promise.all([
       db.attendanceDevice.findMany({
-        orderBy: { name: 'asc' },
+        // `id` desempata: con nombres repetidos el orden debe ser estable entre páginas.
+        orderBy: [{ name: 'asc' }, { id: 'asc' }],
         skip: (page - 1) * pageSize,
         take: pageSize,
       }),
