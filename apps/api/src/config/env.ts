@@ -21,16 +21,6 @@ const EnvSchema = z.object({
     ),
   DATABASE_URL: z.url(),
   REDIS_URL: z.url().default('redis://localhost:6379'),
-  // Números de serie de los equipos ZKTeco autorizados a empujar datos por ADMS. Vacío = ninguno.
-  ZKTECO_ALLOWED_SERIALS: z
-    .string()
-    .default('')
-    .transform((value) =>
-      value
-        .split(',')
-        .map((serial) => serial.trim())
-        .filter(Boolean),
-    ),
   // Sesiones y login: valores de desarrollo (plan 001, README decisión 5).
   SESSION_WEB_IDLE_MINUTES: z.coerce.number().int().positive().default(30),
   SESSION_WEB_ABSOLUTE_HOURS: z.coerce.number().int().positive().default(12),

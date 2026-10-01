@@ -5,7 +5,8 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { createApp } from '@/http/app';
 import { RecordDeviceContact } from '@/modules/attendance/application/commands/record-device-contact.command';
 import { RecordDevicePush } from '@/modules/attendance/application/commands/record-device-push.command';
-import { RecordingLogger } from '@/shared/testing/fakes';
+import { Device, type DeviceId } from '@/modules/attendance/domain/device';
+import { FixedClock, RecordingLogger, SequentialIdGenerator } from '@/shared/testing/fakes';
 
 import { buildTestContainer, signInAs } from './test-app';
 
@@ -17,25 +18,40 @@ import { buildTestContainer, signInAs } from './test-app';
  * El logger de pino-http (`container.cradle.logger`) necesita `.child(...)`, que
  * `RecordingLogger` no implementa, así que en vez de reemplazar la clave `logger` del cradle se
  * reemplazan los casos de uso del módulo con instancias que reciben el logger de prueba
- * directamente (mismo patrón que `allowedDeviceSerials`, registrado por separado para tests).
+ * directamente. Los equipos autorizados son los registrados en el repositorio en memoria.
  */
 describe('ADMS /iclock', () => {
   let app: ReturnType<typeof createApp>;
   let logger: RecordingLogger;
 
-  function setUp(allowedDeviceSerials: readonly string[]) {
+  async function setUp(registeredSerials: readonly string[]) {
     const container = buildTestContainer();
     logger = new RecordingLogger();
+    const { deviceRepository, punchRepository } = container.cradle;
+    const clock = new FixedClock();
+    const idGenerator = new SequentialIdGenerator();
+    for (const serialNumber of registeredSerials) {
+      const device = Device.register({
+        id: idGenerator.next() as DeviceId,
+        serialNumber,
+        name: `Equipo ${serialNumber}`,
+        timeZone: 'America/Cancun',
+        now: clock.now(),
+      });
+      if (!device.ok) throw device.error;
+      await deviceRepository.save(device.value);
+    }
     container.register({
-      allowedDeviceSerials: asValue(allowedDeviceSerials),
-      recordDeviceContact: asValue(new RecordDeviceContact({ logger, allowedDeviceSerials })),
-      recordDevicePush: asValue(new RecordDevicePush({ logger, allowedDeviceSerials })),
+      recordDeviceContact: asValue(new RecordDeviceContact({ logger, deviceRepository, clock })),
+      recordDevicePush: asValue(
+        new RecordDevicePush({ logger, deviceRepository, punchRepository, idGenerator, clock }),
+      ),
     });
     return createApp(container);
   }
 
-  beforeEach(() => {
-    app = setUp(['TESTSN001']);
+  beforeEach(async () => {
+    app = await setUp(['TESTSN001']);
   });
 
   it('responde el bloque de opciones al handshake y registra el contacto', async () => {
@@ -163,7 +179,7 @@ describe('ADMS /iclock', () => {
     expect(Object.keys(fields)).toEqual(['DeviceName', 'MAC', 'Vendor', 'FWVersion']);
   });
 
-  it('responde 403 y registra warn si el SN no está en la lista permitida', async () => {
+  it('responde 403 y registra warn si el SN no está registrado', async () => {
     const response = await request(app).get('/iclock/cdata?SN=OTRO&options=all');
 
     expect(response.status).toBe(403);
@@ -173,10 +189,10 @@ describe('ADMS /iclock', () => {
     );
   });
 
-  it('responde 403 para cualquier SN si la lista permitida está vacía', async () => {
-    const emptyAllowlistApp = setUp([]);
+  it('responde 403 para cualquier SN si no hay equipos registrados', async () => {
+    const emptyRegistryApp = await setUp([]);
 
-    const response = await request(emptyAllowlistApp).get('/iclock/cdata?SN=TESTSN001&options=all');
+    const response = await request(emptyRegistryApp).get('/iclock/cdata?SN=TESTSN001&options=all');
 
     expect(response.status).toBe(403);
   });

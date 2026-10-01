@@ -12,3 +12,4 @@ export * from './national-id/validators';
 export * from './tax-id/tax-id';
 export * from './tax-id/validators';
 export * from './result';
+export * from './time-zone';

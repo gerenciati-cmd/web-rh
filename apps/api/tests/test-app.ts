@@ -5,6 +5,12 @@ import { loadEnv, type Env } from '@/config/env';
 import { buildContainer } from '@/container';
 import { createApp } from '@/http/app';
 import { createLogger } from '@/infrastructure/logging/pino-logger';
+import {
+  InMemoryAttendanceQueries,
+  InMemoryAttendanceStore,
+  InMemoryDeviceRepository,
+  InMemoryPunchRepository,
+} from '@/modules/attendance/infrastructure/in-memory/in-memory-attendance.store';
 import type { EmployeeQueries } from '@/modules/employees/application/queries/employee.queries';
 import { InMemoryEmployeeRepository } from '@/modules/employees/infrastructure/in-memory/in-memory-employee.repository';
 import type { CompanyDirectory } from '@/modules/identity/application/ports/company-directory';
@@ -46,6 +52,7 @@ export const testEnv = loadEnv({
 export function buildTestContainer(env: Env = testEnv) {
   const container = buildContainer(env, createLogger(env));
   const companies = new InMemoryCompanyStore();
+  const attendance = new InMemoryAttendanceStore();
   const employees = new InMemoryEmployeeRepository();
   const users = new InMemoryUserRepository();
   const roleAssignments = new InMemoryRoleAssignmentRepository({ userRepository: users });
@@ -98,6 +105,9 @@ export function buildTestContainer(env: Env = testEnv) {
     companyQueries: asValue(new InMemoryCompanyQueries(companies)),
     employeeRepository: asValue(employees),
     employeeQueries: asValue(employeeQueries),
+    deviceRepository: asValue(new InMemoryDeviceRepository(attendance)),
+    punchRepository: asValue(new InMemoryPunchRepository(attendance)),
+    attendanceQueries: asValue(new InMemoryAttendanceQueries(attendance)),
     userRepository: asValue(users),
     sessionRepository: asValue(new InMemorySessionRepository()),
     loginThrottleRepository: asValue(new InMemoryLoginThrottleRepository()),

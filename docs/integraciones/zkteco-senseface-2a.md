@@ -5,14 +5,21 @@ Runbook de la sonda del módulo `attendance`
 
 ## Qué hace y qué no
 
-El API atiende el protocolo push ADMS del equipo y **solo escribe en el log** lo que recibe:
-handshake, marcaciones (`ATTLOG`), operaciones y usuarios (`OPERLOG`), biometría (`BIODATA`,
-`BIOPHOTO`, `USERPIC`) y datos del equipo (`options`).
+El API atiende el protocolo push ADMS del equipo: handshake, marcaciones (`ATTLOG`),
+operaciones y usuarios (`OPERLOG`), biometría (`BIODATA`, `BIOPHOTO`, `USERPIC`) y datos del
+equipo (`options`).
 
-- No guarda nada en base de datos.
+- Solo atiende equipos **registrados** (`POST /api/v1/attendance/devices`, solo HOLDING_ADMIN) y
+  activos; cualquier otro recibe 403.
+- Las marcaciones `ATTLOG` se guardan sin duplicados (el equipo reenvía su historial en cada
+  handshake), con la hora local tal como llegó y su instante UTC, calculado con la zona horaria
+  del equipo registrado.
+- Las demás tablas (`OPERLOG`, `BIODATA`, `options`…) siguen **solo en el log**.
+- El estado de cada equipo (último contacto, última marcación) se consulta con
+  `GET /api/v1/attendance/devices`; las marcaciones, con `GET /api/v1/attendance/punches`
+  (solo HOLDING_ADMIN).
 - No envía comandos al equipo: `getrequest` siempre responde `OK`.
 - No asocia el PIN a un colaborador.
-- No interpreta la hora. El equipo manda su hora local sin desfase; en Cancún es UTC−5 todo el año.
 - Plantillas, fotos (`Tmp`, `Content`), nombres, claves y tarjetas **nunca** aparecen en el log:
   salen como `[redactado:<largo>]`.
 
@@ -22,8 +29,17 @@ SenseFace 2A, firmware `ZAM70-NF24HA-Ver3.3.12`, PushVersion `Ver 3.1.2S-2025061
 
 ## Configuración
 
-1. En tu `.env` local del API, define `ZKTECO_ALLOWED_SERIALS` con el número de serie del equipo.
-   Para varios, sepáralos por coma. Si queda vacío, se rechazan todos los equipos (403).
+1. Registra el equipo como HOLDING_ADMIN con su número de serie y su zona horaria IANA (la hora
+   local que manda el equipo se interpreta en esa zona; Cancún es `America/Cancun`):
+
+   ```sh
+   curl -X POST -H 'Content-Type: application/json' -H "Authorization: Bearer $TOKEN" \
+     -d '{"serialNumber":"TESTSN001","name":"Entrada principal","timeZone":"America/Cancun"}' \
+     http://localhost:3001/api/v1/attendance/devices
+   ```
+
+   Un serial ya registrado responde 409; un equipo no registrado recibe 403 en `/iclock`.
+
 2. Para ver cada registro, usa `LOG_LEVEL=debug`. En `info` solo se ve el resumen por envío.
 3. Levanta el API (`pnpm dev:api`). Escucha en `PORT` (3001 por defecto) en todas las interfaces.
 4. El equipo debe poder llegar a tu máquina: abre ese puerto TCP de entrada en el firewall,
@@ -36,8 +52,7 @@ SenseFace 2A, firmware `ZAM70-NF24HA-Ver3.3.12`, PushVersion `Ver 3.1.2S-2025061
 
 ## Simular el equipo con curl
 
-Usa un SN ficticio incluido en `ZKTECO_ALLOWED_SERIALS` (por ejemplo `TESTSN001`) y datos
-sintéticos:
+Usa un SN ficticio ya registrado (por ejemplo `TESTSN001`) y datos sintéticos:
 
 ```sh
 # Handshake: responde el bloque de opciones
@@ -60,7 +75,9 @@ curl 'http://localhost:3001/iclock/getrequest?SN=TESTSN001'
 | `zkteco: contacto del dispositivo`  | debug | consulta de comandos (cada ~10 s)                 |
 | `zkteco: datos recibidos`           | info  | cada envío: tabla, total y conteo por tipo        |
 | `zkteco: registro`                  | debug | cada registro interpretado y redactado            |
-| `zkteco: dispositivo no autorizado` | warn  | SN fuera de la allowlist                          |
+| `zkteco: marcaciones guardadas`     | info  | tras un `ATTLOG`: recibidas, nuevas y duplicadas  |
+| `zkteco: marcación rechazada`       | warn  | línea `ATTLOG` con PIN o fecha inválidos          |
+| `zkteco: dispositivo no autorizado` | warn  | SN no registrado o equipo inactivo                |
 
 Si aparece un contacto `kind: 'unknown'`, el firmware usó una ruta que la sonda no conoce:
 anótala para el siguiente plan.

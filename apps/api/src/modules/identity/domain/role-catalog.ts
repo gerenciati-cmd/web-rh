@@ -19,6 +19,9 @@ export const ROLE_DEFINITIONS: Readonly<Record<Role, RoleDefinition>> = {
       'organization.companies:read',
       'employees:read',
       'employees:register',
+      // Solo el estado de los checadores: las marcaciones crudas no tienen empresa hasta el plan 002
+      // (README de attendance-marcaciones, decisión 5), así que RRHH no recibe `attendance.punches:read`.
+      'attendance.devices:read',
       'identity.users:invite',
       'identity.users:reset-password',
     ],

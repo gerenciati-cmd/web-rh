@@ -16,7 +16,7 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  schemas  = ["organization", "employees", "identity"]
+  schemas  = ["organization", "employees", "identity", "attendance"]
 }
 
 // ── Módulo: organization ────────────────────────────────────────────────────
@@ -190,4 +190,40 @@ model LoginThrottle {
 
   @@map("login_throttles")
   @@schema("identity")
+}
+
+// ── Módulo: attendance ──────────────────────────────────────────────────────
+
+model AttendanceDevice {
+  id           String            @id @db.Uuid
+  serialNumber String            @unique @map("serial_number") @db.VarChar(64)
+  name         String            @db.VarChar(100)
+  timeZone     String            @map("time_zone") @db.VarChar(64)
+  active       Boolean           @default(true)
+  registeredAt DateTime          @map("registered_at") @db.Timestamptz(3)
+  lastSeenAt   DateTime?         @map("last_seen_at") @db.Timestamptz(3)
+  punches      AttendancePunch[]
+
+  @@map("devices")
+  @@schema("attendance")
+}
+
+model AttendancePunch {
+  id              String           @id @db.Uuid
+  deviceId        String           @map("device_id") @db.Uuid
+  /// Mismo módulo: la FK al equipo está permitida.
+  device          AttendanceDevice @relation(fields: [deviceId], references: [id])
+  pin             String           @db.VarChar(32)
+  /// Hora de pared del equipo tal como llegó (`YYYY-MM-DD HH:mm:ss`), sin zona.
+  deviceLocalTime String           @map("device_local_time") @db.Char(19)
+  occurredAt      DateTime         @map("occurred_at") @db.Timestamptz(3)
+  status          String           @db.VarChar(16)
+  verifyMode      String           @map("verify_mode") @db.VarChar(16)
+  receivedAt      DateTime         @map("received_at") @db.Timestamptz(3)
+
+  @@unique([deviceId, pin, deviceLocalTime])
+  @@index([deviceId, occurredAt])
+  @@index([occurredAt])
+  @@map("punches")
+  @@schema("attendance")
 }

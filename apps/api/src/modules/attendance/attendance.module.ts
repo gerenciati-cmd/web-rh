@@ -1,14 +1,28 @@
-import { asClass, asFunction } from 'awilix';
+import { asClass } from 'awilix';
 
-import type { Env } from '@/config/env';
 import type { AppModule } from '@/shared/app-module';
 
 import { RecordDeviceContact } from './application/commands/record-device-contact.command';
 import { RecordDevicePush } from './application/commands/record-device-push.command';
+import { RegisterDevice } from './application/commands/register-device.command';
+import type { AttendanceQueries } from './application/queries/attendance.queries';
+import { ListDevices } from './application/queries/list-devices.query';
+import { ListPunches } from './application/queries/list-punches.query';
+import type { DeviceRepository } from './domain/device.repository';
+import type { PunchRepository } from './domain/punch.repository';
+import { createAttendanceRouter } from './http/attendance.router';
 import { createZktecoAdmsRouter } from './http/zkteco-adms.router';
+import { PrismaAttendanceQueries } from './infrastructure/prisma-attendance.queries';
+import { PrismaDeviceRepository } from './infrastructure/prisma-device.repository';
+import { PrismaPunchRepository } from './infrastructure/prisma-punch.repository';
 
 export interface AttendanceCradle {
-  allowedDeviceSerials: readonly string[];
+  deviceRepository: DeviceRepository;
+  punchRepository: PunchRepository;
+  attendanceQueries: AttendanceQueries;
+  registerDevice: RegisterDevice;
+  listDevices: ListDevices;
+  listPunches: ListPunches;
   recordDeviceContact: RecordDeviceContact;
   recordDevicePush: RecordDevicePush;
 }
@@ -16,13 +30,17 @@ export interface AttendanceCradle {
 export const attendanceModule: AppModule<AttendanceCradle> = {
   name: 'attendance',
   registrations: {
-    // Registro propio (no `env` directo) para que los tests lo reemplacen con `asValue`.
-    allowedDeviceSerials: asFunction(
-      ({ env }: { env: Env }) => env.ZKTECO_ALLOWED_SERIALS,
-    ).singleton(),
+    // Persistencia
+    deviceRepository: asClass(PrismaDeviceRepository).singleton(),
+    punchRepository: asClass(PrismaPunchRepository).singleton(),
+    attendanceQueries: asClass(PrismaAttendanceQueries).singleton(),
     // Casos de uso
+    registerDevice: asClass(RegisterDevice).singleton(),
+    listDevices: asClass(ListDevices).singleton(),
+    listPunches: asClass(ListPunches).singleton(),
     recordDeviceContact: asClass(RecordDeviceContact).singleton(),
     recordDevicePush: asClass(RecordDevicePush).singleton(),
   },
+  router: createAttendanceRouter,
   deviceRouter: createZktecoAdmsRouter,
 };

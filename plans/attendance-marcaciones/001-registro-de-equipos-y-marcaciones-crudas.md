@@ -1,5 +1,5 @@
 ---
-status: approved
+status: testing
 module: attendance
 min_implementer: mid
 depends_on: []
@@ -123,9 +123,7 @@ None. (Builds on `attendance-sonda-zkteco/001`, which is `done`.)
      `2026-09-28T17:17:29.000Z`; `isValidTimeZone('Mars/Olympus')` is `false`.
 
 2. **Permissions and role catalog**
-   - Files: `packages/domain/src/identity/access.ts` (modify),
-     `apps/api/src/modules/identity/domain/role-catalog.ts` (modify),
-     `apps/api/src/modules/identity/domain/role-catalog.test.ts` (modify)
+   - Files: `packages/domain/src/identity/access.ts` (modify), `apps/api/src/modules/identity/domain/role-catalog.ts` (modify), `apps/api/src/modules/identity/domain/role-catalog.test.ts` (modify)
    - Do: append to `PERMISSIONS` (after `employees:register`): `'attendance.devices:read'`,
      `'attendance.devices:manage'`, `'attendance.punches:read'`. Add only
      `'attendance.devices:read'` to HR's list, with a comment citing README decision 5 of
@@ -136,9 +134,7 @@ None. (Builds on `attendance-sonda-zkteco/001`, which is `done`.)
    - Observable result: `pnpm --filter @rrhh/api test role-catalog` passes.
 
 3. **Contracts**
-   - Files: `packages/contracts/src/attendance/device.contract.ts` (create),
-     `packages/contracts/src/attendance/punch.contract.ts` (create),
-     `packages/contracts/src/index.ts` (modify), `packages/contracts/openapi.json` (modify)
+   - Files: `packages/contracts/src/attendance/device.contract.ts` (create), `packages/contracts/src/attendance/punch.contract.ts` (create), `packages/contracts/src/index.ts` (modify), `packages/contracts/openapi.json` (modify)
    - Do, `device.contract.ts`:
      - `DeviceSchema` (`.meta({ id: 'AttendanceDevice' })`): `id: z.uuid()`,
        `serialNumber: z.string()`, `name: z.string()`, `timeZone: z.string()`,
@@ -180,11 +176,7 @@ attendancePunches: attendancePunchRoutes` to `apiRoutes`.
      `/attendance/devices` and `/attendance/punches`.
 
 4. **Domain: `Device` and `Punch`**
-   - Files: `apps/api/src/modules/attendance/domain/device.ts` (create),
-     `apps/api/src/modules/attendance/domain/device.repository.ts` (create),
-     `apps/api/src/modules/attendance/domain/punch.ts` (create),
-     `apps/api/src/modules/attendance/domain/punch.repository.ts` (create),
-     `apps/api/src/modules/attendance/domain/errors.ts` (modify)
+   - Files: `apps/api/src/modules/attendance/domain/device.ts` (create), `apps/api/src/modules/attendance/domain/device.repository.ts` (create), `apps/api/src/modules/attendance/domain/punch.ts` (create), `apps/api/src/modules/attendance/domain/punch.repository.ts` (create), `apps/api/src/modules/attendance/domain/errors.ts` (modify)
    - Do, `device.ts` (shape of `company.ts:27-66`):
      - `DeviceId = Id<'Device'>`; props `serialNumber`, `name`, `timeZone`, `active`,
        `registeredAt: Date`, `lastSeenAt: Date | null`.
@@ -222,12 +214,7 @@ Promise<{ inserted: number }> }` with a docblock: duplicates by
    - Observable result: `pnpm --filter @rrhh/api typecheck` passes.
 
 5. **Application: commands and queries**
-   - Files: `apps/api/src/modules/attendance/application/commands/register-device.command.ts` (create),
-     `apps/api/src/modules/attendance/application/commands/record-device-contact.command.ts` (modify),
-     `apps/api/src/modules/attendance/application/commands/record-device-push.command.ts` (modify),
-     `apps/api/src/modules/attendance/application/queries/attendance.queries.ts` (create),
-     `apps/api/src/modules/attendance/application/queries/list-devices.query.ts` (create),
-     `apps/api/src/modules/attendance/application/queries/list-punches.query.ts` (create)
+   - Files: `apps/api/src/modules/attendance/application/commands/register-device.command.ts` (create), `apps/api/src/modules/attendance/application/commands/record-device-contact.command.ts` (modify), `apps/api/src/modules/attendance/application/commands/record-device-push.command.ts` (modify), `apps/api/src/modules/attendance/application/queries/attendance.queries.ts` (create), `apps/api/src/modules/attendance/application/queries/list-devices.query.ts` (create), `apps/api/src/modules/attendance/application/queries/list-punches.query.ts` (create)
    - Do, `RegisterDevice` (shape of `create-company.command.ts:20-52`): deps
      `deviceRepository, idGenerator, clock, eventBus`. If `findBySerialNumber(trimmed serial)` is
      not null → `err(new DeviceAlreadyRegisteredError(serial))`. `Device.register` → `save` →
@@ -258,13 +245,7 @@ Promise<Page<DeviceDto>>; listPunches(filters: ListPunchesQuery): Promise<Page<P
    - Observable result: `pnpm --filter @rrhh/api typecheck` passes for these files.
 
 6. **Persistence: schema, migration, adapters**
-   - Files: `apps/api/prisma/schema.prisma` (modify),
-     `apps/api/prisma/migrations/YYYYMMDDHHMMSS_create_attendance/migration.sql` (create),
-     `apps/api/src/modules/attendance/infrastructure/attendance.mapper.ts` (create),
-     `apps/api/src/modules/attendance/infrastructure/prisma-device.repository.ts` (create),
-     `apps/api/src/modules/attendance/infrastructure/prisma-punch.repository.ts` (create),
-     `apps/api/src/modules/attendance/infrastructure/prisma-attendance.queries.ts` (create),
-     `apps/api/src/modules/attendance/infrastructure/in-memory/in-memory-attendance.store.ts` (create)
+   - Files: `apps/api/prisma/schema.prisma` (modify), `apps/api/prisma/migrations/20261001151824_create_attendance/migration.sql` (create), `apps/api/src/modules/attendance/infrastructure/attendance.mapper.ts` (create), `apps/api/src/modules/attendance/infrastructure/prisma-device.repository.ts` (create), `apps/api/src/modules/attendance/infrastructure/prisma-punch.repository.ts` (create), `apps/api/src/modules/attendance/infrastructure/prisma-attendance.queries.ts` (create), `apps/api/src/modules/attendance/infrastructure/in-memory/in-memory-attendance.store.ts` (create)
    - Do, schema (follow the `db-change` recipe): add `"attendance"` to `datasource.schemas`; a
      `// ── Módulo: attendance ──` section with:
      - `model AttendanceDevice`: `id String @id @db.Uuid`,
@@ -311,12 +292,7 @@ _max: { occurredAt: true } })`; ISO strings for dates, `null` when absent.
      and `punches`; `pnpm --filter @rrhh/api typecheck` passes.
 
 7. **HTTP, module registration, config, existing tests**
-   - Files: `apps/api/src/modules/attendance/http/attendance.router.ts` (create),
-     `apps/api/src/modules/attendance/attendance.module.ts` (modify),
-     `apps/api/src/config/env.ts` (modify), `apps/api/.env.example` (modify),
-     `apps/api/tests/test-app.ts` (modify), `apps/api/tests/zkteco-adms.test.ts` (modify),
-     `apps/api/src/modules/attendance/application/commands/record-device-contact.command.test.ts` (modify),
-     `apps/api/src/modules/attendance/application/commands/record-device-push.command.test.ts` (modify)
+   - Files: `apps/api/src/modules/attendance/http/attendance.router.ts` (create), `apps/api/src/modules/attendance/attendance.module.ts` (modify), `apps/api/src/config/env.ts` (modify), `apps/api/.env.example` (modify), `apps/api/tests/test-app.ts` (modify), `apps/api/tests/zkteco-adms.test.ts` (modify), `apps/api/src/modules/attendance/application/commands/record-device-contact.command.test.ts` (modify), `apps/api/src/modules/attendance/application/commands/record-device-push.command.test.ts` (modify)
    - Do, `attendance.router.ts` (shape of `organization.router.ts:86-106`):
      `bindRoute` for `listDevices` (`deps.listDevices.execute(query)`), `registerDevice`
      (`unwrap(await deps.registerDevice.execute(body))`), `listPunches`
@@ -390,6 +366,38 @@ PrismaPunchRepository`, `attendanceQueries: PrismaAttendanceQueries`, `registerD
 | e2e         | no      | (no e2e infrastructure yet)                                                                                                                                                                                                  |
 
 ## Deviations
+
+Implemented 2026-10-01. All steps 1-8 done. Cosmetic deviations (fixed forward, no design impact):
+
+1. **Migration folder name** (Step 6): the placeholder `YYYYMMDDHHMMSS_create_attendance` is
+   `apps/api/prisma/migrations/20261001151824_create_attendance/`. SQL has no `DROP`.
+2. **Existing tests outside the plan's file list, minimal count/reference updates to keep the
+   suite green** (consequences of the planned changes, no new cases):
+   - `packages/contracts/src/openapi.test.ts`: operation count `19` to `22` (three new routes).
+   - `apps/api/src/modules/identity/application/session-authenticator.test.ts`: HR grant count
+     `5` to `6` (two assertions), because HR now holds `attendance.devices:read`.
+   - `apps/api/src/modules/identity/domain/role-catalog.test.ts`: besides the two edits the plan
+     lists, the "varias asignaciones se acumulan" count `10` to `12` (same reason).
+   - `apps/api/src/config/env.test.ts`: removed the `loadEnv — ZKTECO_ALLOWED_SERIALS` describe
+     (tested the variable Step 7 deletes).
+3. **Push test assertions loosened** (`record-device-push.command.test.ts`): two probe tests
+   asserted the exact full log (`toEqual([...])` / `toHaveLength(1)`); an ATTLOG push now also
+   logs `zkteco: marcaciones guardadas`, so they now assert the first two entries / the absence of
+   debug entries. Same intent. Also renamed test titles that said "lista permitida" to "registrado".
+4. **`pnpm plans:scope` reports 27 files as "Fuera de alcance"**, but all of them are in the
+   plan's Steps 3-7 `Files:` lists (the tool seems to read only the first line of each multi-line
+   `Files:` list). The only truly unlisted files are the four in item 2.
+   _Main session (2026-10-01):_ confirmed. The tool reads one line per `Files:` entry; the plan's
+   lists were wrapped. Joined each list into one line (same paths) and replaced the migration
+   placeholder with the real folder. `plans:scope` now flags only `env.test.ts`,
+   `session-authenticator.test.ts` and `openapi.test.ts`, all covered by item 2.
+5. **Stale doc left untouched**: `docs/adr/0008-endpoints-de-dispositivos-fuera-de-contratos.md:24`
+   still says the device allowlist is `ZKTECO_ALLOWED_SERIALS` (out of the plan's scope). See
+   finding `plans/hallazgos/` (filed).
+
+Commands: `pnpm check` green; `pnpm test:integration` green (115 tests, existing suites; the
+attendance Prisma adapters have no integration tests yet, that is the tester's job);
+`pnpm db:migrate --name create_attendance` applied on the dev DB.
 
 ## Test coverage
 

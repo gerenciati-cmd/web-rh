@@ -4,26 +4,6 @@ import { loadEnv } from './env';
 
 const base = { DATABASE_URL: 'postgresql://test:test@localhost:5432/test' };
 
-describe('loadEnv — ZKTECO_ALLOWED_SERIALS', () => {
-  it('transforma una lista separada por comas en un arreglo recortado', () => {
-    const env = loadEnv({ ...base, ZKTECO_ALLOWED_SERIALS: 'A1, B2' });
-
-    expect(env.ZKTECO_ALLOWED_SERIALS).toEqual(['A1', 'B2']);
-  });
-
-  it('produce un arreglo vacío cuando la variable no está definida', () => {
-    const env = loadEnv({ ...base });
-
-    expect(env.ZKTECO_ALLOWED_SERIALS).toEqual([]);
-  });
-
-  it('descarta segmentos vacíos', () => {
-    const env = loadEnv({ ...base, ZKTECO_ALLOWED_SERIALS: 'A1,,B2,' });
-
-    expect(env.ZKTECO_ALLOWED_SERIALS).toEqual(['A1', 'B2']);
-  });
-});
-
 // Regresión H1 (plan 001, paso 15): `process.loadEnvFile` convierte una línea `SEED_USER_PASSWORD=`
 // (como la que deja `.env.example`) en `""`, no en `undefined`; sin el preprocess de `env.ts`,
 // `z.string().min(12).optional()` rechazaba esa cadena vacía y `loadEnv` lanzaba al arrancar.
