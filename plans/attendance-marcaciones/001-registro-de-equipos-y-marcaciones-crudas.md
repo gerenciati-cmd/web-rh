@@ -1,5 +1,5 @@
 ---
-status: testing
+status: review
 module: attendance
 min_implementer: mid
 depends_on: []
@@ -400,6 +400,38 @@ attendance Prisma adapters have no integration tests yet, that is the tester's j
 `pnpm db:migrate --name create_attendance` applied on the dev DB.
 
 ## Test coverage
+
+Tester, 2026-10-01. Baseline: `pnpm check` verde (516 tests api, 3 skipped existentes) y
+`pnpm test:integration` verde (115). Ningún GAP ni NOT CONFIRMED: todo lo que el plan promete y es
+ejercitable en local está implementado y se confirmó por ejecución. Lo que requiere el equipo real
+(criterio del SenseFace 2A) queda para el verifier.
+
+| Comportamiento (plan / código)                                                      | Fuente                                 | Capa        | Test                                                                                     | Estado                                              |
+| ----------------------------------------------------------------------------------- | -------------------------------------- | ----------- | ---------------------------------------------------------------------------------------- | --------------------------------------------------- |
+| `localDateTimeToUtc` Cancún → UTC (caso observado del equipo real)                  | `time-zone.ts:44-72`                   | domain      | `packages/domain/src/time-zone.test.ts › convierte la marcación observada…`              | CONFIRMED                                           |
+| Horario de verano, cruce de día, bisiesto, hora inexistente y ambigua               | `time-zone.ts:20-72`                   | domain      | `time-zone.test.ts › respeta el horario de verano…`, `es determinista en…`               | CONFIRMED                                           |
+| Fechas imposibles, formatos y zona inválida                                         | `time-zone.ts:46-65`                   | domain      | `time-zone.test.ts › rechaza la fecha imposible…`, `rechaza el formato…`, `…zona…`       | CONFIRMED                                           |
+| `isValidTimeZone`                                                                   | `time-zone.ts:5-12`                    | domain      | `time-zone.test.ts › isValidTimeZone`                                                    | CONFIRMED                                           |
+| `Device.register`: validaciones, trim, activo, evento                               | `device.ts:48-79`                      | domain      | `domain/device.test.ts › Device.register`                                                | CONFIRMED                                           |
+| `Device.markSeen` y resolución de 60 s (límite exacto)                              | `device.ts:107-114`                    | domain      | `device.test.ts › Device.markSeen`                                                       | CONFIRMED                                           |
+| `Punch.fromDevice`: PIN, longitudes, UTC, errores propagados                        | `punch.ts:38-75`                       | domain      | `domain/punch.test.ts`                                                                   | CONFIRMED                                           |
+| `RegisterDevice`: alta, duplicado (serial recortado), dominio inválido              | `register-device.command.ts:27-48`     | application | `register-device.command.test.ts`                                                        | CONFIRMED                                           |
+| Contact: equipo inactivo / no registrado, `markSeen` + persistencia por resolución  | `record-device-contact.command.ts`     | application | `record-device-contact.command.test.ts` (3 nuevos)                                       | CONFIRMED                                           |
+| Push: guarda ATTLOG, dedupe, rechazadas cuentan en `accepted`, logs, zona, inactivo | `record-device-push.command.ts:55-100` | application | `record-device-push.command.test.ts › persistencia de marcaciones (plan 001)`            | CONFIRMED                                           |
+| Push de OPERLOG/OPLOG/USER/BIODATA/options no escribe filas                         | `record-device-push.command.ts:55`     | application | `record-device-push.command.test.ts › un push de la tabla %s no escribe…`                | CONFIRMED                                           |
+| `ListPunches`: actor sin permiso holding-wide recibe página vacía; filtros          | `list-punches.query.ts:15-27`          | application | `list-punches.query.test.ts`                                                             | CONFIRMED                                           |
+| `ListDevices` ordena y calcula `lastPunchAt` (en memoria)                           | `in-memory-attendance.store.ts`        | application | `list-punches.query.test.ts › ListDevices`                                               | CONFIRMED                                           |
+| `RegisterDeviceSchema` (serial, nombre, zona)                                       | `device.contract.ts:23-33`             | contract    | `packages/contracts/src/attendance/device.contract.test.ts`                              | CONFIRMED                                           |
+| `ListPunchesQuerySchema` (defaults, filtros, ISO, uuid)                             | `punch.contract.ts:25-30`              | contract    | `punch.contract.test.ts`                                                                 | CONFIRMED                                           |
+| Permisos de las 3 rutas, sin `companyParam`                                         | contratos                              | contract    | `access.contract.test.ts › las rutas de negocio declaran…`, `device/punch.contract.test` | CONFIRMED                                           |
+| `POST /attendance/devices`: 201, 409, 400 (zona, serial, nombre), 403 HR, 401       | `attendance.router.ts`                 | http        | `tests/attendance.test.ts › POST /attendance/devices`                                    | CONFIRMED                                           |
+| `GET /attendance/devices`: ADMIN y HR, `lastSeenAt`/`lastPunchAt`, paginación       | `attendance.router.ts`                 | http        | `attendance.test.ts › GET /attendance/devices`                                           | CONFIRMED                                           |
+| `/iclock` contra el registro: registrado OK, no registrado 403, dedupe, `OK: n`     | `zkteco-adms.router.ts`                | http        | `attendance.test.ts › /iclock contra el registro de equipos`                             | CONFIRMED                                           |
+| `GET /attendance/punches`: orden, filtros, paginación, 400, 403 HR, 401             | `attendance.router.ts`                 | http        | `attendance.test.ts › GET /attendance/punches`                                           | CONFIRMED                                           |
+| Serial único, upsert de `lastSeenAt`                                                | `prisma-device.repository.ts`          | integration | `tests/integration/attendance/prisma-attendance.int.test.ts › PrismaDeviceRepository`    | CONFIRMED                                           |
+| `saveNew` con `skipDuplicates`, `inserted` real, hora local y UTC                   | `prisma-punch.repository.ts:11-20`     | integration | `prisma-attendance.int.test.ts › PrismaPunchRepository.saveNew`                          | CONFIRMED                                           |
+| `lastPunchAt`, filtros, rango inclusivo, orden y desempate, paginación (Prisma)     | `prisma-attendance.queries.ts`         | integration | `prisma-attendance.int.test.ts › PrismaAttendanceQueries`                                | CONFIRMED                                           |
+| Marcación real del SenseFace 2A visible tras registrar el equipo                    | criterio de aceptación                 | —           | —                                                                                        | NOT CONFIRMED (requiere el equipo físico; verifier) |
 
 ## Review findings
 

@@ -30,7 +30,12 @@ async function setUp(registeredSerials: readonly string[]) {
     if (!device.ok) throw device.error;
     await deviceRepository.save(device.value);
   }
-  return { logger, command: new RecordDeviceContact({ logger, deviceRepository, clock }) };
+  return {
+    logger,
+    clock,
+    deviceRepository,
+    command: new RecordDeviceContact({ logger, deviceRepository, clock }),
+  };
 }
 
 describe('RecordDeviceContact', () => {
@@ -93,5 +98,45 @@ describe('RecordDeviceContact', () => {
     expect(logger.entries).toEqual([
       { level: 'debug', obj: pollInput, msg: 'zkteco: contacto del dispositivo' },
     ]);
+  });
+
+  it('rechaza un equipo registrado pero inactivo, con el mismo aviso', async () => {
+    const { logger, command, deviceRepository } = await setUp([]);
+    await deviceRepository.save(
+      Device.restore('00000000-0000-4000-8000-0000000000bb' as DeviceId, {
+        serialNumber: 'TESTSN001',
+        name: 'Equipo inactivo',
+        timeZone: 'America/Cancun',
+        active: false,
+        registeredAt: new Date('2026-01-15T12:00:00Z'),
+        lastSeenAt: null,
+      }),
+    );
+
+    const result = await command.execute(baseInput);
+
+    expect(!result.ok && result.error.code).toBe('DEVICE_NOT_ALLOWED');
+    expect(logger.entries).toEqual([
+      expect.objectContaining({ level: 'warn', msg: 'zkteco: dispositivo no autorizado' }),
+    ]);
+    expect((await deviceRepository.findBySerialNumber('TESTSN001'))?.lastSeenAt).toBeNull();
+  });
+
+  it('anota el último contacto y solo lo reescribe cuando pasó la resolución', async () => {
+    const { command, clock, deviceRepository } = await setUp(['TESTSN001']);
+    const t0 = new Date('2026-01-15T12:00:00Z');
+    clock.set(t0);
+
+    await command.execute(baseInput);
+    expect((await deviceRepository.findBySerialNumber('TESTSN001'))?.lastSeenAt).toEqual(t0);
+
+    clock.set(new Date(t0.getTime() + 10_000));
+    await command.execute(baseInput);
+    expect((await deviceRepository.findBySerialNumber('TESTSN001'))?.lastSeenAt).toEqual(t0);
+
+    const later = new Date(t0.getTime() + 60_000);
+    clock.set(later);
+    await command.execute(baseInput);
+    expect((await deviceRepository.findBySerialNumber('TESTSN001'))?.lastSeenAt).toEqual(later);
   });
 });
