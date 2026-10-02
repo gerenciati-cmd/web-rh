@@ -1,5 +1,5 @@
 ---
-status: review
+status: verify
 module: attendance
 min_implementer: mid
 depends_on: [employees-rfc/001]
@@ -195,5 +195,48 @@ Baseline: `pnpm check` green before writing tests. Layers domain and e2e do not 
 No GAPs found.
 
 ## Review findings
+
+Reviewed 2026-10-02, diff `e5dbc36..HEAD` (9e7090a + 155a0a7), working tree clean.
+
+**Checklist: 12/13 — FAIL (1 item).**
+
+- [x] `pnpm plans:scope --base e5dbc36`: all 23 changed files in scope. `docs/harness/modules.json` (hot file) edits an existing line, not append-only, but the plan declares it explicitly in step 5, so it is in scope.
+- [x] `pnpm check` green (api 656 passed / 4 skipped, contracts 183, domain 86, web 2, mobile 5, arch, plans, harness, quality).
+- [x] `pnpm test:integration` green (13 files, 153 tests).
+- [x] No business rules in routers/mappers/adapters; scope logic lives in the `ListPunches` use case (as plan 001 did).
+- [x] CQRS-lite: read-only change; `AttendanceQueries.listPunches` returns `RawPunch` (= contract DTO minus `employee`), enriched in the query use case; no repository touched.
+- [x] Types from `@rrhh/contracts` (`RawPunch` derived with `Omit<PunchDto, 'employee'>`, not hand-written).
+- [x] No new expected errors; nothing leaked.
+- [x] No money/time/ids involved.
+- [x] No schema change, no migration.
+- [x] DI: `punchOwnerDirectory` registered once in `attendance.module.ts`; `tests/container.test.ts` green.
+- [x] No secrets or real personal data (synthetic RFCs/names in tests).
+- [x] Deviations honest — spot-checked: `attendance.mapper.ts:53` returns `RawPunch` with no behavior change; `prisma-attendance.queries.ts:58-61` combines `equals` + `in` on `pin` as described.
+- [ ] **Docs describing changed behavior updated — FAIL**: the runbook got the new "Atribución" section but two earlier bullets that now contradict it were left in place (finding M1).
+
+### Findings
+
+**Major: none. Critical: none.**
+
+**Minor**
+
+- **M1 — stale runbook statements contradict the new behavior.** `docs/integraciones/zkteco-senseface-2a.md:20-21` still says punches are read with `GET /api/v1/attendance/punches` "(solo HOLDING_ADMIN)", and `:23` still says "No asocia el PIN a un colaborador." Both are false after this plan (HR now holds `attendance.punches:read`, `role-catalog.ts:26`; `ListPunches` attributes by RFC, `list-punches.query.ts:38-50`) and contradict the new section at `:54-61` in the same file. Failure scenario: an operator reading the "Qué hace hoy" list concludes HR can't see punches and that enrolling with the RFC is useless. Fix: update both bullets (in-scope file, step 5). Docs-only, no code.
+
+**Info (no action required)**
+
+- I1 — `pinsOfCompanies` sends every RFC in the actor's companies as one `IN (...)` list (`list-punches.query.ts:31-34`). The plan accepted this for hundreds to a few thousand colaboradores. Postgres caps bind parameters at 65,535, so the design holds well past the holding's size. Noted only so a future scale change revisits it.
+- I2 — Bug hunt traced contract → `ListPunches` → `pinsOfCompanies`/`listPunches({pins})` → `ownersOf` → response, plus tenancy. HR of company A only gets PINs that are RFCs of A's colaboradores, and owners are looked up only for PINs already inside that scope, so no punch or owner from another company leaks. `pins: []` returns no rows in both adapters (and is short-circuited earlier anyway). An explicit `pin` outside scope yields an empty page. Terminated colaboradores keep attribution (`findByRfcs` does not filter by status). Pagination `total` comes from the same filtered `where`. No defects found.
+
+Status stays `review`: M1 needs a (docs-only) change in a plan file.
+
+### Resolution (main session, 2026-10-02)
+
+- **M1 fixed**: `docs/integraciones/zkteco-senseface-2a.md` — the punches bullet now says
+  HOLDING_ADMIN sees all and HR only its companies' colaboradores; "No asocia el PIN a un
+  colaborador" replaced by "Asocia el PIN a un colaborador solo cuando coincide con su RFC". Both
+  point to the "Atribución" section; no contradiction left. Docs-only, no code touched.
+- **I1, I2**: acknowledged, no change.
+
+Plan to `verify`.
 
 ## Verification

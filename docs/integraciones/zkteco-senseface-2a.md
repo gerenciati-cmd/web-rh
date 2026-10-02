@@ -18,9 +18,9 @@ equipo (`options`).
 - Las demás tablas (`OPERLOG`, `BIODATA`, `options`…) siguen **solo en el log**.
 - El estado de cada equipo (último contacto, última marcación) se consulta con
   `GET /api/v1/attendance/devices`; las marcaciones, con `GET /api/v1/attendance/punches`
-  (solo HOLDING_ADMIN).
+  (HOLDING_ADMIN todas; RRHH solo las de colaboradores de sus empresas, ver "Atribución").
 - No envía comandos al equipo: `getrequest` siempre responde `OK`.
-- No asocia el PIN a un colaborador.
+- Asocia el PIN a un colaborador solo cuando coincide con su RFC (ver "Atribución").
 - Plantillas, fotos (`Tmp`, `Content`), nombres, claves y tarjetas **nunca** aparecen en el log:
   salen como `[redactado:<largo>]`.
 
