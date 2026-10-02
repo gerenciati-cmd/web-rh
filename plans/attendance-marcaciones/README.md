@@ -14,15 +14,15 @@ each company see its own people's marcaciones. Shifts, jornadas, overtime and Me
 
 ## Plans
 
-| Plan                                                   | Title                               | Depends on | Purpose                                                                                                                                                |
-| ------------------------------------------------------ | ----------------------------------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| [001](001-registro-de-equipos-y-marcaciones-crudas.md) | Device registry and raw marcaciones | —          | `attendance` schema: devices (serial, name, time zone) replace the env allowlist; ATTLOG stored deduplicated; device status and punch query endpoints. |
-| 002 (not written yet)                                  | PIN → colaborador link              | 001        | Attribute each stored marcación to a colaborador (and so to a company); give HR company-scoped read access.                                            |
+| Plan                                                   | Title                               | Depends on             | Purpose                                                                                                                                                |
+| ------------------------------------------------------ | ----------------------------------- | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| [001](001-registro-de-equipos-y-marcaciones-crudas.md) | Device registry and raw marcaciones | —                      | `attendance` schema: devices (serial, name, time zone) replace the env allowlist; ATTLOG stored deduplicated; device status and punch query endpoints. |
+| [002](002-atribucion-de-marcaciones-por-rfc.md)        | Attribution of marcaciones by RFC   | 001, employees-rfc/001 | Each punch whose PIN is a colaborador's RFC is attributed to them (resolved at read time); HR reads its companies' punches.                            |
 
 ## Dependency notes
 
-002 needs 001's stored punches (it links existing rows, nothing is lost meanwhile) and must
-decide where the PIN ↔ colaborador link lives.
+002 needs 001's stored punches (it links existing rows, nothing is lost meanwhile) and the RFC on
+the colaborador record, delivered by `employees-rfc/001` (another module, so another initiative).
 
 ## Decisions with the user
 
@@ -42,6 +42,12 @@ decide where the PIN ↔ colaborador link lives.
    HOLDING_ADMIN can read **raw punches**. HR gets punch access, filtered by company, in 002.
 6. (2026-09-28, carried over from `attendance-sonda-zkteco` decision 3) Biometric templates,
    photos, names, passwords and cards are never stored nor logged.
+7. (2026-10-02) The devices enrol each person with their **full RFC (homoclave, uppercase) as the
+   PIN**, as Buk does today. So the PIN ↔ colaborador link is the colaborador's RFC: no manual
+   PIN assignment. Details and RFC rules in `employees-rfc` (README decisions 1–4).
+8. (2026-10-02) Consequence of 2 and 7, applied in 002: a punch belongs to the colaborador whose
+   RFC equals its PIN, and to that colaborador's company. HR gets `attendance.punches:read` and
+   sees only its companies' colaboradores' punches; unmatched punches stay HOLDING_ADMIN-only.
 
 ## Delivered
 
