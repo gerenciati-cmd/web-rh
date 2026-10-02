@@ -1,5 +1,5 @@
 ---
-status: verify
+status: done
 module: employees
 min_implementer: mid
 depends_on: []
@@ -417,3 +417,8 @@ colaborador `00113918205`, Pedro's RFC `PEXL900215VR1`, users `verif-att-*@examp
 
 Result: **PASS** on every criterion exercisable here; the fresh-DB seed check is NOT VERIFIED.
 Status stays `verify`.
+
+### Acceptance (user, 2026-10-02)
+
+The user accepted the plan and moved it to `done`, with the fresh-DB seed check still NOT
+VERIFIED (its checkbox stays unchecked on purpose).
