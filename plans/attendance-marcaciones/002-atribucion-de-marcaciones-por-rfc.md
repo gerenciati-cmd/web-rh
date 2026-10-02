@@ -1,5 +1,5 @@
 ---
-status: verify
+status: done
 module: attendance
 min_implementer: mid
 depends_on: [employees-rfc/001]
@@ -274,3 +274,10 @@ One ATTLOG push with PINs `GOMA850101AB1`, `1`, `GOMA850101VR1`, `PEXL900215VR1`
 `VERIFAT576061` with its 4 punches, users `verif-att-*@example.test`.
 
 Result: **PASS** on every criterion exercisable here. Status stays `verify`.
+
+### Acceptance (user, 2026-10-02)
+
+The user accepted the plan and moved it to `done` with two criteria still NOT VERIFIED (their
+checkboxes stay unchecked on purpose): the terminated-colaborador case in the running app (no
+termination endpoint; covered by http and integration tests) and the real SenseFace 2A (its
+registration was removed by the dev DB reset).
