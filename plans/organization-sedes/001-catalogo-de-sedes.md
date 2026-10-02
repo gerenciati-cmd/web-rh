@@ -1,5 +1,5 @@
 ---
-status: testing
+status: review
 module: organization
 min_implementer: mid
 depends_on: []
@@ -204,6 +204,27 @@ idGenerator, clock, eventBus`; `existsByName` → `SiteAlreadyExistsError`; `Sit
   all within the plan's list.
 
 ## Test coverage
+
+Baseline (before tests): `pnpm check` green (api 656 passed / 4 skipped), `pnpm test:integration`
+green (153). No GAP and no NOT CONFIRMED found: every behavior was confirmed from code and execution.
+
+| Behavior                                                                | Source                                                 | Layer       | Test                                                             | State     |
+| ----------------------------------------------------------------------- | ------------------------------------------------------ | ----------- | ---------------------------------------------------------------- | --------- |
+| `isSiteTimeZone` accepts own-country zones, rejects other/invented/case | `packages/domain/src/site-time-zones.ts:25`            | domain      | `site-time-zones.test.ts`                                        | CONFIRMED |
+| Every listed zone exists in the runtime                                 | `site-time-zones.ts:7-24`                              | domain      | `site-time-zones.test.ts` (última prueba)                        | CONFIRMED |
+| `Site.create` name 2-100 trimmed, zone rule, active, `SITE_CREATED`     | `domain/site.ts:39-62`                                 | domain      | `domain/site.test.ts`                                            | CONFIRMED |
+| `Site.restore` emits no events                                          | `site.ts:65`                                           | domain      | `domain/site.test.ts`                                            | CONFIRMED |
+| `CreateSite` happy path, case/space-insensitive duplicate, bad zone     | `create-site.command.ts:27-47`                         | application | `create-site.command.test.ts`                                    | CONFIRMED |
+| `CreateSite` propagates save conflict w/o event; unexpected IO rejects  | `create-site.command.ts:43-44`                         | application | `create-site.command.test.ts`                                    | CONFIRMED |
+| `ListSites` order, pagination, empty, no company filter                 | `list-sites.query.ts`, `in-memory-site.store.ts:50-58` | application | `list-sites.query.test.ts`                                       | CONFIRMED |
+| Facade `findSite` summary / null                                        | `organization.facade.ts:58-67`                         | application | `organization.facade.test.ts`                                    | CONFIRMED |
+| `CreateSiteSchema` zone refine (path `timeZone`), name bounds, trim     | `site.contract.ts:21-33`                               | contract    | `site.contract.test.ts`                                          | CONFIRMED |
+| Route access: read / manage, 201                                        | `site.contract.ts:36-52`                               | contract    | `site.contract.test.ts`                                          | CONFIRMED |
+| Acceptance criteria 1-5 (201, 409, 400, DO 201, HR 200/403, 401, docs)  | plan acceptance                                        | http        | `apps/api/tests/sites.test.ts`                                   | CONFIRMED |
+| Unique `name_key` by case, concurrent saves                             | `prisma-site.repository.ts:27-34`                      | integration | `tests/integration/organization/prisma-site.int.test.ts`         | CONFIRMED |
+| `PrismaSiteQueries` order, pagination, `findById`                       | `prisma-site.queries.ts:20-42`                         | integration | `prisma-site.int.test.ts`                                        | CONFIRMED |
+| Permissions role catalog / session grants (+1 HR)                       | updated in step 2 by the implementer                   | domain/app  | existing `role-catalog.test.ts`, `session-authenticator.test.ts` | CONFIRMED |
+| e2e                                                                     | no infrastructure                                      | e2e         | n/a (plan: no)                                                   | n/a       |
 
 ## Review findings
 
