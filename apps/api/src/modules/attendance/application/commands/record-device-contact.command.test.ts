@@ -1,11 +1,42 @@
 import { describe, expect, it } from 'vitest';
 
-import { RecordingLogger } from '@/shared/testing/fakes';
+import { FixedClock, RecordingLogger, SequentialIdGenerator } from '@/shared/testing/fakes';
+
+import { Device, type DeviceId } from '../../domain/device';
+import {
+  InMemoryAttendanceStore,
+  InMemoryDeviceRepository,
+} from '../../infrastructure/in-memory/in-memory-attendance.store';
 
 import {
   RecordDeviceContact,
   type RecordDeviceContactInput,
 } from './record-device-contact.command';
+
+/** Arma el comando con un repositorio en memoria donde `registeredSerials` son equipos activos. */
+async function setUp(registeredSerials: readonly string[]) {
+  const logger = new RecordingLogger();
+  const clock = new FixedClock();
+  const idGenerator = new SequentialIdGenerator();
+  const deviceRepository = new InMemoryDeviceRepository(new InMemoryAttendanceStore());
+  for (const serialNumber of registeredSerials) {
+    const device = Device.register({
+      id: idGenerator.next() as DeviceId,
+      serialNumber,
+      name: `Equipo ${serialNumber}`,
+      timeZone: 'America/Cancun',
+      now: clock.now(),
+    });
+    if (!device.ok) throw device.error;
+    await deviceRepository.save(device.value);
+  }
+  return {
+    logger,
+    clock,
+    deviceRepository,
+    command: new RecordDeviceContact({ logger, deviceRepository, clock }),
+  };
+}
 
 describe('RecordDeviceContact', () => {
   const baseInput: RecordDeviceContactInput = {
@@ -17,9 +48,8 @@ describe('RecordDeviceContact', () => {
     bodyLength: 0,
   };
 
-  it('rechaza un número de serie fuera de la lista permitida y no autoriza', async () => {
-    const logger = new RecordingLogger();
-    const command = new RecordDeviceContact({ logger, allowedDeviceSerials: ['OTRO'] });
+  it('rechaza un número de serie no registrado y no autoriza', async () => {
+    const { logger, command } = await setUp(['OTRO']);
 
     const result = await command.execute(baseInput);
 
@@ -34,9 +64,8 @@ describe('RecordDeviceContact', () => {
     ]);
   });
 
-  it('rechaza cualquier equipo cuando la lista permitida está vacía', async () => {
-    const logger = new RecordingLogger();
-    const command = new RecordDeviceContact({ logger, allowedDeviceSerials: [] });
+  it('rechaza cualquier equipo cuando no hay equipos registrados', async () => {
+    const { command } = await setUp([]);
 
     const result = await command.execute(baseInput);
 
@@ -45,8 +74,7 @@ describe('RecordDeviceContact', () => {
   });
 
   it('registra a nivel info un contacto que no es poll', async () => {
-    const logger = new RecordingLogger();
-    const command = new RecordDeviceContact({ logger, allowedDeviceSerials: ['TESTSN001'] });
+    const { logger, command } = await setUp(['TESTSN001']);
 
     const result = await command.execute(baseInput);
 
@@ -57,8 +85,7 @@ describe('RecordDeviceContact', () => {
   });
 
   it('registra a nivel debug un contacto de tipo poll', async () => {
-    const logger = new RecordingLogger();
-    const command = new RecordDeviceContact({ logger, allowedDeviceSerials: ['TESTSN001'] });
+    const { logger, command } = await setUp(['TESTSN001']);
     const pollInput: RecordDeviceContactInput = {
       ...baseInput,
       kind: 'poll',
@@ -71,5 +98,45 @@ describe('RecordDeviceContact', () => {
     expect(logger.entries).toEqual([
       { level: 'debug', obj: pollInput, msg: 'zkteco: contacto del dispositivo' },
     ]);
+  });
+
+  it('rechaza un equipo registrado pero inactivo, con el mismo aviso', async () => {
+    const { logger, command, deviceRepository } = await setUp([]);
+    await deviceRepository.save(
+      Device.restore('00000000-0000-4000-8000-0000000000bb' as DeviceId, {
+        serialNumber: 'TESTSN001',
+        name: 'Equipo inactivo',
+        timeZone: 'America/Cancun',
+        active: false,
+        registeredAt: new Date('2026-01-15T12:00:00Z'),
+        lastSeenAt: null,
+      }),
+    );
+
+    const result = await command.execute(baseInput);
+
+    expect(!result.ok && result.error.code).toBe('DEVICE_NOT_ALLOWED');
+    expect(logger.entries).toEqual([
+      expect.objectContaining({ level: 'warn', msg: 'zkteco: dispositivo no autorizado' }),
+    ]);
+    expect((await deviceRepository.findBySerialNumber('TESTSN001'))?.lastSeenAt).toBeNull();
+  });
+
+  it('anota el último contacto y solo lo reescribe cuando pasó la resolución', async () => {
+    const { command, clock, deviceRepository } = await setUp(['TESTSN001']);
+    const t0 = new Date('2026-01-15T12:00:00Z');
+    clock.set(t0);
+
+    await command.execute(baseInput);
+    expect((await deviceRepository.findBySerialNumber('TESTSN001'))?.lastSeenAt).toEqual(t0);
+
+    clock.set(new Date(t0.getTime() + 10_000));
+    await command.execute(baseInput);
+    expect((await deviceRepository.findBySerialNumber('TESTSN001'))?.lastSeenAt).toEqual(t0);
+
+    const later = new Date(t0.getTime() + 60_000);
+    clock.set(later);
+    await command.execute(baseInput);
+    expect((await deviceRepository.findBySerialNumber('TESTSN001'))?.lastSeenAt).toEqual(later);
   });
 });

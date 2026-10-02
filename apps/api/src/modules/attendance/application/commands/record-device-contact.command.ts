@@ -1,8 +1,9 @@
 import { err, ok } from '@rrhh/domain';
 
-import type { Logger } from '@/shared/application/ports';
+import type { Clock, Logger } from '@/shared/application/ports';
 import type { Command } from '@/shared/application/use-case';
 
+import type { DeviceRepository } from '../../domain/device.repository';
 import { DeviceNotAllowedError } from '../../domain/errors';
 
 export type DeviceContactKind = 'handshake' | 'poll' | 'command-result' | 'unknown';
@@ -18,12 +19,14 @@ export interface RecordDeviceContactInput {
 
 interface Deps {
   logger: Logger;
-  allowedDeviceSerials: readonly string[];
+  deviceRepository: DeviceRepository;
+  clock: Clock;
 }
 
 /**
- * Sonda: registra en el log cada contacto de un equipo que no trae datos (handshake, consulta de
- * comandos, resultado de comando o ruta desconocida). No persiste nada (decisión 2 del README).
+ * Registra el contacto de un equipo que no trae datos (handshake, consulta de comandos, resultado
+ * de comando o ruta desconocida): lo deja en el log y anota su último contacto (`lastSeenAt`).
+ * Solo atiende equipos registrados y activos.
  */
 export class RecordDeviceContact implements Command<
   RecordDeviceContactInput,
@@ -32,19 +35,23 @@ export class RecordDeviceContact implements Command<
 > {
   constructor(private readonly deps: Deps) {}
 
-  execute(input: RecordDeviceContactInput) {
-    const { logger, allowedDeviceSerials } = this.deps;
+  async execute(input: RecordDeviceContactInput) {
+    const { logger, deviceRepository, clock } = this.deps;
     const { serialNumber, ...contact } = input;
 
-    if (!allowedDeviceSerials.includes(serialNumber)) {
+    const device = await deviceRepository.findBySerialNumber(serialNumber);
+    if (!device?.active) {
       logger.warn({ serialNumber, ...contact }, 'zkteco: dispositivo no autorizado');
-      return Promise.resolve(err(new DeviceNotAllowedError(serialNumber)));
+      return err(new DeviceNotAllowedError(serialNumber));
     }
+
+    // `lastSeenAt` es estado informativo: markSeen limita la escritura a una por minuto.
+    if (device.markSeen(clock.now())) await deviceRepository.save(device);
 
     // El equipo consulta comandos cada pocos segundos: a nivel info inundaría el log.
     if (contact.kind === 'poll') logger.debug(input, 'zkteco: contacto del dispositivo');
     else logger.info(input, 'zkteco: contacto del dispositivo');
 
-    return Promise.resolve(ok(undefined));
+    return ok(undefined);
   }
 }

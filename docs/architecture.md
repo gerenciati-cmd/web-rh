@@ -22,7 +22,7 @@
         PostgreSQL 18          Valkey (BullMQ)        S3 (RustFS en dev)
    un schema por módulo       jobs asíncronos          documentos
                                                         * = por construir
-                                               † = solo sonda ZKTeco (log)
+                                               † = solo marcaciones crudas ZKTeco
 ```
 
 ## Monolito modular

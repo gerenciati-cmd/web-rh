@@ -65,6 +65,18 @@ describe('access de cada ruta (negado por defecto)', () => {
       permission: 'employees:register',
       companyParam: 'companyId',
     });
+    expect(apiRoutes.attendanceDevices.listDevices.access).toEqual({
+      kind: 'permission',
+      permission: 'attendance.devices:read',
+    });
+    expect(apiRoutes.attendanceDevices.registerDevice.access).toEqual({
+      kind: 'permission',
+      permission: 'attendance.devices:manage',
+    });
+    expect(apiRoutes.attendancePunches.listPunches.access).toEqual({
+      kind: 'permission',
+      permission: 'attendance.punches:read',
+    });
   });
 
   it('todo companyParam declarado existe como propiedad de params en su ruta', () => {
