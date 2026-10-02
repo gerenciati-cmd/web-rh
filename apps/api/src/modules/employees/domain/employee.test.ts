@@ -41,6 +41,79 @@ describe('Employee', () => {
     expect(hire({ firstName: '   ' }).ok).toBe(false);
   });
 
+  describe('RFC', () => {
+    const doId = NationalId.create('DO', '00113918205');
+    const rfcOf = (raw: string) => {
+      const rfc = PersonalRfc.create(raw);
+      if (!rfc.ok) throw new Error('fixture inválido');
+      return rfc.value;
+    };
+    if (!doId.ok) throw new Error('fixture inválido');
+
+    it('guarda el RFC en el snapshot al contratar en México', () => {
+      const result = hire();
+      expect(result.ok && result.value.snapshot.rfc?.value).toBe('GOMA850101AB1');
+    });
+
+    it('exige RFC para un colaborador de México', () => {
+      const result = hire({ rfc: undefined });
+      expect(!result.ok && result.error.code).toBe('INVALID_VALUE');
+      expect(!result.ok && result.error.message).toBe(
+        'El RFC es obligatorio para colaboradores de México',
+      );
+    });
+
+    it('rechaza un RFC en un colaborador que no es de México', () => {
+      const result = hire({ nationalId: doId.value });
+      expect(!result.ok && result.error.code).toBe('INVALID_VALUE');
+      expect(!result.ok && result.error.message).toBe(
+        'El RFC solo aplica a colaboradores de México',
+      );
+    });
+
+    it('contrata sin RFC a un colaborador que no es de México y deja rfc en null', () => {
+      const result = hire({ nationalId: doId.value, rfc: undefined });
+      expect(result.ok && result.value.snapshot.rfc).toBeNull();
+    });
+
+    it('assignRfc captura el RFC de un colaborador restaurado sin RFC', () => {
+      const hired = hire();
+      if (!hired.ok) throw hired.error;
+      const employee = Employee.restore(hired.value.id, { ...hired.value.snapshot, rfc: null });
+
+      expect(employee.assignRfc(rfcOf('GOMA850101AB2')).ok).toBe(true);
+      expect(employee.snapshot.rfc?.value).toBe('GOMA850101AB2');
+    });
+
+    it('assignRfc corrige un RFC ya capturado', () => {
+      const hired = hire();
+      if (!hired.ok) throw hired.error;
+
+      expect(hired.value.assignRfc(rfcOf('GOMA850101AB9')).ok).toBe(true);
+      expect(hired.value.snapshot.rfc?.value).toBe('GOMA850101AB9');
+    });
+
+    it('assignRfc no emite eventos', () => {
+      const hired = hire();
+      if (!hired.ok) throw hired.error;
+      hired.value.pullEvents();
+
+      hired.value.assignRfc(rfcOf('GOMA850101AB9'));
+
+      expect(hired.value.pullEvents()).toEqual([]);
+    });
+
+    it('assignRfc rechaza con RFC_NOT_APPLICABLE a un colaborador que no es de México', () => {
+      const hired = hire({ nationalId: doId.value, rfc: undefined });
+      if (!hired.ok) throw hired.error;
+
+      const result = hired.value.assignRfc(rfcOf('GOMA850101AB1'));
+
+      expect(!result.ok && result.error.code).toBe('RFC_NOT_APPLICABLE');
+      expect(hired.value.snapshot.rfc).toBeNull();
+    });
+  });
+
   describe('terminate', () => {
     it('desvincula y registra el evento', () => {
       const result = hire();

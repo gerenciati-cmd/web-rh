@@ -1,5 +1,5 @@
 ---
-status: testing
+status: review
 module: employees
 min_implementer: mid
 depends_on: []
@@ -192,7 +192,7 @@ unwrap(await deps.assignEmployeeRfc.execute({ ...params, rfc: body.rfc })))`.
    - Observable result: migration applied; `pnpm --filter @rrhh/api typecheck` passes.
 
 7. **Existing callers: seed and tests**
-   - Files: `apps/api/prisma/seed.ts` (modify), `apps/api/src/modules/employees/domain/employee.test.ts` (modify), `apps/api/src/modules/employees/application/commands/register-employee.command.test.ts` (modify), `packages/contracts/src/employees/employee.contract.test.ts` (modify), `packages/contracts/src/openapi.test.ts` (modify), `apps/api/tests/http.test.ts` (modify), `apps/api/tests/authorization.test.ts` (modify), `apps/api/tests/invitations.test.ts` (modify), `apps/api/tests/password-resets.test.ts` (modify), `apps/api/tests/integration/employees/prisma-employee.int.test.ts` (modify)
+   - Files: `apps/api/prisma/seed.ts` (modify), `apps/api/src/modules/employees/domain/employee.test.ts` (modify), `apps/api/src/modules/employees/application/commands/register-employee.command.test.ts` (modify), `packages/contracts/src/employees/employee.contract.test.ts` (modify), `packages/contracts/src/openapi.test.ts` (modify), `apps/api/tests/http.test.ts` (modify), `apps/api/tests/authorization.test.ts` (modify), `apps/api/tests/invitations.test.ts` (modify), `apps/api/tests/password-resets.test.ts` (modify), `apps/api/tests/integration/employees/prisma-employee.int.test.ts` (modify), `packages/domain/src/tax-id/personal-rfc.test.ts` (create), `apps/api/src/modules/employees/application/commands/assign-employee-rfc.command.test.ts` (create), `apps/api/src/modules/employees/application/employees.facade.test.ts` (create), `apps/api/tests/employee-rfc.test.ts` (create)
    - Do: wherever a **Mexican** colaborador is hired (HTTP body, `RegisterEmployee` input or
      `Employee.hire`), add a valid synthetic RFC whose first 10 chars match its CURP, e.g. CURP
      `GOMA850101HQRRRN04` → `GOMA850101AB1`, `PEXL900215MDFRPR07` → `PEXL900215AB2`; a different
@@ -259,6 +259,30 @@ unwrap(await deps.assignEmployeeRfc.execute({ ...params, rfc: body.rfc })))`.
 5. `RegisterEmployee` got a private `findDuplicate` helper (lint complexity limit); no behavior change.
 
 ## Test coverage
+
+Added by the tester (no product code touched; no GAP or NOT CONFIRMED found). Fixtures are synthetic
+(CURP/RFC sets already used by the suite; DO `00113918205`, CO `1020304050` from `national-id.test.ts`).
+
+| Behavior (plan / code)                                                                                                                                      | Source                                      | Layer       | Test                                                                              | State                     |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------- | ----------- | --------------------------------------------------------------------------------- | ------------------------- |
+| `PersonalRfc` normalizes, accepts `&`/`Ñ`, rejects 12 chars, bad month/day, length, `equals`                                                                | `personal-rfc.ts:16-35`                     | domain      | `personal-rfc.test.ts`                                                            | CONFIRMED                 |
+| `Employee.hire`: MX requires RFC; non-MX rejects RFC; non-MX without RFC stores null                                                                        | `employee.ts:76-81`                         | domain      | `employee.test.ts › RFC`                                                          | CONFIRMED                 |
+| `assignRfc`: sets, corrects, no event, `RFC_NOT_APPLICABLE` outside MX                                                                                      | `employee.ts:120-124`                       | domain      | `employee.test.ts › RFC`                                                          | CONFIRMED                 |
+| `RegisterEmployee`: normalized RFC, missing, invalid, non-MX, duplicate across companies, CURP checked first, same CURP other company other RFC             | `register-employee.command.ts:59-95`        | application | `register-employee.command.test.ts › RFC`                                         | CONFIRMED                 |
+| `AssignEmployeeRfc`: capture, correct, idempotent, invalid, not found, other company -> not found, duplicate, non-MX, save conflict                         | `assign-employee-rfc.command.ts:23-47`      | application | `assign-employee-rfc.command.test.ts`                                             | CONFIRMED                 |
+| Facade `findEmployee` exposes `rfc`; `findByRfcs`/`rfcsInCompanies` delegate                                                                                | `employees.facade.ts:36-56`                 | application | `employees.facade.test.ts` (delegation only; filtering is covered in integration) | CONFIRMED                 |
+| `RegisterEmployeeSchema` RFC refine by country; `AssignEmployeeRfcSchema`; route access/params                                                              | `employee.contract.ts:40-56, 60-68, 98-107` | contract    | `employee.contract.test.ts`                                                       | CONFIRMED                 |
+| POST hire: 201 normalized, 400 missing/invalid, 409 RFC dup (cross company), 409 CURP dup, DO/CO 201 null and 400 with RFC                                  | acceptance criteria 1-3                     | http        | `tests/employee-rfc.test.ts › POST`                                               | CONFIRMED                 |
+| PUT: 204 (HR), legacy NULL row lists and gets RFC, idempotent, correct, 409, 400, 404 (admin: unknown / other company), 403 (HR other company), 422 DO, 401 | acceptance criteria 4-5                     | http        | `tests/employee-rfc.test.ts › PUT`                                                | CONFIRMED                 |
+| OpenAPI documents the PUT with `x-permission: employees:update`                                                                                             | `openapi.ts:106`                            | http        | `tests/employee-rfc.test.ts › OpenAPI`                                            | CONFIRMED                 |
+| Unique RFC index across companies; NULLs allowed; `save` disambiguation (CURP wins); update path; `existsByRfc` with `exceptId`                             | `prisma-employee.repository.ts:31-69`       | integration | `prisma-employee.int.test.ts › RFC en PrismaEmployeeRepository`                   | CONFIRMED                 |
+| `listDirectory` returns rfc/null; `findByRfcs` (owners, unknown ignored, active flag, empty); `rfcsInCompanies` (filter, NULL ignored, empty)               | `prisma-employee.queries.ts`                | integration | `prisma-employee.int.test.ts › RFC en PrismaEmployeeQueries`                      | CONFIRMED                 |
+| `pnpm db:seed` idempotent with RFC (acceptance criterion)                                                                                                   | `seed.ts`                                   | none        | not a test; belongs to the verifier                                               | NOT TESTED (verify phase) |
+| 403 for HR of another company comes before 404; HR cannot probe other companies                                                                             | `authorization` wiring                      | http        | `employee-rfc.test.ts › PUT 403`                                                  | CONFIRMED                 |
+
+Counts added: domain 11 (`PersonalRfc`, package domain) + 8 (`Employee` RFC), application 9 + 9 + 5 (register, assign,
+facade), contract 18, http 20, integration 15. Closing run: `pnpm check` green (api 639 passed | 3 skipped, contracts and
+domain green); `pnpm test:integration` 145 passed (baseline 130).
 
 ## Review findings
 
