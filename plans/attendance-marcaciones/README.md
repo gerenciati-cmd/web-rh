@@ -29,7 +29,9 @@ the colaborador record, delivered by `employees-rfc/001` (another module, so ano
 
 003 needs the sede catalog (`organization-sedes/001`). 004 runs on a device that already has its
 sede (003). 005 cannot be specified before 004 observes the real command and reply formats, and
-needs the colaborador's sede and the change events from `employees-sede/001`.
+needs the colaborador's sede and the change events from `employees-sede/001`. Note for 005 (review L3
+of `employees-sede/001`): a site change on a TERMINATED colaborador also publishes
+`site-assigned`, so the sync must check `EmployeeSummary.active` before pushing a user.
 
 ## Decisions with the user
 

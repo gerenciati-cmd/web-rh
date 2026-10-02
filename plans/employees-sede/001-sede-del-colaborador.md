@@ -1,5 +1,5 @@
 ---
-status: review
+status: verify
 module: employees
 min_implementer: mid
 depends_on: [organization-sedes/001]
@@ -219,5 +219,77 @@ New tests: domain 5, application 20, contract 13, http 17, integration 8.
 Closing run: `pnpm check` green; `pnpm test:integration` 168/168 (160 before).
 
 ## Review findings
+
+Review 2026-10-02 (reviewer subagent), diff `a06fbf5..HEAD`.
+
+**Checklist: 13/13 passed.**
+
+- [x] `pnpm plans:scope … --base a06fbf5`: 38 changed / 38 declared. Hot files
+      `schema.prisma` and `test-app.ts` are also declared in the plan; their edits are the planned
+      ones (one column + index; `siteId` in the hand-written queries, `listActiveOnSite`,
+      `createTestSite`). `in-memory-employee.repository.ts` was declared but is unchanged, which
+      the plan allows ("nothing beyond what typecheck requires"). Against the default base
+      (`main`) the script also lists files from the earlier plans on this branch. That is
+      expected and not a finding.
+- [x] `pnpm check` exit 0 (format, typecheck/lint/test 19/19 turbo tasks, arch, plans, harness,
+      hooks, bootstrap, quality).
+- [x] `pnpm test:integration` 168/168.
+- [x] Business rules: `assignSite`/`assignRfc` event rules are in `domain/`. The site checks
+      (exists / active / same country) are in the commands, as the plan says. This matches
+      the existing employer-active check (cross-module data comes in through a port). See L1.
+- [x] CQRS-lite: both commands go aggregate → `EmployeeRepository` → `Result`. `listActiveOnSite`
+      is on `EmployeeQueries`, not on the repository.
+- [x] Types come from `@rrhh/contracts` (`siteId` in list/register, `AssignEmployeeSiteSchema`,
+      route bound with `bindRoute`). OpenAPI snapshot regenerated, count 26.
+- [x] Errors: `SITE_NOT_FOUND` (NotFound), `SITE_INACTIVE` and `SITE_COUNTRY_MISMATCH`
+      (BusinessRuleViolation), all with stable codes and Spanish messages.
+- [x] Time comes from `clock.now()` in both commands. No money. No ids generated.
+- [x] New migration `20261002210000_add_employee_site` (later than `create_sites`):
+      `ADD COLUMN site_id UUID` + index `(site_id, status)`. No DROP, no FK.
+- [x] DI: `siteDirectory` and `assignEmployeeSite` registered once. `container.test.ts` green.
+- [x] No secrets or real personal data. The seed uses the existing fictional data plus the
+      sede "Cancún Centro".
+- [x] Deviations are accurate. Spot-checked: Deviation 3 (the `employee.test.ts` assertion now
+      expects `EMPLOYEE_RFC_ASSIGNED`, and a no-change/no-event test was added). Deviation 1
+      (the migration folder has a real timestamp).
+- [x] Docs: `docs/architecture.md`, ADR 0005 and `docs/conventions.md` only cite
+      `employees.employee.hired` as an example. They are not stale, and the new event names
+      follow `<modulo>.<agregado>.<pasado>`.
+
+**Bug hunt.** I traced each flow: contract → router → command → port/adapter
+(`OrganizationApi.findSite`) → aggregate → mapper/Prisma → list DTO → OpenAPI. Tenancy: a
+different `companyId` returns `EMPLOYEE_NOT_FOUND`, and the route requires `employees:update`
+scoped to `companyId`. Events are published only after a successful save (same pattern as
+`RegisterEmployee`).
+
+Critical: 0 · High: 0 · Medium: 0 · Low: 3 (none blocks verify).
+
+- **L1 — the site check is duplicated** (maintainability):
+  `apps/api/src/modules/employees/application/commands/register-employee.command.ts:99-107` and
+  `apps/api/src/modules/employees/application/commands/assign-employee-site.command.ts:61-69`
+  contain the same `checkSite`. Scenario: a later rule change (e.g. allowing an inactive site
+  for a transfer) gets applied to one command and not the other, so hire and change start
+  validating differently. The plan asked for this shape, so this is not a defect. Consider a
+  shared helper if a third caller appears.
+- **L2 — repeating the same site fails once that site is inactive** (uncertain whether this is
+  intended): `assign-employee-site.command.ts:48-51` validates the site before
+  `assignSite` gets a chance to treat it as a no-op. Scenario: a colaborador's sede is later
+  deactivated, HR re-saves the form with the same `siteId`, and gets 422 `SITE_INACTIVE` instead
+  of the documented "idempotent" 204. This is harmless, and arguably correct because it
+  surfaces the stale site.
+- **L3 — sites can be assigned to TERMINATED colaboradores** (uncertain: no lifecycle rule
+  forbids it): `apps/api/src/modules/employees/domain/employee.ts:135-142` does not check
+  status. Scenario: `PUT …/site` on a terminated colaborador returns 204 and publishes
+  `employees.employee.site-assigned`. If the future attendance sync (`attendance-marcaciones/005`)
+  pushes users on that event without checking `active` via `findEmployee`, a terminated person
+  could be loaded onto a checador. `assignRfc` behaves the same way and did before this plan.
+  The future consumer should check `EmployeeSummary.active`. Noting it here for that plan's
+  author. No hallazgo filed, because no consumer exists yet.
+
+Also noted, not a finding: `apps/api/prisma/seed.ts:69` looks up the existing sede with
+`listSites` `pageSize: 100`. With more than 100 sedes, re-running the seed would throw "No se
+encontró la sede ya existente". This is a dev-only script and acceptable for now.
+
+All checklist items passed. Status → `verify`.
 
 ## Verification
