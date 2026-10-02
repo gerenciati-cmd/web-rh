@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { ListPunchesQuerySchema, attendancePunchRoutes } from './punch.contract';
+import { ListPunchesQuerySchema, PunchSchema, attendancePunchRoutes } from './punch.contract';
 
 describe('ListPunchesQuerySchema', () => {
   it('aplica los defaults de paginación y los filtros son opcionales', () => {
@@ -32,6 +32,45 @@ describe('ListPunchesQuerySchema', () => {
   it.each(['2026-09-28', 'ayer', '2026-09-28 10:00:00'])('rechaza from/to no ISO %j', (value) => {
     expect(ListPunchesQuerySchema.safeParse({ from: value }).success).toBe(false);
     expect(ListPunchesQuerySchema.safeParse({ to: value }).success).toBe(false);
+  });
+});
+
+describe('PunchSchema.employee', () => {
+  const punch = {
+    id: '00000000-0000-4000-8000-000000000001',
+    deviceId: '00000000-0000-4000-8000-000000000002',
+    serialNumber: 'TESTSN001',
+    pin: 'GOMA850101AB1',
+    occurredAt: '2026-09-28T13:00:00.000Z',
+    deviceLocalTime: '2026-09-28 08:00:00',
+    status: '0',
+    verifyMode: '1',
+    receivedAt: '2026-09-29T00:00:00.000Z',
+  };
+  const employee = {
+    id: '00000000-0000-4000-8000-000000000003',
+    fullName: 'Ana Rojas',
+    companyId: '00000000-0000-4000-8000-000000000004',
+  };
+
+  it('acepta el colaborador dueño de la marcación', () => {
+    expect(PunchSchema.parse({ ...punch, employee }).employee).toEqual(employee);
+  });
+
+  it('acepta employee null (PIN sin colaborador)', () => {
+    expect(PunchSchema.parse({ ...punch, employee: null }).employee).toBeNull();
+  });
+
+  it('el campo es obligatorio: sin employee se rechaza', () => {
+    expect(PunchSchema.safeParse(punch).success).toBe(false);
+  });
+
+  it.each([
+    ['id que no es uuid', { ...employee, id: 'no-uuid' }],
+    ['companyId que no es uuid', { ...employee, companyId: 'no-uuid' }],
+    ['sin fullName', { id: employee.id, companyId: employee.companyId }],
+  ])('rechaza un employee con %s', (_name, bad) => {
+    expect(PunchSchema.safeParse({ ...punch, employee: bad }).success).toBe(false);
   });
 });
 

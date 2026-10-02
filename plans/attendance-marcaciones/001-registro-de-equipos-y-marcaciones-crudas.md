@@ -1,5 +1,5 @@
 ---
-status: verify
+status: done
 module: attendance
 min_implementer: mid
 depends_on: []
@@ -331,9 +331,10 @@ PrismaPunchRepository`, `attendanceQueries: PrismaAttendanceQueries`, `registerD
 
 9. **Test files and review repair of this plan** (declared for `pnpm plans:scope` after review
    L1/L2; added by the main session, see Deviation 6)
-   - Files: `packages/domain/src/time-zone.test.ts` (create), `apps/api/src/modules/attendance/domain/device.test.ts` (create), `apps/api/src/modules/attendance/domain/punch.test.ts` (create), `apps/api/src/modules/attendance/application/commands/register-device.command.test.ts` (create), `apps/api/src/modules/attendance/application/queries/list-punches.query.test.ts` (create), `packages/contracts/src/attendance/device.contract.test.ts` (create), `packages/contracts/src/attendance/punch.contract.test.ts` (create), `packages/contracts/src/identity/access.contract.test.ts` (modify), `apps/api/tests/attendance.test.ts` (create), `apps/api/tests/integration/attendance/prisma-attendance.int.test.ts` (create), `apps/api/src/config/env.test.ts` (modify), `apps/api/src/modules/identity/application/session-authenticator.test.ts` (modify), `packages/contracts/src/openapi.test.ts` (modify), `docs/architecture.md` (modify)
+   - Files: `packages/domain/src/time-zone.test.ts` (create), `apps/api/src/modules/attendance/domain/device.test.ts` (create), `apps/api/src/modules/attendance/domain/punch.test.ts` (create), `apps/api/src/modules/attendance/application/commands/register-device.command.test.ts` (create), `apps/api/src/modules/attendance/application/queries/list-punches.query.test.ts` (create), `packages/contracts/src/attendance/device.contract.test.ts` (create), `packages/contracts/src/attendance/punch.contract.test.ts` (create), `packages/contracts/src/identity/access.contract.test.ts` (modify), `apps/api/tests/attendance.test.ts` (create), `apps/api/tests/integration/attendance/prisma-attendance.int.test.ts` (create), `apps/api/src/config/env.test.ts` (modify), `apps/api/src/modules/identity/application/session-authenticator.test.ts` (modify), `packages/contracts/src/openapi.test.ts` (modify), `docs/architecture.md` (modify), `docs/adr/0013-registro-de-equipos-en-base-de-datos.md` (create), `docs/adr/README.md` (modify)
    - Do: nothing for the implementer (tests by the tester; the three count-only edits are
-     Deviation 2; `docs/architecture.md` legend is review L1).
+     Deviation 2; `docs/architecture.md` legend is review L1; ADR 0013 resolves the ADR 0008
+     finding at acceptance, see Verification → Acceptance).
    - Observable result: `pnpm plans:scope` passes.
 
 ## Acceptance criteria
@@ -356,7 +357,7 @@ PrismaPunchRepository`, `attendanceQueries: PrismaAttendanceQueries`, `registerD
 - [x] `GET /api/v1/attendance/punches` as HOLDING_ADMIN lists punches newest first, filterable by
       `deviceId`, `pin`, `from`, `to`; as HR → 403.
 - [x] Pushes of `OPLOG`/`USER`/`BIODATA` are logged as today and write no rows.
-- [ ] The real SenseFace 2A, once registered, is shown with a recent `lastSeenAt` and a real
+- [x] The real SenseFace 2A, once registered, is shown with a recent `lastSeenAt` and a real
       marcación appears in `/attendance/punches` (verifier with the user and the device; NOT
       VERIFIED if unavailable).
 - [x] `/api/v1/docs` (Scalar) shows the three new endpoints.
@@ -568,3 +569,24 @@ blocked by the hooks): users `verif-att-*@example.test` with their role assignme
 `VERIFSN466451` and its 2 punches. Harmless synthetic data; the user may remove them.
 
 Result: **PASS** on every criterion exercisable without the device. Status stays `verify`.
+
+### Acceptance (user, 2026-10-02)
+
+The user accepted the plan and moved it to `done` with the SenseFace 2A criterion still **NOT
+VERIFIED** (its checkbox stays unchecked on purpose): the real device has not yet been registered
+and exercised against this API. Finding `attendance-adr-0008-menciona-allowlist-en-env` resolved
+with ADR 0013 (replaces ADR 0008's device-authentication point only).
+
+### Real device (user + main session, 2026-10-02) — supersedes the NOT VERIFIED above
+
+The SenseFace 2A criterion is now checked. First attempt failed outside the code: no `/iclock`
+request reached the API (the API listened on the local `.env` `PORT` 3000 while the device and
+runbook used 3001). The user fixed the device/port setup and drove real marcaciones. `psql` on
+the dev DB:
+
+- `NYU7253300918`: `last_seen_at 2026-10-02 16:09:05+00`, 8 stored punches, last received
+  `16:04:15+00`.
+- Sample rows: pin 1 `2026-10-02 11:04:09` → `16:04:09+00`, `verify_mode 3`; pin 2
+  `2026-10-02 11:03:05` → `16:03:05+00`, `verify_mode 1`; history from `2026-10-01` also
+  stored (resent by `Stamp=None`), UTC−5 conversion correct on every row.
+- `verify_mode 3` was not seen in the probe; stored raw as designed.

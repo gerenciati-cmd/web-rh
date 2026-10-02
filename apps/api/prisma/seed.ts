@@ -44,6 +44,7 @@ if (holding) {
   const employees = [
     {
       nationalId: 'GOMA850101HQRRRN04',
+      rfc: 'GOMA850101AB1',
       firstName: 'Ana',
       lastName: 'Rojas',
       email: 'ana.rojas@example.com',
@@ -51,6 +52,7 @@ if (holding) {
     },
     {
       nationalId: 'PEXL900215MDFRPR07',
+      rfc: 'PEXL900215AB2',
       firstName: 'Pedro',
       lastName: 'Soto',
       email: 'pedro.soto@example.com',

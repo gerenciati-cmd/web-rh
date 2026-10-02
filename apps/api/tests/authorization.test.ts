@@ -18,6 +18,7 @@ const validCompany = { legalName: 'Gamma SA de CV', taxId: 'BBB020202BB2', count
 
 const employeeBody = {
   nationalId: { country: 'MX', number: 'GOMA850101HQRRRN04' },
+  rfc: 'GOMA850101AB1',
   firstName: 'Ana',
   lastName: 'Rojas',
   email: 'ana@aps.cl',

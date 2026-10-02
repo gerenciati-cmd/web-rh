@@ -1,4 +1,14 @@
-import { Email, err, NationalId, ok, type CountryCode, type DomainError } from '@rrhh/domain';
+import {
+  Email,
+  err,
+  NationalId,
+  ok,
+  PersonalRfc,
+  type CountryCode,
+  type DomainError,
+  type InvalidValueError,
+  type Result,
+} from '@rrhh/domain';
 
 import type { Clock, EventBus, IdGenerator } from '@/shared/application/ports';
 import type { Command } from '@/shared/application/use-case';
@@ -7,6 +17,7 @@ import { Employee, type EmployeeId } from '../../domain/employee';
 import type { EmployeeRepository } from '../../domain/employee.repository';
 import {
   EmployeeAlreadyExistsError,
+  EmployeeRfcAlreadyRegisteredError,
   EmployerNotFoundError,
   InactiveEmployerError,
 } from '../../domain/errors';
@@ -18,6 +29,8 @@ export interface RegisterEmployeeInput {
   firstName: string;
   lastName: string;
   email: string;
+  /** Obligatorio para México; la regla vive en `Employee.hire`. */
+  rfc?: string | undefined;
   positionTitle?: string | undefined;
   /** Fecha ISO (YYYY-MM-DD) */
   hireDate: string;
@@ -45,10 +58,11 @@ export class RegisterEmployee implements Command<RegisterEmployeeInput, { id: Em
     if (!nationalId.ok) return nationalId;
     const email = Email.create(input.email);
     if (!email.ok) return email;
+    const rfc = parseOptionalRfc(input.rfc);
+    if (!rfc.ok) return rfc;
 
-    if (await employeeRepository.existsInCompany(input.companyId, nationalId.value)) {
-      return err<DomainError>(new EmployeeAlreadyExistsError(nationalId.value.format()));
-    }
+    const duplicate = await this.findDuplicate(input.companyId, nationalId.value, rfc.value);
+    if (duplicate) return duplicate;
 
     const employee = Employee.hire({
       id: idGenerator.next() as EmployeeId,
@@ -57,6 +71,7 @@ export class RegisterEmployee implements Command<RegisterEmployeeInput, { id: Em
       firstName: input.firstName,
       lastName: input.lastName,
       email: email.value,
+      rfc: rfc.value,
       positionTitle: input.positionTitle,
       hireDate: new Date(`${input.hireDate}T00:00:00Z`),
       now: clock.now(),
@@ -69,4 +84,23 @@ export class RegisterEmployee implements Command<RegisterEmployeeInput, { id: Em
 
     return ok({ id: employee.value.id });
   }
+
+  /** El CURP repetido en la empresa se reporta antes que el RFC repetido en el holding. */
+  private async findDuplicate(companyId: string, nationalId: NationalId, rfc?: PersonalRfc) {
+    const { employeeRepository } = this.deps;
+    if (await employeeRepository.existsInCompany(companyId, nationalId)) {
+      return err<DomainError>(new EmployeeAlreadyExistsError(nationalId.format()));
+    }
+    if (rfc && (await employeeRepository.existsByRfc(rfc))) {
+      return err<DomainError>(new EmployeeRfcAlreadyRegisteredError(rfc.value));
+    }
+    return null;
+  }
+}
+
+/** El RFC es opcional en la entrada: la regla de si corresponde por país la aplica el agregado. */
+function parseOptionalRfc(
+  raw: string | undefined,
+): Result<PersonalRfc | undefined, InvalidValueError> {
+  return raw === undefined ? ok(undefined) : PersonalRfc.create(raw);
 }

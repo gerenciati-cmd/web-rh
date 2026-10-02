@@ -1,7 +1,8 @@
 # ZKTeco SenseFace 2A — sonda ADMS
 
 Runbook de la sonda del módulo `attendance`
-(plan `plans/attendance-sonda-zkteco/001-recepcion-adms-solo-log.md`, ADR 0008).
+(plan `plans/attendance-sonda-zkteco/001-recepcion-adms-solo-log.md`, ADR 0008; autenticación por registro en BD:
+ADR 0013).
 
 ## Qué hace y qué no
 
@@ -17,9 +18,9 @@ equipo (`options`).
 - Las demás tablas (`OPERLOG`, `BIODATA`, `options`…) siguen **solo en el log**.
 - El estado de cada equipo (último contacto, última marcación) se consulta con
   `GET /api/v1/attendance/devices`; las marcaciones, con `GET /api/v1/attendance/punches`
-  (solo HOLDING_ADMIN).
+  (HOLDING_ADMIN todas; RRHH solo las de colaboradores de sus empresas, ver "Atribución").
 - No envía comandos al equipo: `getrequest` siempre responde `OK`.
-- No asocia el PIN a un colaborador.
+- Asocia el PIN a un colaborador solo cuando coincide con su RFC (ver "Atribución").
 - Plantillas, fotos (`Tmp`, `Content`), nombres, claves y tarjetas **nunca** aparecen en el log:
   salen como `[redactado:<largo>]`.
 
@@ -49,6 +50,15 @@ SenseFace 2A, firmware `ZAM70-NF24HA-Ver3.3.12`, PushVersion `Ver 3.1.2S-2025061
    - "Dirección del servidor": la IP de tu máquina en la LAN.
    - "Puerto del servidor": el valor de `PORT`.
    - "Habilitar servidor proxy": apagado.
+
+## Atribución
+
+Da de alta a cada persona en el equipo con su RFC (13 caracteres, en mayúsculas) como ID de
+usuario/PIN. El API atribuye cada marcación cuyo PIN coincide con el RFC de un colaborador: esa
+marcación es del colaborador y pertenece a su empresa (RRHH ve las de sus empresas; las marcaciones
+sin RFC coincidente solo las ve el administrador del holding). La atribución se resuelve al leer, así
+que un RFC capturado después alcanza también las marcaciones anteriores. Captura los RFC faltantes
+con `PUT …/employees/:id/rfc`.
 
 ## Simular el equipo con curl
 

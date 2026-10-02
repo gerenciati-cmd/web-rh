@@ -7,6 +7,7 @@ import type { PrismaDatabase } from '@/infrastructure/database/prisma-database';
 import type {
   EmployeeDirectoryFilters,
   EmployeeQueries,
+  EmployeeRfcOwner,
 } from '../application/queries/employee.queries';
 
 /**
@@ -45,6 +46,7 @@ export class PrismaEmployeeQueries implements EmployeeQueries {
           lastName: true,
           nationalIdCountry: true,
           nationalIdNumber: true,
+          rfc: true,
           email: true,
           positionTitle: true,
           hireDate: true,
@@ -66,6 +68,7 @@ export class PrismaEmployeeQueries implements EmployeeQueries {
         id: row.id,
         fullName: `${row.firstName} ${row.lastName}`,
         nationalId: nationalId.ok ? nationalId.value.format() : row.nationalIdNumber,
+        rfc: row.rfc,
         email: row.email,
         positionTitle: row.positionTitle,
         hireDate: row.hireDate.toISOString().slice(0, 10),
@@ -74,5 +77,42 @@ export class PrismaEmployeeQueries implements EmployeeQueries {
     });
 
     return { items, total, page, pageSize };
+  }
+
+  async findByRfcs(rfcs: readonly string[]): Promise<EmployeeRfcOwner[]> {
+    if (rfcs.length === 0) return [];
+    const rows = await this.deps.database.client.employee.findMany({
+      where: { rfc: { in: [...rfcs] } },
+      select: {
+        id: true,
+        companyId: true,
+        firstName: true,
+        lastName: true,
+        rfc: true,
+        status: true,
+      },
+    });
+    return rows.flatMap((row) =>
+      row.rfc === null
+        ? []
+        : [
+            {
+              id: row.id,
+              companyId: row.companyId,
+              fullName: `${row.firstName} ${row.lastName}`,
+              rfc: row.rfc,
+              active: row.status === 'ACTIVE',
+            },
+          ],
+    );
+  }
+
+  async rfcsInCompanies(companyIds: readonly string[]): Promise<string[]> {
+    if (companyIds.length === 0) return [];
+    const rows = await this.deps.database.client.employee.findMany({
+      where: { companyId: { in: [...companyIds] }, rfc: { not: null } },
+      select: { rfc: true },
+    });
+    return rows.flatMap((row) => (row.rfc === null ? [] : [row.rfc]));
   }
 }

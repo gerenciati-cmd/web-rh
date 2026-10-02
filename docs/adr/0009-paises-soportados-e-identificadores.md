@@ -33,6 +33,9 @@ y este los reemplaza en lo que respecta a los países.
 - La referencia es python-stdnum (`mx.curp`, `mx.rfc`, `do.rnc`, `do.cedula`, `co.nit`). Solo se
   reimplementa el algoritmo; no se copia código ni datos (la librería es LGPL).
 - En México el colaborador se registra con CURP. RFC y NSS se agregan con la nómina.
+  _Actualización 2026-10-02 (plan `employees-rfc/001`):_ el RFC de persona física se adelantó: es
+  obligatorio en el alta de colaboradores de México y único en el holding, porque los checadores
+  lo usan como PIN. El NSS sigue pendiente.
 
 ## Alternativas consideradas
 

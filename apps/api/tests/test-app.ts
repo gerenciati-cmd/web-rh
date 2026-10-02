@@ -90,6 +90,7 @@ export function buildTestContainer(env: Env = testEnv) {
             id: employee.id,
             fullName: `${s.firstName} ${s.lastName}`,
             nationalId: s.nationalId.format(),
+            rfc: s.rfc?.value ?? null,
             email: s.email.value,
             positionTitle: s.positionTitle,
             hireDate: s.hireDate.toISOString().slice(0, 10),
@@ -98,6 +99,29 @@ export function buildTestContainer(env: Env = testEnv) {
         });
       return Promise.resolve({ items, total: items.length, page, pageSize });
     },
+    findByRfcs: (rfcs) =>
+      Promise.resolve(
+        [...employees.employees.values()].flatMap((employee) => {
+          const s = employee.snapshot;
+          if (!s.rfc || !rfcs.includes(s.rfc.value)) return [];
+          return [
+            {
+              id: employee.id,
+              companyId: s.companyId,
+              fullName: `${s.firstName} ${s.lastName}`,
+              rfc: s.rfc.value,
+              active: s.status === 'ACTIVE',
+            },
+          ];
+        }),
+      ),
+    rfcsInCompanies: (companyIds) =>
+      Promise.resolve(
+        [...employees.employees.values()].flatMap((employee) => {
+          const s = employee.snapshot;
+          return s.rfc && companyIds.includes(s.companyId) ? [s.rfc.value] : [];
+        }),
+      ),
   };
 
   container.register({

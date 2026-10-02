@@ -21,6 +21,7 @@ class StubEmployerDirectory implements EmployerDirectory {
 
 const ACTIVE = 'company-active';
 const INACTIVE = 'company-inactive';
+const OTHER = 'company-other';
 
 describe('RegisterEmployee', () => {
   let repository: InMemoryEmployeeRepository;
@@ -35,6 +36,7 @@ describe('RegisterEmployee', () => {
       employerDirectory: new StubEmployerDirectory([
         { id: ACTIVE, country: 'MX', active: true },
         { id: INACTIVE, country: 'MX', active: false },
+        { id: OTHER, country: 'MX', active: true },
       ]),
       idGenerator: new SequentialIdGenerator(),
       clock: new FixedClock(),
@@ -45,6 +47,7 @@ describe('RegisterEmployee', () => {
   const input: RegisterEmployeeInput = {
     companyId: ACTIVE,
     nationalId: { country: 'MX', number: 'GOMA850101HQRRRN04' },
+    rfc: 'GOMA850101AB1',
     firstName: 'Ana',
     lastName: 'Rojas',
     email: 'Ana@APS.cl',
@@ -74,6 +77,84 @@ describe('RegisterEmployee', () => {
     await registerEmployee.execute(input);
     const result = await registerEmployee.execute(input);
     expect(!result.ok && result.error.code).toBe('EMPLOYEE_ALREADY_EXISTS');
+  });
+
+  describe('RFC', () => {
+    it('guarda el RFC normalizado en mayúsculas', async () => {
+      await registerEmployee.execute({ ...input, rfc: 'goma850101ab1' });
+      expect([...repository.employees.values()][0]?.snapshot.rfc?.value).toBe('GOMA850101AB1');
+    });
+
+    it('rechaza a un colaborador de México sin RFC', async () => {
+      const result = await registerEmployee.execute({ ...input, rfc: undefined });
+      expect(!result.ok && result.error.code).toBe('INVALID_VALUE');
+      expect(repository.employees.size).toBe(0);
+      expect(eventBus.names()).toEqual([]);
+    });
+
+    it('rechaza un RFC inválido', async () => {
+      const result = await registerEmployee.execute({ ...input, rfc: 'GOMA851301AB1' });
+      expect(!result.ok && result.error.code).toBe('INVALID_VALUE');
+      expect(repository.employees.size).toBe(0);
+    });
+
+    it('rechaza un RFC en un colaborador que no es de México', async () => {
+      const result = await registerEmployee.execute({
+        ...input,
+        nationalId: { country: 'DO', number: '00113918205' },
+      });
+      expect(!result.ok && result.error.code).toBe('INVALID_VALUE');
+    });
+
+    it('registra sin RFC a un colaborador que no es de México', async () => {
+      const result = await registerEmployee.execute({
+        ...input,
+        nationalId: { country: 'DO', number: '00113918205' },
+        rfc: undefined,
+      });
+      expect(result.ok).toBe(true);
+      expect([...repository.employees.values()][0]?.snapshot.rfc).toBeNull();
+    });
+
+    it('rechaza un RFC ya usado en otra empresa del holding', async () => {
+      await registerEmployee.execute(input);
+      const result = await registerEmployee.execute({
+        ...input,
+        companyId: OTHER,
+        nationalId: { country: 'MX', number: 'PEXL900215MDFRPR07' },
+      });
+      expect(!result.ok && result.error.code).toBe('EMPLOYEE_RFC_ALREADY_REGISTERED');
+      expect(repository.employees.size).toBe(1);
+      expect(eventBus.names()).toEqual([EMPLOYEE_HIRED]);
+    });
+
+    it('detecta el RFC repetido aunque venga en minúsculas', async () => {
+      await registerEmployee.execute(input);
+      const result = await registerEmployee.execute({
+        ...input,
+        companyId: OTHER,
+        rfc: 'goma850101ab1',
+        nationalId: { country: 'MX', number: 'PEXL900215MDFRPR07' },
+      });
+      expect(!result.ok && result.error.code).toBe('EMPLOYEE_RFC_ALREADY_REGISTERED');
+    });
+
+    it('con CURP y RFC repetidos reporta primero el CURP de la empresa', async () => {
+      await registerEmployee.execute(input);
+      const result = await registerEmployee.execute(input);
+      expect(!result.ok && result.error.code).toBe('EMPLOYEE_ALREADY_EXISTS');
+    });
+
+    it('la misma CURP en otra empresa con otro RFC se registra', async () => {
+      await registerEmployee.execute(input);
+      const result = await registerEmployee.execute({
+        ...input,
+        companyId: OTHER,
+        rfc: 'GOMA850101AB3',
+      });
+      expect(result.ok).toBe(true);
+      expect(repository.employees.size).toBe(2);
+    });
   });
 
   it('propaga conflicto de save sin publicar evento', async () => {

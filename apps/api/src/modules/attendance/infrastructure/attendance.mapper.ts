@@ -1,10 +1,9 @@
-import type { PunchDto } from '@rrhh/contracts';
-
 import type {
   AttendanceDevice as DeviceRow,
   AttendancePunch as PunchRow,
 } from '@/infrastructure/database/generated/client';
 
+import type { RawPunch } from '../application/queries/attendance.queries';
 import { Device, type DeviceId } from '../domain/device';
 import type { Punch } from '../domain/punch';
 
@@ -51,7 +50,7 @@ export const PunchMapper = {
     };
   },
 
-  toDto(row: PunchRow, serialNumber: string): PunchDto {
+  toDto(row: PunchRow, serialNumber: string): RawPunch {
     return {
       id: row.id,
       deviceId: row.deviceId,

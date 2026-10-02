@@ -2,6 +2,7 @@ import { asClass } from 'awilix';
 
 import type { AppModule } from '@/shared/app-module';
 
+import { AssignEmployeeRfc } from './application/commands/assign-employee-rfc.command';
 import { RegisterEmployee } from './application/commands/register-employee.command';
 import { EmployeesFacade, type EmployeesApi } from './application/employees.facade';
 import type { EmployerDirectory } from './application/ports/employer-directory';
@@ -19,6 +20,7 @@ export interface EmployeesCradle {
   employerDirectory: EmployerDirectory;
   employeesApi: EmployeesApi;
   registerEmployee: RegisterEmployee;
+  assignEmployeeRfc: AssignEmployeeRfc;
   listEmployees: ListEmployees;
 }
 
@@ -30,6 +32,7 @@ export const employeesModule: AppModule<EmployeesCradle> = {
     employerDirectory: asClass(OrganizationEmployerDirectory).singleton(),
     employeesApi: asClass(EmployeesFacade).singleton(),
     registerEmployee: asClass(RegisterEmployee).singleton(),
+    assignEmployeeRfc: asClass(AssignEmployeeRfc).singleton(),
     listEmployees: asClass(ListEmployees).singleton(),
   },
   router: createEmployeesRouter,

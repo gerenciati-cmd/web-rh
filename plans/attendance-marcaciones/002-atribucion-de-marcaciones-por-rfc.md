@@ -1,0 +1,283 @@
+---
+status: done
+module: attendance
+min_implementer: mid
+depends_on: [employees-rfc/001]
+---
+
+# 002 — Attribution of marcaciones by RFC
+
+## Context
+
+**What exists today** (plan 001, `done`):
+
+- Punches are stored with the raw device `pin` (`apps/api/prisma/schema.prisma`, model
+  `AttendancePunch`: `pin String @db.VarChar(32)`, unique `[deviceId, pin, deviceLocalTime]`).
+- `PunchSchema` has no colaborador (`packages/contracts/src/attendance/punch.contract.ts:7-22`);
+  filters `deviceId`, `pin`, `from`, `to` (`punch.contract.ts:25-31`); route
+  `GET /attendance/punches` with `requires('attendance.punches:read')` and no `companyParam`
+  (`punch.contract.ts:34-43`).
+- Read port `AttendanceQueries.listPunches(filters): Promise<Page<PunchDto>>`
+  (`apps/api/src/modules/attendance/application/queries/attendance.queries.ts:7-11`); Prisma
+  adapter builds `where` from the filters and orders `occurredAt desc, id desc`
+  (`apps/api/src/modules/attendance/infrastructure/prisma-attendance.queries.ts:46-83`); the
+  in-memory adapter mirrors it (`infrastructure/in-memory/in-memory-attendance.store.ts`).
+- `ListPunches` returns an empty page to any actor without a holding-wide grant
+  (`application/queries/list-punches.query.ts:21-37`), and HR does not have
+  `attendance.punches:read` (`apps/api/src/modules/identity/domain/role-catalog.ts:16-29`,
+  comment at `:22-23`). `companiesWith` gives `'ALL'` or the actor's company ids
+  (`apps/api/src/shared/application/actor.ts:32-40`).
+- Module wiring: `apps/api/src/modules/attendance/attendance.module.ts:19-46`.
+- Cross-module pattern to imitate: identity's port + adapter over `EmployeesApi`
+  (`apps/api/src/modules/identity/application/ports/employee-directory.ts:1-16`,
+  `apps/api/src/modules/identity/infrastructure/employees-employee-directory.ts:1-23`,
+  registered at `apps/api/src/modules/identity/identity.module.ts:115`).
+
+**What `employees-rfc/001` promises** (dependency, see below): `EmployeesApi.findByRfcs` and
+`EmployeesApi.rfcsInCompanies`, RFC normalized uppercase and unique in the holding.
+
+**What we need** (attendance README decisions 2, 5, 7, 8): each punch whose PIN is the RFC of a
+colaborador is that colaborador's, and so belongs to that colaborador's company; HR reads the
+punches of its companies' colaboradores; punches with no matching RFC stay visible only to
+HOLDING_ADMIN.
+
+**Approach.** Attribution is resolved **at read time**, not stored: the use case asks the
+employees module (through a port) which RFCs belong to the actor's companies and filters
+`pin IN (…)`, then enriches the page with the owners of its PINs. Alternative considered:
+stamping `employeeId`/`companyId` on each punch at ingestion. Rejected: an RFC captured or
+corrected after the marcación (README `employees-rfc` decision 3) would need a backfill job and
+an event subscription, and attribution would drift from the colaborador record. Read-time lookup
+is always current; at the holding's scale (hundreds to a few thousand colaboradores) the `IN`
+list is acceptable. PIN matching is exact against the uppercase RFC: the devices send the RFC in
+uppercase (decision 7), and PINs like `"1"` simply never match.
+
+## Out of scope
+
+- Storing the attribution, backfills, events.
+- A `employeeId` filter on the punches endpoint (the `pin` filter with the RFC covers it).
+- DO/CO devices and their PIN convention (`employees-rfc` README decision 5).
+- Pushing users/PINs to the devices; reading the device's `USER` records (stay log-only).
+- Shifts, jornadas, overtime, LFT rules. Web or mobile screens.
+
+## Dependencies
+
+- `employees-rfc/001` — `EmployeesApi` (from `@/modules/employees`) gains:
+  - `findByRfcs(rfcs: readonly string[]): Promise<EmployeeRfcOwner[]>` with
+    `EmployeeRfcOwner { id: string; companyId: string; fullName: string; rfc: string; active: boolean }`
+    (exported type), `[]` for empty input, colaboradores without RFC ignored.
+  - `rfcsInCompanies(companyIds: readonly string[]): Promise<string[]>`, `[]` for empty input.
+  - RFC values are normalized uppercase and unique across the holding.
+
+## Steps
+
+1. **Contract: owner on the punch**
+   - Files: `packages/contracts/src/attendance/punch.contract.ts` (modify), `packages/contracts/openapi.json` (modify)
+   - Do: add to `PunchSchema`, after `pin`:
+     `employee: z.object({ id: z.uuid(), fullName: z.string(), companyId: z.uuid() }).nullable()`
+     `.describe('Colaborador cuyo RFC coincide con el PIN; null si ninguno')`. Regenerate with
+     `pnpm --filter @rrhh/contracts openapi`.
+   - Observable result: `pnpm --filter @rrhh/contracts typecheck` passes.
+
+2. **Port and adapter to the employees module**
+   - Files: `apps/api/src/modules/attendance/application/ports/punch-owner-directory.ts` (create), `apps/api/src/modules/attendance/infrastructure/employees-punch-owner-directory.ts` (create)
+   - Do, port (shape of identity's `employee-directory.ts:1-16`, docblock in Spanish: the PIN of
+     the device is the colaborador's RFC, decision 7):
+     `interface PunchOwner { employeeId: string; companyId: string; fullName: string }`;
+     `interface PunchOwnerDirectory { ownersOf(pins: readonly string[]): Promise<ReadonlyMap<string, PunchOwner>>;
+pinsOfCompanies(companyIds: readonly string[]): Promise<string[]> }`.
+   - Do, adapter `EmployeesPunchOwnerDirectory` (shape of `employees-employee-directory.ts:1-23`),
+     deps `{ employeesApi: EmployeesApi }`: `ownersOf` → `findByRfcs(unique pins)`, map keyed by
+     `rfc`; `pinsOfCompanies` → `rfcsInCompanies(companyIds)`.
+   - Observable result: `pnpm arch:check` passes (attendance imports employees only through
+     `@/modules/employees`, only from `infrastructure/`).
+
+3. **Read side: PIN filter and enrichment**
+   - Files: `apps/api/src/modules/attendance/application/queries/attendance.queries.ts` (modify), `apps/api/src/modules/attendance/application/queries/list-punches.query.ts` (modify), `apps/api/src/modules/attendance/infrastructure/prisma-attendance.queries.ts` (modify), `apps/api/src/modules/attendance/infrastructure/in-memory/in-memory-attendance.store.ts` (modify)
+   - Do, `attendance.queries.ts`: `export type RawPunch = Omit<PunchDto, 'employee'>`;
+     `listPunches(filters: ListPunchesQuery & { pins?: readonly string[] | undefined }):
+Promise<Page<RawPunch>>` (docblock: `pins` restricts to those PINs; an empty array means no rows).
+   - Do, both adapters: when `pins` is given add `pin: { in: [...pins] }` (in-memory: membership);
+     return `RawPunch` items (no other change in order or filters). An explicit `pin` filter and
+     `pins` combine with AND.
+   - Do, `ListPunches`: deps `{ attendanceQueries, punchOwnerDirectory }`.
+     `scope = companiesWith(actor, 'attendance.punches:read')`. If `'ALL'`: `page =
+listPunches(filters)`. Else: `pins = await pinsOfCompanies(scope)`; if empty return the empty
+     page as today; else `page = listPunches({ ...filters, pins })`. Then
+     `owners = await ownersOf(page.items.map((p) => p.pin))` and map each item to
+     `{ ...item, employee: owner ? { id: owner.employeeId, fullName: owner.fullName, companyId:
+owner.companyId } : null }`. Replace the plan-001 comment with one citing README decision 8.
+   - Observable result: typecheck passes.
+
+4. **Permissions, wiring, existing tests**
+   - Files: `apps/api/src/modules/identity/domain/role-catalog.ts` (modify), `apps/api/src/modules/identity/domain/role-catalog.test.ts` (modify), `apps/api/src/modules/identity/application/session-authenticator.test.ts` (modify), `apps/api/src/modules/attendance/attendance.module.ts` (modify), `apps/api/src/modules/attendance/application/queries/list-punches.query.test.ts` (modify), `apps/api/tests/attendance.test.ts` (modify)
+   - Do: add `'attendance.punches:read'` to HR after `'attendance.devices:read'` and replace the
+     comment at `role-catalog.ts:22-23` with one citing decision 8 (HR sees its companies'
+     colaboradores' punches). Tests: expected HR list/counts +1 only. Register
+     `punchOwnerDirectory: asClass(EmployeesPunchOwnerDirectory).singleton()` in the cradle and
+     registrations. In the two attendance test files, only adapt what stops compiling or asserts
+     the plan-001 behavior that this plan changes on purpose (HR gets 403 / empty page; items
+     without `employee`): pass a `punchOwnerDirectory` double or the real one, and turn the
+     "HR → 403 on punches" assertion into "HR → 200". Add no new cases (the tester does).
+   - Observable result: `pnpm check` passes.
+
+5. **Docs and README**
+   - Files: `docs/integraciones/zkteco-senseface-2a.md` (modify), `docs/harness/modules.json` (modify)
+   - Do: runbook: a short section "Atribución" — enrol users on the device with their RFC (13
+     chars, uppercase) as the user ID/PIN; the API attributes punches whose PIN matches a
+     colaborador's RFC; capture missing RFCs with `PUT …/employees/:id/rfc`. `modules.json`
+     attendance summary: append "Punches attributed by RFC." to the "Today:" sentence.
+   - Observable result: `pnpm check` passes.
+
+6. **Test files and deviation files of this plan** (declared for `pnpm plans:scope`; added by the
+   main session after the testing phase)
+   - Files: `apps/api/src/modules/attendance/infrastructure/attendance.mapper.ts` (modify), `apps/api/src/modules/attendance/infrastructure/employees-punch-owner-directory.test.ts` (create), `apps/api/tests/attendance-attribution.test.ts` (create), `apps/api/tests/integration/attendance/employees-punch-owner-directory.int.test.ts` (create), `apps/api/tests/integration/attendance/prisma-attendance.int.test.ts` (modify), `packages/contracts/src/attendance/punch.contract.test.ts` (modify)
+   - Do: nothing for the implementer (the mapper is Deviation 1; the rest are the tester's).
+   - Observable result: `pnpm plans:scope` lists no file of this plan as out of scope.
+
+## Acceptance criteria
+
+- [x] With a MX colaborador whose RFC is `R` in company A, a registered device pushing ATTLOG
+      with PIN `R` and PIN `1`: `GET /api/v1/attendance/punches` as HOLDING_ADMIN lists both; the
+      `R` punch has `employee: { id, fullName, companyId: A }`, the `1` punch has `employee: null`.
+- [x] As HR of company A: 200 with only the `R` punch (filters `deviceId`, `from`, `to`, `pin`
+      still apply). As HR of company B (no colaborador with that RFC): 200 with an empty page.
+- [x] A punch received **before** its colaborador had an RFC becomes attributed as soon as the RFC
+      is set with `PUT …/employees/:id/rfc` (no reprocessing).
+- [ ] A terminated colaborador's punches stay attributed to them.
+- [x] Anonymous → 401; an actor without the permission → 403.
+- [ ] Real device: a person enrolled with their RFC as PIN marks, and their punch shows their
+      `employee` (user with the SenseFace 2A; NOT VERIFIED if unavailable).
+
+## Test layers required
+
+| Layer       | Applies | Focus                                                                                                                                                        |
+| ----------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| domain      | no      | (no domain rules change)                                                                                                                                     |
+| application | yes     | `ListPunches`: holding vs company scope, empty company pins, enrichment with/without owner, filters pass through                                             |
+| contract    | yes     | `PunchSchema.employee` nullable shape; HR now holds the route's permission                                                                                   |
+| http        | yes     | acceptance criteria 1–5 over supertest with the in-memory employees store                                                                                    |
+| integration | yes     | `PrismaAttendanceQueries.listPunches` with `pins` (IN, empty array, combined with `pin`); `EmployeesPunchOwnerDirectory` against the real employees adapters |
+| e2e         | no      | (no e2e infrastructure yet)                                                                                                                                  |
+
+## Deviations
+
+- Step 3 (cosmetic, fixed forward): `apps/api/src/modules/attendance/infrastructure/attendance.mapper.ts` is not in the plan's file list, but `PunchMapper.toDto` returned `PunchDto` and no longer typechecks once `PunchDto` requires `employee`. Its return type changed to `RawPunch` (no behavior change).
+- Step 3 (detail): in the Prisma adapter, `pin` and `pins` share the `pin` column, so they are combined as `pin: { equals, in }` (AND) instead of two spread keys, which would have overridden each other.
+- Step 4 (detail): `role-catalog.test.ts` also asserts HR grant counts (7 to 8, 14 to 16); adapted along with the permission list. `list-punches.query.test.ts` got an inline `punchOwnerDirectory` double (no owners, no company pins).
+
+## Test coverage
+
+- Files: `apps/api/src/modules/attendance/application/queries/list-punches.query.test.ts` (modify), `apps/api/src/modules/attendance/infrastructure/employees-punch-owner-directory.test.ts` (create), `packages/contracts/src/attendance/punch.contract.test.ts` (modify), `apps/api/tests/attendance-attribution.test.ts` (create), `apps/api/tests/integration/attendance/prisma-attendance.int.test.ts` (modify), `apps/api/tests/integration/attendance/employees-punch-owner-directory.int.test.ts` (create)
+
+Baseline: `pnpm check` green before writing tests. Layers domain and e2e do not apply (per plan).
+
+| Behavior (plan / code)                                                      | Source                                                     | Layer       | Test                                                                                          | State         |
+| --------------------------------------------------------------------------- | ---------------------------------------------------------- | ----------- | --------------------------------------------------------------------------------------------- | ------------- |
+| Holding sees all punches, enriched with owner or `null`                     | `list-punches.query.ts:25-47`                              | application | `list-punches.query.test.ts › holding: ve todas…`                                             | CONFIRMED     |
+| Company scope restricts to the company's RFC pins and enriches              | `list-punches.query.ts:28-34`                              | application | `… › permiso de una empresa…`, `… › permisos de varias empresas…`                             | CONFIRMED     |
+| Company with no RFC pins: empty page, keeps pagination, no owners lookup    | `list-punches.query.ts:30-32`                              | application | `… › empresa sin RFC registrados…`                                                            | CONFIRMED     |
+| Caller filters AND company scope; other company's PIN does not leak         | `list-punches.query.ts:33`, `prisma-attendance.queries.ts` | application | `… › los filtros del llamador se combinan…`                                                   | CONFIRMED     |
+| Owners requested only for the returned page's PINs                          | `list-punches.query.ts:36`                                 | application | `… › pide los dueños solo de los PIN de la página…`                                           | CONFIRMED     |
+| Adapter maps `findByRfcs` by RFC, dedupes pins, delegates `rfcsInCompanies` | `employees-punch-owner-directory.ts:12-27`                 | application | `employees-punch-owner-directory.test.ts` (3 tests)                                           | CONFIRMED     |
+| `PunchSchema.employee` nullable object, required, uuid ids                  | `punch.contract.ts:13-16`                                  | contract    | `punch.contract.test.ts › PunchSchema.employee` (7 cases)                                     | CONFIRMED     |
+| HR holds `attendance.punches:read` (8 grants)                               | `role-catalog.ts`                                          | contract    | `role-catalog.test.ts` (updated by the implementer)                                           | CONFIRMED     |
+| AC1: admin lists both, `R` has employee, `1` null                           | `list-punches.query.ts`                                    | http        | `attendance-attribution.test.ts › HOLDING_ADMIN lista ambas…`                                 | CONFIRMED     |
+| AC2: HR of A sees only `R` (filters apply); HR of B gets 200 empty          | `list-punches.query.ts`                                    | http        | `… › HR de la empresa A…`, `… › HR de la empresa B…`, `… › HR de una empresa sin ningún RFC…` | CONFIRMED     |
+| AC3: punch before RFC becomes attributed after PUT rfc, no reprocessing     | read-time lookup                                           | http        | `… › una marcación anterior al RFC…`, `… › HR corrige el RFC…`                                | CONFIRMED     |
+| AC4: terminated colaborador stays attributed                                | `findByRfcs` does not filter by status                     | http, int   | `… › un colaborador desvinculado conserva…`, int `… desvinculado sigue siendo dueño…`         | CONFIRMED     |
+| AC5: anonymous 401, no-permission 403                                       | route `requires`                                           | http        | `… › sin sesión: 401…; sin rol: 403`                                                          | CONFIRMED     |
+| AC6: real SenseFace 2A enrolled with RFC                                    | n/a                                                        | e2e         | `… › it.skip('NOT CONFIRMED: …')`                                                             | NOT CONFIRMED |
+| `listPunches` with `pins`: IN, order/total, unknown pins                    | `prisma-attendance.queries.ts:50-56`                       | integration | `prisma-attendance.int.test.ts › pins restringe…`                                             | CONFIRMED     |
+| `pins: []` returns no rows                                                  | `prisma-attendance.queries.ts` (Prisma `in: []`)           | integration | `… › pins vacío no devuelve filas`                                                            | CONFIRMED     |
+| `pin` AND `pins` combine; `pins` with device and range                      | `prisma-attendance.queries.ts:50-56`                       | integration | `… › pins y pin se combinan con AND`, `… › pins se combina con equipo y rango`                | CONFIRMED     |
+| `EmployeesPunchOwnerDirectory` over the real employees adapters             | `employees-punch-owner-directory.ts`                       | integration | `employees-punch-owner-directory.int.test.ts` (4 tests)                                       | CONFIRMED     |
+
+No GAPs found.
+
+## Review findings
+
+Reviewed 2026-10-02, diff `e5dbc36..HEAD` (9e7090a + 155a0a7), working tree clean.
+
+**Checklist: 12/13 — FAIL (1 item).**
+
+- [x] `pnpm plans:scope --base e5dbc36`: all 23 changed files in scope. `docs/harness/modules.json` (hot file) edits an existing line, not append-only, but the plan declares it explicitly in step 5, so it is in scope.
+- [x] `pnpm check` green (api 656 passed / 4 skipped, contracts 183, domain 86, web 2, mobile 5, arch, plans, harness, quality).
+- [x] `pnpm test:integration` green (13 files, 153 tests).
+- [x] No business rules in routers/mappers/adapters; scope logic lives in the `ListPunches` use case (as plan 001 did).
+- [x] CQRS-lite: read-only change; `AttendanceQueries.listPunches` returns `RawPunch` (= contract DTO minus `employee`), enriched in the query use case; no repository touched.
+- [x] Types from `@rrhh/contracts` (`RawPunch` derived with `Omit<PunchDto, 'employee'>`, not hand-written).
+- [x] No new expected errors; nothing leaked.
+- [x] No money/time/ids involved.
+- [x] No schema change, no migration.
+- [x] DI: `punchOwnerDirectory` registered once in `attendance.module.ts`; `tests/container.test.ts` green.
+- [x] No secrets or real personal data (synthetic RFCs/names in tests).
+- [x] Deviations honest — spot-checked: `attendance.mapper.ts:53` returns `RawPunch` with no behavior change; `prisma-attendance.queries.ts:58-61` combines `equals` + `in` on `pin` as described.
+- [ ] **Docs describing changed behavior updated — FAIL**: the runbook got the new "Atribución" section but two earlier bullets that now contradict it were left in place (finding M1).
+
+### Findings
+
+**Major: none. Critical: none.**
+
+**Minor**
+
+- **M1 — stale runbook statements contradict the new behavior.** `docs/integraciones/zkteco-senseface-2a.md:20-21` still says punches are read with `GET /api/v1/attendance/punches` "(solo HOLDING_ADMIN)", and `:23` still says "No asocia el PIN a un colaborador." Both are false after this plan (HR now holds `attendance.punches:read`, `role-catalog.ts:26`; `ListPunches` attributes by RFC, `list-punches.query.ts:38-50`) and contradict the new section at `:54-61` in the same file. Failure scenario: an operator reading the "Qué hace hoy" list concludes HR can't see punches and that enrolling with the RFC is useless. Fix: update both bullets (in-scope file, step 5). Docs-only, no code.
+
+**Info (no action required)**
+
+- I1 — `pinsOfCompanies` sends every RFC in the actor's companies as one `IN (...)` list (`list-punches.query.ts:31-34`). The plan accepted this for hundreds to a few thousand colaboradores. Postgres caps bind parameters at 65,535, so the design holds well past the holding's size. Noted only so a future scale change revisits it.
+- I2 — Bug hunt traced contract → `ListPunches` → `pinsOfCompanies`/`listPunches({pins})` → `ownersOf` → response, plus tenancy. HR of company A only gets PINs that are RFCs of A's colaboradores, and owners are looked up only for PINs already inside that scope, so no punch or owner from another company leaks. `pins: []` returns no rows in both adapters (and is short-circuited earlier anyway). An explicit `pin` outside scope yields an empty page. Terminated colaboradores keep attribution (`findByRfcs` does not filter by status). Pagination `total` comes from the same filtered `where`. No defects found.
+
+Status stays `review`: M1 needs a (docs-only) change in a plan file.
+
+### Resolution (main session, 2026-10-02)
+
+- **M1 fixed**: `docs/integraciones/zkteco-senseface-2a.md` — the punches bullet now says
+  HOLDING_ADMIN sees all and HR only its companies' colaboradores; "No asocia el PIN a un
+  colaborador" replaced by "Asocia el PIN a un colaborador solo cuando coincide con su RFC". Both
+  point to the "Atribución" section; no contradiction left. Docs-only, no code touched.
+- **I1, I2**: acknowledged, no change.
+
+Plan to `verify`.
+
+## Verification
+
+Verifier (main session, inline), 2026-10-02, on `4e08e68`.
+
+**Suites:** `pnpm check` green (api `656 passed | 4 skipped`, contracts `183`, domain `86`);
+`pnpm test:integration`: `Tests 153 passed (153)`. No schema change in this plan.
+
+**App running** (`pnpm dev:api`, port 3000) on a freshly reset dev DB (reset by the user): seed
+colaboradores Ana `GOMA850101AB1` and Pedro `PEXL900215AB2` in APS Holding S.A. de C.V.
+(company A). Set up through the API: company B "Verificación RFC S.A. de C.V." with colaboradora
+Gabriela, RFC `GOMA850101VR1`; users `verif-att-admin` (HOLDING_ADMIN), `verif-att-hr` (HR A),
+`verif-att-hr-b` (HR B), `verif-att-none` (no role); device `VERIFAT576061` (`America/Cancun`).
+One ATTLOG push with PINs `GOMA850101AB1`, `1`, `GOMA850101VR1`, `PEXL900215VR1` → `OK: 4`.
+16/16 checks passed:
+
+| Criterion               | Observed                                                                                                                                                     |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Admin view              | 200 `total=4`; `GOMA850101AB1` → `{ fullName: "Ana Rojas", companyId: A }`; `GOMA850101VR1` → Gabriela, company B; `1` → `null`; `PEXL900215VR1` → `null`    |
+| HR scope                | HR A → 200 `total=1` (only Ana's); HR A with `from` after the punch → 0; HR A asking `pin=GOMA850101VR1` (company B) → 0; HR B → `total=1` (only Gabriela's) |
+| RFC set after the punch | HR A `PUT …/employees/{Pedro}/rfc` `PEXL900215VR1` → 204; HR A then sees `total=2`, the earlier punch now `employee: Pedro Soto`                             |
+| Access                  | anonymous → 401; user without role → 403 `FORBIDDEN`                                                                                                         |
+
+**NOT VERIFIED:**
+
+- "A terminated colaborador's punches stay attributed": the API has no endpoint to terminate a
+  colaborador, so it cannot be driven in the running app. Covered by the http test
+  (`apps/api/tests/attendance-attribution.test.ts`) and the integration test
+  (`employees-punch-owner-directory.int.test.ts`), both green above.
+- Real device: the dev DB reset also removed the SenseFace 2A registration; it needs to be
+  registered again and a person enrolled with their RFC as PIN. To be driven by the user.
+
+**Left in the dev DB:** company B with Gabriela, Pedro's RFC changed to `PEXL900215VR1`, device
+`VERIFAT576061` with its 4 punches, users `verif-att-*@example.test`.
+
+Result: **PASS** on every criterion exercisable here. Status stays `verify`.
+
+### Acceptance (user, 2026-10-02)
+
+The user accepted the plan and moved it to `done` with two criteria still NOT VERIFIED (their
+checkboxes stay unchecked on purpose): the terminated-colaborador case in the running app (no
+termination endpoint; covered by http and integration tests) and the real SenseFace 2A (its
+registration was removed by the dev DB reset).
