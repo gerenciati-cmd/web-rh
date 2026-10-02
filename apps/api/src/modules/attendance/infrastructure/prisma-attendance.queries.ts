@@ -1,8 +1,8 @@
-import type { DeviceDto, ListPunchesQuery, Page, PageQuery, PunchDto } from '@rrhh/contracts';
+import type { DeviceDto, ListPunchesQuery, Page, PageQuery } from '@rrhh/contracts';
 
 import type { PrismaDatabase } from '@/infrastructure/database/prisma-database';
 
-import type { AttendanceQueries } from '../application/queries/attendance.queries';
+import type { AttendanceQueries, RawPunch } from '../application/queries/attendance.queries';
 
 import { PunchMapper } from './attendance.mapper';
 
@@ -48,13 +48,17 @@ export class PrismaAttendanceQueries implements AttendanceQueries {
     pageSize,
     deviceId,
     pin,
+    pins,
     from,
     to,
-  }: ListPunchesQuery): Promise<Page<PunchDto>> {
+  }: ListPunchesQuery & { pins?: readonly string[] | undefined }): Promise<Page<RawPunch>> {
     const db = this.deps.database.client;
     const where = {
       ...(deviceId ? { deviceId } : {}),
-      ...(pin ? { pin } : {}),
+      // `pin` y `pins` comparten campo: `equals` + `in` se combinan con AND.
+      ...(pin || pins
+        ? { pin: { ...(pin ? { equals: pin } : {}), ...(pins ? { in: [...pins] } : {}) } }
+        : {}),
       ...(from || to
         ? {
             occurredAt: {

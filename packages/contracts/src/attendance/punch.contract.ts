@@ -10,6 +10,10 @@ export const PunchSchema = z
     deviceId: z.uuid(),
     serialNumber: z.string(),
     pin: z.string(),
+    employee: z
+      .object({ id: z.uuid(), fullName: z.string(), companyId: z.uuid() })
+      .nullable()
+      .describe('Colaborador cuyo RFC coincide con el PIN; null si ninguno'),
     occurredAt: z.iso.datetime().describe('Instante UTC de la marcación'),
     deviceLocalTime: z
       .string()

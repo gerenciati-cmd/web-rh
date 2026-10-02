@@ -64,7 +64,14 @@ describe('ListPunches', () => {
     ]) {
       store.punches.set(p.id, p);
     }
-    listPunches = new ListPunches({ attendanceQueries: new InMemoryAttendanceQueries(store) });
+    listPunches = new ListPunches({
+      attendanceQueries: new InMemoryAttendanceQueries(store),
+      // Sin colaboradores: ningún PIN tiene dueño y ninguna empresa tiene PIN.
+      punchOwnerDirectory: {
+        ownersOf: () => Promise.resolve(new Map()),
+        pinsOfCompanies: () => Promise.resolve([]),
+      },
+    });
   });
 
   it('concesión de todo el holding: ve las marcaciones, la más reciente primero', async () => {

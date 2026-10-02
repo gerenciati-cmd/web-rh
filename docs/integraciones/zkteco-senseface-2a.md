@@ -51,6 +51,15 @@ SenseFace 2A, firmware `ZAM70-NF24HA-Ver3.3.12`, PushVersion `Ver 3.1.2S-2025061
    - "Puerto del servidor": el valor de `PORT`.
    - "Habilitar servidor proxy": apagado.
 
+## Atribución
+
+Da de alta a cada persona en el equipo con su RFC (13 caracteres, en mayúsculas) como ID de
+usuario/PIN. El API atribuye cada marcación cuyo PIN coincide con el RFC de un colaborador: esa
+marcación es del colaborador y pertenece a su empresa (RRHH ve las de sus empresas; las marcaciones
+sin RFC coincidente solo las ve el administrador del holding). La atribución se resuelve al leer, así
+que un RFC capturado después alcanza también las marcaciones anteriores. Captura los RFC faltantes
+con `PUT …/employees/:id/rfc`.
+
 ## Simular el equipo con curl
 
 Usa un SN ficticio ya registrado (por ejemplo `TESTSN001`) y datos sintéticos:

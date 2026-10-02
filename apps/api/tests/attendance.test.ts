@@ -294,9 +294,8 @@ describe('attendance HTTP', () => {
       }
     });
 
-    it('HR: 403 FORBIDDEN; sin sesión: 401', async () => {
-      const forbidden = await api(hrToken).get('/attendance/punches').expect(403);
-      expect(forbidden.body.code).toBe('FORBIDDEN');
+    it('HR: 200 (solo ve marcaciones con RFC de su empresa); sin sesión: 401', async () => {
+      await api(hrToken).get('/attendance/punches').expect(200);
       await api(null).get('/attendance/punches').expect(401);
     });
   });

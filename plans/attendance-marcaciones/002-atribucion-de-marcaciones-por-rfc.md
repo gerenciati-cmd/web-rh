@@ -1,5 +1,5 @@
 ---
-status: approved
+status: testing
 module: attendance
 min_implementer: mid
 depends_on: [employees-rfc/001]
@@ -154,6 +154,10 @@ owner.companyId } : null }`. Replace the plan-001 comment with one citing README
 | e2e         | no      | (no e2e infrastructure yet)                                                                                                                                  |
 
 ## Deviations
+
+- Step 3 (cosmetic, fixed forward): `apps/api/src/modules/attendance/infrastructure/attendance.mapper.ts` is not in the plan's file list, but `PunchMapper.toDto` returned `PunchDto` and no longer typechecks once `PunchDto` requires `employee`. Its return type changed to `RawPunch` (no behavior change).
+- Step 3 (detail): in the Prisma adapter, `pin` and `pins` share the `pin` column, so they are combined as `pin: { equals, in }` (AND) instead of two spread keys, which would have overridden each other.
+- Step 4 (detail): `role-catalog.test.ts` also asserts HR grant counts (7 to 8, 14 to 16); adapted along with the permission list. `list-punches.query.test.ts` got an inline `punchOwnerDirectory` double (no owners, no company pins).
 
 ## Test coverage
 

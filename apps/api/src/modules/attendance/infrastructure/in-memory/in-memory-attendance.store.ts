@@ -1,7 +1,7 @@
-import type { DeviceDto, ListPunchesQuery, Page, PageQuery, PunchDto } from '@rrhh/contracts';
+import type { DeviceDto, ListPunchesQuery, Page, PageQuery } from '@rrhh/contracts';
 import { err, ok, type Result } from '@rrhh/domain';
 
-import type { AttendanceQueries } from '../../application/queries/attendance.queries';
+import type { AttendanceQueries, RawPunch } from '../../application/queries/attendance.queries';
 import type { Device, DeviceId } from '../../domain/device';
 import type { DeviceRepository } from '../../domain/device.repository';
 import { DeviceAlreadyRegisteredError } from '../../domain/errors';
@@ -76,9 +76,10 @@ export class InMemoryAttendanceQueries implements AttendanceQueries {
     pageSize,
     deviceId,
     pin,
+    pins,
     from,
     to,
-  }: ListPunchesQuery): Promise<Page<PunchDto>> {
+  }: ListPunchesQuery & { pins?: readonly string[] | undefined }): Promise<Page<RawPunch>> {
     const fromTime = from ? new Date(from).getTime() : null;
     const toTime = to ? new Date(to).getTime() : null;
     const all = [...this.store.punches.values()]
@@ -86,6 +87,7 @@ export class InMemoryAttendanceQueries implements AttendanceQueries {
         (punch) =>
           (!deviceId || punch.deviceId === deviceId) &&
           (!pin || punch.pin === pin) &&
+          (!pins || pins.includes(punch.pin)) &&
           (fromTime === null || punch.occurredAt.getTime() >= fromTime) &&
           (toTime === null || punch.occurredAt.getTime() <= toTime),
       )
@@ -115,7 +117,7 @@ export class InMemoryAttendanceQueries implements AttendanceQueries {
     };
   }
 
-  private toPunchDto(punch: Punch): PunchDto {
+  private toPunchDto(punch: Punch): RawPunch {
     return {
       id: punch.id,
       deviceId: punch.deviceId,
