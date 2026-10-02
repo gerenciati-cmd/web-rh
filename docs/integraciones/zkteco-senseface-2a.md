@@ -1,7 +1,8 @@
 # ZKTeco SenseFace 2A — sonda ADMS
 
 Runbook de la sonda del módulo `attendance`
-(plan `plans/attendance-sonda-zkteco/001-recepcion-adms-solo-log.md`, ADR 0008).
+(plan `plans/attendance-sonda-zkteco/001-recepcion-adms-solo-log.md`, ADR 0008; autenticación por registro en BD:
+ADR 0013).
 
 ## Qué hace y qué no
 
