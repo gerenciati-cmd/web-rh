@@ -1,5 +1,5 @@
 ---
-status: testing
+status: review
 module: attendance
 min_implementer: mid
 depends_on: [employees-rfc/001]
@@ -128,6 +128,12 @@ owner.companyId } : null }`. Replace the plan-001 comment with one citing README
      attendance summary: append "Punches attributed by RFC." to the "Today:" sentence.
    - Observable result: `pnpm check` passes.
 
+6. **Test files and deviation files of this plan** (declared for `pnpm plans:scope`; added by the
+   main session after the testing phase)
+   - Files: `apps/api/src/modules/attendance/infrastructure/attendance.mapper.ts` (modify), `apps/api/src/modules/attendance/infrastructure/employees-punch-owner-directory.test.ts` (create), `apps/api/tests/attendance-attribution.test.ts` (create), `apps/api/tests/integration/attendance/employees-punch-owner-directory.int.test.ts` (create), `apps/api/tests/integration/attendance/prisma-attendance.int.test.ts` (modify), `packages/contracts/src/attendance/punch.contract.test.ts` (modify)
+   - Do: nothing for the implementer (the mapper is Deviation 1; the rest are the tester's).
+   - Observable result: `pnpm plans:scope` lists no file of this plan as out of scope.
+
 ## Acceptance criteria
 
 - [ ] With a MX colaborador whose RFC is `R` in company A, a registered device pushing ATTLOG
@@ -160,6 +166,33 @@ owner.companyId } : null }`. Replace the plan-001 comment with one citing README
 - Step 4 (detail): `role-catalog.test.ts` also asserts HR grant counts (7 to 8, 14 to 16); adapted along with the permission list. `list-punches.query.test.ts` got an inline `punchOwnerDirectory` double (no owners, no company pins).
 
 ## Test coverage
+
+- Files: `apps/api/src/modules/attendance/application/queries/list-punches.query.test.ts` (modify), `apps/api/src/modules/attendance/infrastructure/employees-punch-owner-directory.test.ts` (create), `packages/contracts/src/attendance/punch.contract.test.ts` (modify), `apps/api/tests/attendance-attribution.test.ts` (create), `apps/api/tests/integration/attendance/prisma-attendance.int.test.ts` (modify), `apps/api/tests/integration/attendance/employees-punch-owner-directory.int.test.ts` (create)
+
+Baseline: `pnpm check` green before writing tests. Layers domain and e2e do not apply (per plan).
+
+| Behavior (plan / code)                                                      | Source                                                     | Layer       | Test                                                                                          | State         |
+| --------------------------------------------------------------------------- | ---------------------------------------------------------- | ----------- | --------------------------------------------------------------------------------------------- | ------------- |
+| Holding sees all punches, enriched with owner or `null`                     | `list-punches.query.ts:25-47`                              | application | `list-punches.query.test.ts › holding: ve todas…`                                             | CONFIRMED     |
+| Company scope restricts to the company's RFC pins and enriches              | `list-punches.query.ts:28-34`                              | application | `… › permiso de una empresa…`, `… › permisos de varias empresas…`                             | CONFIRMED     |
+| Company with no RFC pins: empty page, keeps pagination, no owners lookup    | `list-punches.query.ts:30-32`                              | application | `… › empresa sin RFC registrados…`                                                            | CONFIRMED     |
+| Caller filters AND company scope; other company's PIN does not leak         | `list-punches.query.ts:33`, `prisma-attendance.queries.ts` | application | `… › los filtros del llamador se combinan…`                                                   | CONFIRMED     |
+| Owners requested only for the returned page's PINs                          | `list-punches.query.ts:36`                                 | application | `… › pide los dueños solo de los PIN de la página…`                                           | CONFIRMED     |
+| Adapter maps `findByRfcs` by RFC, dedupes pins, delegates `rfcsInCompanies` | `employees-punch-owner-directory.ts:12-27`                 | application | `employees-punch-owner-directory.test.ts` (3 tests)                                           | CONFIRMED     |
+| `PunchSchema.employee` nullable object, required, uuid ids                  | `punch.contract.ts:13-16`                                  | contract    | `punch.contract.test.ts › PunchSchema.employee` (7 cases)                                     | CONFIRMED     |
+| HR holds `attendance.punches:read` (8 grants)                               | `role-catalog.ts`                                          | contract    | `role-catalog.test.ts` (updated by the implementer)                                           | CONFIRMED     |
+| AC1: admin lists both, `R` has employee, `1` null                           | `list-punches.query.ts`                                    | http        | `attendance-attribution.test.ts › HOLDING_ADMIN lista ambas…`                                 | CONFIRMED     |
+| AC2: HR of A sees only `R` (filters apply); HR of B gets 200 empty          | `list-punches.query.ts`                                    | http        | `… › HR de la empresa A…`, `… › HR de la empresa B…`, `… › HR de una empresa sin ningún RFC…` | CONFIRMED     |
+| AC3: punch before RFC becomes attributed after PUT rfc, no reprocessing     | read-time lookup                                           | http        | `… › una marcación anterior al RFC…`, `… › HR corrige el RFC…`                                | CONFIRMED     |
+| AC4: terminated colaborador stays attributed                                | `findByRfcs` does not filter by status                     | http, int   | `… › un colaborador desvinculado conserva…`, int `… desvinculado sigue siendo dueño…`         | CONFIRMED     |
+| AC5: anonymous 401, no-permission 403                                       | route `requires`                                           | http        | `… › sin sesión: 401…; sin rol: 403`                                                          | CONFIRMED     |
+| AC6: real SenseFace 2A enrolled with RFC                                    | n/a                                                        | e2e         | `… › it.skip('NOT CONFIRMED: …')`                                                             | NOT CONFIRMED |
+| `listPunches` with `pins`: IN, order/total, unknown pins                    | `prisma-attendance.queries.ts:50-56`                       | integration | `prisma-attendance.int.test.ts › pins restringe…`                                             | CONFIRMED     |
+| `pins: []` returns no rows                                                  | `prisma-attendance.queries.ts` (Prisma `in: []`)           | integration | `… › pins vacío no devuelve filas`                                                            | CONFIRMED     |
+| `pin` AND `pins` combine; `pins` with device and range                      | `prisma-attendance.queries.ts:50-56`                       | integration | `… › pins y pin se combinan con AND`, `… › pins se combina con equipo y rango`                | CONFIRMED     |
+| `EmployeesPunchOwnerDirectory` over the real employees adapters             | `employees-punch-owner-directory.ts`                       | integration | `employees-punch-owner-directory.int.test.ts` (4 tests)                                       | CONFIRMED     |
+
+No GAPs found.
 
 ## Review findings
 

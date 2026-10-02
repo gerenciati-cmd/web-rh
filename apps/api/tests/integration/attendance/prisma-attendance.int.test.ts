@@ -245,6 +245,58 @@ describe('PrismaAttendanceQueries', () => {
       expect(onlyTo.total).toBe(2);
     });
 
+    it('pins restringe a esos PIN (IN) y mantiene el orden y el total', async () => {
+      await seed();
+
+      const page = await queries.listPunches({ page: 1, pageSize: 20, pins: ['2', 'inexistente'] });
+      const both = await queries.listPunches({ page: 1, pageSize: 20, pins: ['1', '2'] });
+
+      expect(page.total).toBe(1);
+      expect(page.items.map((item) => item.pin)).toEqual(['2']);
+      expect(both.items.map((item) => item.deviceLocalTime)).toEqual([
+        '2026-09-28 10:00:00',
+        '2026-09-28 09:00:00',
+        '2026-09-28 08:00:00',
+      ]);
+    });
+
+    it('pins vacío no devuelve filas', async () => {
+      await seed();
+
+      const page = await queries.listPunches({ page: 1, pageSize: 20, pins: [] });
+
+      expect(page).toEqual({ items: [], total: 0, page: 1, pageSize: 20 });
+    });
+
+    it('pins y pin se combinan con AND', async () => {
+      await seed();
+
+      const inside = await queries.listPunches({
+        page: 1,
+        pageSize: 20,
+        pin: '1',
+        pins: ['1', '2'],
+      });
+      const outside = await queries.listPunches({ page: 1, pageSize: 20, pin: '1', pins: ['2'] });
+
+      expect(inside.total).toBe(2);
+      expect(outside.total).toBe(0);
+    });
+
+    it('pins se combina con equipo y rango', async () => {
+      const { a } = await seed();
+
+      const page = await queries.listPunches({
+        page: 1,
+        pageSize: 20,
+        pins: ['1', '2'],
+        deviceId: a.id,
+        from: '2026-09-28T14:00:00.000Z',
+      });
+
+      expect(page.items.map((item) => item.deviceLocalTime)).toEqual(['2026-09-28 09:00:00']);
+    });
+
     it('pagina sobre el total filtrado', async () => {
       await seed();
 
