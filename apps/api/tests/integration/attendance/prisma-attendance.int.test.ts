@@ -80,6 +80,54 @@ describe('PrismaDeviceRepository', () => {
     expect((await devices.findBySerialNumber('TESTSN001'))?.lastSeenAt).toEqual(seenAt);
   });
 
+  it('persiste y rehidrata la sede y la medición de desfase (plan attendance-marcaciones/003)', async () => {
+    const device = await savedDevice('TESTSN001');
+    expect((await devices.findBySerialNumber('TESTSN001'))?.siteId).toBe(
+      '00000000-0000-4000-8000-0000000000a1',
+    );
+    const measuredAt = new Date('2026-09-29T10:00:00Z');
+    device.recordClockOffset(-3600, measuredAt);
+    await devices.save(device);
+
+    const rehydrated = await devices.findById(device.id);
+
+    expect(rehydrated?.clockOffsetSeconds).toBe(-3600);
+    expect(rehydrated?.clockOffsetMeasuredAt).toEqual(measuredAt);
+    expect(rehydrated?.clockSuspect).toBe(true);
+  });
+
+  it('assignSite guardado cambia siteId y timeZone en la fila', async () => {
+    const device = await savedDevice('TESTSN001');
+    device.assignSite('00000000-0000-4000-8000-0000000000b2', 'America/Mexico_City');
+
+    await devices.save(device);
+
+    const rehydrated = await devices.findById(device.id);
+    expect(rehydrated?.siteId).toBe('00000000-0000-4000-8000-0000000000b2');
+    expect(rehydrated?.timeZone).toBe('America/Mexico_City');
+  });
+
+  it('un equipo sin sede ni medición (filas anteriores) se rehidrata con null', async () => {
+    const id = ids.next() as DeviceId;
+    await database.client.attendanceDevice.create({
+      data: {
+        id,
+        serialNumber: 'LEGACYSN1',
+        name: 'Anterior',
+        timeZone: 'UTC',
+        active: true,
+        registeredAt: NOW,
+      },
+    });
+
+    const rehydrated = await devices.findById(id);
+
+    expect(rehydrated?.siteId).toBeNull();
+    expect(rehydrated?.clockOffsetSeconds).toBeNull();
+    expect(rehydrated?.clockOffsetMeasuredAt).toBeNull();
+    expect(rehydrated?.clockSuspect).toBe(false);
+  });
+
   it('un segundo equipo con el mismo serial: el índice único se traduce al conflicto de dominio', async () => {
     await savedDevice('TESTSN001');
     const duplicate = Device.register({
@@ -173,6 +221,34 @@ describe('PrismaAttendanceQueries', () => {
     const page = await queries.listDevices({ page: 1, pageSize: 20 });
 
     expect(page.items[0]?.lastSeenAt).toBe(seenAt.toISOString());
+  });
+
+  it('listDevices devuelve sede, desfase y clockSuspect con el umbral de 300 s', async () => {
+    const measuredAt = new Date('2026-09-29T10:00:00Z');
+    const edge = await savedDevice('SNA', 'A borde');
+    edge.recordClockOffset(300, measuredAt);
+    await devices.save(edge);
+    const over = await savedDevice('SNB', 'B excedido');
+    over.recordClockOffset(-301, measuredAt);
+    await devices.save(over);
+    await savedDevice('SNC', 'C sin medir');
+
+    const page = await queries.listDevices({ page: 1, pageSize: 20 });
+
+    expect(page.items.map((item) => item.siteId)).toEqual(
+      Array(3).fill('00000000-0000-4000-8000-0000000000a1'),
+    );
+    expect(page.items[0]).toMatchObject({
+      clockOffsetSeconds: 300,
+      clockOffsetMeasuredAt: measuredAt.toISOString(),
+      clockSuspect: false,
+    });
+    expect(page.items[1]).toMatchObject({ clockOffsetSeconds: -301, clockSuspect: true });
+    expect(page.items[2]).toMatchObject({
+      clockOffsetSeconds: null,
+      clockOffsetMeasuredAt: null,
+      clockSuspect: false,
+    });
   });
 
   describe('listPunches', () => {

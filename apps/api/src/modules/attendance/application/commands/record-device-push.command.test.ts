@@ -364,6 +364,123 @@ describe('RecordDevicePush', () => {
       expect((await deviceRepository.findBySerialNumber('TESTSN001'))?.lastSeenAt).toEqual(later);
     });
 
+    describe('desfase de reloj (plan attendance-marcaciones/003)', () => {
+      // FixedClock por defecto: 2026-01-15T12:00:00Z, que en America/Cancun (UTC-5) son las 07:00.
+      const SYNCED = '2026-01-15 07:00:00';
+      const line = (deviceTime: string): DevicePushRecord => ({
+        ...attendanceRecord,
+        deviceTime,
+      });
+      const push = (records: readonly DevicePushRecord[], table = 'ATTLOG') => ({
+        serialNumber: 'TESTSN001',
+        table,
+        records,
+      });
+
+      it('un envío de una sola línea sincronizada mide desfase 0 y no es sospechoso', async () => {
+        const { command, deviceRepository, logger, clock } = await setUp(['TESTSN001']);
+
+        await command.execute(push([line(SYNCED)]));
+
+        const device = await deviceRepository.findBySerialNumber('TESTSN001');
+        expect(device?.clockOffsetSeconds).toBe(0);
+        expect(device?.clockOffsetMeasuredAt).toEqual(clock.now());
+        expect(device?.clockSuspect).toBe(false);
+        expect(logger.entries.some((entry) => entry.msg === 'zkteco: desfase de reloj')).toBe(
+          false,
+        );
+      });
+
+      it('una marcación sellada una hora adelante mide -3600 s, es sospechosa y avisa con warn', async () => {
+        const { command, deviceRepository, logger } = await setUp(['TESTSN001']);
+
+        await command.execute(push([line('2026-01-15 08:00:00')]));
+
+        const device = await deviceRepository.findBySerialNumber('TESTSN001');
+        expect(device?.clockOffsetSeconds).toBe(-3600);
+        expect(device?.clockSuspect).toBe(true);
+        expect(logger.entries).toContainEqual({
+          level: 'warn',
+          obj: { serialNumber: 'TESTSN001', offsetSeconds: -3600 },
+          msg: 'zkteco: desfase de reloj',
+        });
+      });
+
+      it('un reloj atrasado más de 5 minutos mide un desfase positivo y es sospechoso', async () => {
+        const { command, deviceRepository } = await setUp(['TESTSN001']);
+
+        await command.execute(push([line('2026-01-15 06:50:00')]));
+
+        const device = await deviceRepository.findBySerialNumber('TESTSN001');
+        expect(device?.clockOffsetSeconds).toBe(600);
+        expect(device?.clockSuspect).toBe(true);
+      });
+
+      it('exactamente 300 s de desfase aún está dentro de la tolerancia', async () => {
+        const { command, deviceRepository } = await setUp(['TESTSN001']);
+
+        await command.execute(push([line('2026-01-15 06:55:00')]));
+
+        const device = await deviceRepository.findBySerialNumber('TESTSN001');
+        expect(device?.clockOffsetSeconds).toBe(300);
+        expect(device?.clockSuspect).toBe(false);
+      });
+
+      it('un envío de varias líneas (historial) no mide ni cambia el desfase previo', async () => {
+        const { command, deviceRepository } = await setUp(['TESTSN001']);
+        await command.execute(push([line('2026-01-15 08:00:00')]));
+
+        await command.execute(push([line('2026-01-14 08:00:00'), line('2026-01-14 09:00:00')]));
+
+        const device = await deviceRepository.findBySerialNumber('TESTSN001');
+        expect(device?.clockOffsetSeconds).toBe(-3600);
+      });
+
+      it('un historial en un equipo sin mediciones lo deja sin desfase', async () => {
+        const { command, deviceRepository } = await setUp(['TESTSN001']);
+
+        await command.execute(push([line('2026-01-14 08:00:00'), line('2026-01-14 09:00:00')]));
+
+        const device = await deviceRepository.findBySerialNumber('TESTSN001');
+        expect(device?.clockOffsetSeconds).toBeNull();
+        expect(device?.clockOffsetMeasuredAt).toBeNull();
+      });
+
+      it('una línea rechazada no cuenta: con una sola válida entre dos se mide', async () => {
+        const { command, deviceRepository } = await setUp(['TESTSN001']);
+
+        await command.execute(push([line(SYNCED), line('2026-02-30 08:00:00')]));
+
+        expect((await deviceRepository.findBySerialNumber('TESTSN001'))?.clockOffsetSeconds).toBe(
+          0,
+        );
+      });
+
+      it('las tablas que no son ATTLOG no miden desfase', async () => {
+        const { command, deviceRepository } = await setUp(['TESTSN001']);
+
+        await command.execute(push([line(SYNCED)], 'OPERLOG'));
+
+        expect(
+          (await deviceRepository.findBySerialNumber('TESTSN001'))?.clockOffsetSeconds,
+        ).toBeNull();
+      });
+
+      it('una medición nueva dentro del minuto se persiste aunque lastSeenAt no se reescriba', async () => {
+        const { command, deviceRepository, clock } = await setUp(['TESTSN001']);
+        await command.execute(push([line(SYNCED)]));
+        const firstSeen = clock.now();
+
+        clock.set(new Date(firstSeen.getTime() + 30_000));
+        await command.execute(push([line('2026-01-15 08:01:00')]));
+
+        const device = await deviceRepository.findBySerialNumber('TESTSN001');
+        expect(device?.lastSeenAt).toEqual(firstSeen);
+        expect(device?.clockOffsetSeconds).toBe(-3630);
+        expect(device?.clockOffsetMeasuredAt).toEqual(clock.now());
+      });
+    });
+
     it('la hora local se interpreta con la zona del equipo que empuja', async () => {
       const { command, store, deviceRepository } = await setUp([]);
       await deviceRepository.save(

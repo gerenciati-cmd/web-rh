@@ -1,5 +1,5 @@
 ---
-status: testing
+status: review
 module: attendance
 min_implementer: mid
 depends_on: [organization-sedes/001]
@@ -133,7 +133,7 @@ asClass(OrganizationSiteDirectory)` and `assignDeviceSite` in cradle and registr
    - Observable result: `tests/container.test.ts` resolves the new keys.
 
 6. **Existing tests and docs**
-   - Files: `apps/api/src/modules/attendance/domain/device.test.ts` (modify), `apps/api/src/modules/attendance/application/commands/register-device.command.test.ts` (modify), `apps/api/src/modules/attendance/application/commands/record-device-contact.command.test.ts` (modify), `apps/api/src/modules/attendance/application/commands/record-device-push.command.test.ts` (modify), `apps/api/src/modules/attendance/application/queries/list-punches.query.test.ts` (modify), `packages/contracts/src/attendance/device.contract.test.ts` (modify), `apps/api/tests/attendance.test.ts` (modify), `apps/api/tests/attendance-attribution.test.ts` (modify), `apps/api/tests/zkteco-adms.test.ts` (modify), `apps/api/tests/integration/attendance/prisma-attendance.int.test.ts` (modify), `docs/integraciones/zkteco-senseface-2a.md` (modify)
+   - Files: `apps/api/src/modules/attendance/domain/device.test.ts` (modify), `apps/api/src/modules/attendance/application/commands/register-device.command.test.ts` (modify), `apps/api/src/modules/attendance/application/commands/record-device-contact.command.test.ts` (modify), `apps/api/src/modules/attendance/application/commands/record-device-push.command.test.ts` (modify), `apps/api/src/modules/attendance/application/queries/list-punches.query.test.ts` (modify), `packages/contracts/src/attendance/device.contract.test.ts` (modify), `apps/api/tests/attendance.test.ts` (modify), `apps/api/tests/attendance-attribution.test.ts` (modify), `apps/api/tests/zkteco-adms.test.ts` (modify), `apps/api/tests/integration/attendance/prisma-attendance.int.test.ts` (modify), `docs/integraciones/zkteco-senseface-2a.md` (modify), `apps/api/src/modules/attendance/application/commands/assign-device-site.command.test.ts` (create), `apps/api/tests/attendance-clock-offset.test.ts` (create)
    - Do: tests that register devices pass `siteId` (HTTP: create a site first through
      `POST /api/v1/sites` or the container's `createSite`; unit: stub `SiteDirectory` returning
      `America/Cancun`); `Device.register` callers pass `siteId` and `timeZone`. Assertions that
@@ -188,6 +188,35 @@ asClass(OrganizationSiteDirectory)` and `assignDeviceSite` in cradle and registr
    delete it.
 
 ## Test coverage
+
+Baseline (before writing tests): `pnpm check` green (api 727 passed / 5 skipped), `pnpm test:integration` green (168). No pre-existing failures.
+
+| Behavior (from plan / code)                                                                                      | Source                                  | Layer       | Test                                                                           | State         |
+| ---------------------------------------------------------------------------------------------------------------- | --------------------------------------- | ----------- | ------------------------------------------------------------------------------ | ------------- |
+| `Device.register` keeps siteId, starts with no offset                                                            | `device.ts:78-88`                       | domain      | `device.test.ts › Device.register (sede y desfase)`                            | CONFIRMED     |
+| `assignSite` sets siteId and copies the zone (also from a null-site device)                                      | `device.ts:143`                         | domain      | `device.test.ts › Device.assignSite`                                           | CONFIRMED     |
+| `recordClockOffset` stores seconds + measuredAt, replaces previous                                               | `device.ts:148`                         | domain      | `device.test.ts › Device.recordClockOffset y clockSuspect`                     | CONFIRMED     |
+| `clockSuspect` boundary: 300 not suspect, 301 / -301 / -3600 suspect                                             | `device.ts:32,135`                      | domain      | `device.test.ts › desfase de %i s` (it.each)                                   | CONFIRMED     |
+| `RegisterDevice`: unknown site → `SITE_NOT_FOUND`, inactive → `SITE_INACTIVE`                                    | `register-device.command.ts:41-42`      | application | `register-device.command.test.ts`                                              | CONFIRMED     |
+| `RegisterDevice` stores siteId and the site's zone                                                               | `register-device.command.ts:44-51`      | application | `register-device.command.test.ts › registra el equipo…`                        | CONFIRMED     |
+| `AssignDeviceSite`: happy path, `DEVICE_NOT_FOUND`, `SITE_NOT_FOUND`, `SITE_INACTIVE`, device untouched on error | `assign-device-site.command.ts:22-35`   | application | `assign-device-site.command.test.ts` (4 tests)                                 | CONFIRMED     |
+| Push measures only a single-valid-line ATTLOG (0 s, -3600 s, +600 s, 300 edge)                                   | `record-device-push.command.ts:131-143` | application | `record-device-push.command.test.ts › desfase de reloj`                        | CONFIRMED     |
+| Multi-line push does not measure / keeps previous offset; non-ATTLOG ignored                                     | `record-device-push.command.ts:98,134`  | application | same describe                                                                  | CONFIRMED     |
+| Warn `zkteco: desfase de reloj` only when suspect                                                                | `record-device-push.command.ts:138-142` | application | same describe                                                                  | CONFIRMED     |
+| Offset persisted even when `markSeen` returns false                                                              | `record-device-push.command.ts:108`     | application | `… › una medición nueva dentro del minuto se persiste…`                        | CONFIRMED     |
+| `RegisterDeviceSchema` requires siteId, rejects timeZone-only body                                               | `device.contract.ts:23-34`              | contract    | `device.contract.test.ts › RegisterDeviceSchema`                               | CONFIRMED     |
+| `AssignDeviceSiteSchema`, `DeviceSchema` new fields, route `assignDeviceSite`                                    | `device.contract.ts:8-20,36-40,57-65`   | contract    | `device.contract.test.ts` (3 new describes/its)                                | CONFIRMED     |
+| POST devices with site → list shows siteId/zone; unknown site 404; no siteId 400                                 | acceptance 1                            | http        | `attendance.test.ts › POST / GET /attendance/devices`                          | CONFIRMED     |
+| PUT site: 204 + list shows siteId/zone; device 404; site 404; 400; HR 403; 401                                   | acceptance 2                            | http        | `attendance.test.ts › PUT /attendance/devices/:deviceId/site`                  | CONFIRMED     |
+| Single-line push in sync → offset ≈ 0, not suspect                                                               | acceptance 3                            | http        | `attendance-clock-offset.test.ts` (fixed clock injected into RecordDevicePush) | CONFIRMED     |
+| Single-line push 1 h ahead → -3600, suspect, warn log                                                            | acceptance 4                            | http        | `attendance-clock-offset.test.ts`                                              | CONFIRMED     |
+| Multi-line push leaves offset unchanged                                                                          | acceptance 5                            | http        | `attendance-clock-offset.test.ts`                                              | CONFIRMED     |
+| Real SenseFace 2A shows a small offset after assigning its sede                                                  | acceptance 6                            | http        | `attendance-clock-offset.test.ts` (`it.skip`)                                  | NOT CONFIRMED |
+| New columns persisted and rehydrated; legacy row (null site) → nulls                                             | `schema.prisma`, `attendance.mapper.ts` | integration | `prisma-attendance.int.test.ts › PrismaDeviceRepository`                       | CONFIRMED     |
+| `assignSite` persisted (siteId + timeZone)                                                                       | `device.ts:143`                         | integration | same                                                                           | CONFIRMED     |
+| `listDevices` returns siteId/offset/measuredAt/`clockSuspect` (300 vs -301)                                      | `prisma-attendance.queries.ts`          | integration | `prisma-attendance.int.test.ts › listDevices devuelve sede, desfase…`          | CONFIRMED     |
+
+Observations (no GAP): `measureClockOffset` counts valid lines before de-duplication, so a single-line push that only re-sends an already stored punch is also measured (and looks late). It matches the plan text ("exactly one ATTLOG line") and is the stated limitation class; not tested as intended behavior. In-memory and Prisma `listDevices` apply the same `clockSuspect` rule; the inactive-site path has no HTTP test because organization exposes no deactivate operation (covered at application layer with a stub).
 
 ## Review findings
 
