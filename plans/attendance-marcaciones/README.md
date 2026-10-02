@@ -14,15 +14,22 @@ each company see its own people's marcaciones. Shifts, jornadas, overtime and Me
 
 ## Plans
 
-| Plan                                                   | Title                               | Depends on             | Purpose                                                                                                                                                |
-| ------------------------------------------------------ | ----------------------------------- | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| [001](001-registro-de-equipos-y-marcaciones-crudas.md) | Device registry and raw marcaciones | —                      | `attendance` schema: devices (serial, name, time zone) replace the env allowlist; ATTLOG stored deduplicated; device status and punch query endpoints. |
-| [002](002-atribucion-de-marcaciones-por-rfc.md)        | Attribution of marcaciones by RFC   | 001, employees-rfc/001 | Each punch whose PIN is a colaborador's RFC is attributed to them (resolved at read time); HR reads its companies' punches.                            |
+| Plan                                                   | Title                               | Depends on              | Purpose                                                                                                                                                |
+| ------------------------------------------------------ | ----------------------------------- | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| [001](001-registro-de-equipos-y-marcaciones-crudas.md) | Device registry and raw marcaciones | —                       | `attendance` schema: devices (serial, name, time zone) replace the env allowlist; ATTLOG stored deduplicated; device status and punch query endpoints. |
+| [002](002-atribucion-de-marcaciones-por-rfc.md)        | Attribution of marcaciones by RFC   | 001, employees-rfc/001  | Each punch whose PIN is a colaborador's RFC is attributed to them (resolved at read time); HR reads its companies' punches.                            |
+| [003](003-checador-por-sede-y-desfase.md)              | Checador per sede and clock offset  | organization-sedes/001  | Device tied to a sede (zone copied from it, no free text); clock-offset measured on real-time pushes, flagged over 5 min.                              |
+| [004](004-sonda-de-comandos-adms.md)                   | ADMS command probe                  | 003                     | Admin queues a raw `USERINFO` command; the next poll delivers it; replies logged. Confirms the protocol with the real device.                          |
+| 005 (not written yet)                                  | Sync colaboradores to checadores    | 004, employees-sede/001 | Automatic + manual push of the sede's colaboradores (PIN = RFC), removal on termination, command bitácora. Written once 004 confirms the format.       |
 
 ## Dependency notes
 
 002 needs 001's stored punches (it links existing rows, nothing is lost meanwhile) and the RFC on
 the colaborador record, delivered by `employees-rfc/001` (another module, so another initiative).
+
+003 needs the sede catalog (`organization-sedes/001`). 004 runs on a device that already has its
+sede (003). 005 cannot be specified before 004 observes the real command and reply formats, and
+needs the colaborador's sede and the change events from `employees-sede/001`.
 
 ## Decisions with the user
 
@@ -48,6 +55,13 @@ the colaborador record, delivered by `employees-rfc/001` (another module, so ano
 8. (2026-10-02) Consequence of 2 and 7, applied in 002: a punch belongs to the colaborador whose
    RFC equals its PIN, and to that colaborador's company. HR gets `attendance.punches:read` and
    sees only its companies' colaboradores' punches; unmatched punches stay HOLDING_ADMIN-only.
+9. (2026-10-02) The device keypad only accepts numeric user IDs; Buk creates users with the RFC as
+   PIN remotely. So the API must push users to the device (ADMS commands). The protocol is not
+   observed yet: plan 004 probes it before the real sync (plan 005) is designed.
+10. (2026-10-02) Checadores belong to a sede, receive only its colaboradores, automatically and
+    manually; on termination the user is removed from the device and the record kept; the test
+    device's users "1" and "2" stay; the time zone comes from the sede (closed list); clock offset
+    over 5 minutes is detected. Full wording: `organization-sedes` README decisions 1–4, 8–9.
 
 ## Delivered
 
