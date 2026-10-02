@@ -27,6 +27,8 @@ function employee(input: {
   hireDate?: string;
   /** RFC explícito; si se omite se genera uno distinto por alta. */
   rfc?: string;
+  /** Sede explícita; si se omite se usa una fija (sin FK: la sede vive en organization). */
+  siteId?: string;
 }): Employee {
   const nationalId = NationalId.create('MX', input.curp);
   const email = Email.create(`${input.firstName}.${input.lastName}@aps.cl`);
@@ -41,7 +43,7 @@ function employee(input: {
     companyId: input.companyId ?? COMPANY_A,
     nationalId: nationalId.value,
     rfc: rfc.value,
-    siteId: '019b1c2e-0000-7000-8000-000000000001',
+    siteId: input.siteId ?? '019b1c2e-0000-7000-8000-000000000001',
     firstName: input.firstName,
     lastName: input.lastName,
     email: email.value,
@@ -313,6 +315,121 @@ describe('RFC en PrismaEmployeeQueries', () => {
     await repository.save(employee({ ...ANA, rfc: 'GOMA850101AB1' }));
 
     expect(await queries.rfcsInCompanies([])).toEqual([]);
+  });
+});
+
+describe('Sede en PrismaEmployeeRepository y PrismaEmployeeQueries', () => {
+  const SITE_1 = '019b1c2e-0000-7000-8000-000000000001';
+  const SITE_2 = '019b1c2e-0000-7000-8000-000000000002';
+  const ANA = { curp: 'GOMA850101HQRRRN04', firstName: 'Ana', lastName: 'Rojas' };
+  const PEDRO = { curp: 'PEXL900215MDFRPR07', firstName: 'Pedro', lastName: 'Soto' };
+  const LUIS = { curp: 'ROSA010305HQRDNLA3', firstName: 'Luis', lastName: 'Araya' };
+  const page = { page: 1, pageSize: 20 };
+
+  /** Fila anterior al campo sede: se rehidrata con siteId nulo. */
+  const withoutSite = (source: Employee) =>
+    Employee.restore(source.id, { ...source.snapshot, siteId: null });
+
+  it('guarda y rehidrata la sede', async () => {
+    const ana = employee({ ...ANA, siteId: SITE_2 });
+    await repository.save(ana);
+
+    expect((await repository.findById(ana.id))?.snapshot.siteId).toBe(SITE_2);
+  });
+
+  it('persiste el cambio de sede de una fila existente', async () => {
+    const ana = employee(ANA);
+    await repository.save(ana);
+    const found = await repository.findById(ana.id);
+    if (!found) throw new Error('fixture inválido');
+
+    found.assignSite(SITE_2, NOW);
+    expect((await repository.save(found)).ok).toBe(true);
+
+    expect((await repository.findById(ana.id))?.snapshot.siteId).toBe(SITE_2);
+  });
+
+  it('una fila sin sede se rehidrata con siteId null, se lista con siteId null y puede recibir sede', async () => {
+    const ana = withoutSite(employee(ANA));
+    await repository.save(ana);
+
+    expect((await repository.findById(ana.id))?.snapshot.siteId).toBeNull();
+    expect((await queries.listDirectory({ companyId: COMPANY_A, ...page })).items[0]?.siteId).toBe(
+      null,
+    );
+
+    const found = await repository.findById(ana.id);
+    if (!found) throw new Error('fixture inválido');
+    found.assignSite(SITE_1, NOW);
+    await repository.save(found);
+    expect((await repository.findById(ana.id))?.snapshot.siteId).toBe(SITE_1);
+  });
+
+  it('listDirectory devuelve el siteId de cada colaborador', async () => {
+    await repository.save(employee({ ...ANA, siteId: SITE_1 }));
+    await repository.save(withoutSite(employee(PEDRO)));
+
+    const result = await queries.listDirectory({ companyId: COMPANY_A, ...page });
+
+    expect(result.items.map((item) => [item.fullName, item.siteId])).toEqual([
+      ['Ana Rojas', SITE_1],
+      ['Pedro Soto', null],
+    ]);
+  });
+
+  it('listActiveOnSite solo trae ACTIVE de esa sede, de todas las empresas, ordenados por apellido, nombre e id', async () => {
+    const zoe = employee({ ...LUIS, firstName: 'Zoe' });
+    const ana = employee({ ...ANA, siteId: SITE_1 });
+    const luis = employee({ ...LUIS, companyId: COMPANY_B, siteId: SITE_1 });
+    const pedro = employee({ ...PEDRO, siteId: SITE_1 });
+    const otherSite = employee({
+      ...PEDRO,
+      companyId: COMPANY_B,
+      firstName: 'Marco',
+      lastName: 'Cruz',
+      siteId: SITE_2,
+    });
+    await repository.save(ana);
+    await repository.save(luis);
+    await repository.save(pedro);
+    await repository.save(otherSite);
+    await repository.save(withoutSite(zoe));
+    pedro.terminate(new Date('2026-02-01T00:00:00Z'), NOW);
+    await repository.save(pedro);
+
+    const members = await queries.listActiveOnSite(SITE_1);
+
+    expect(members.map((m) => m.fullName)).toEqual(['Luis Araya', 'Ana Rojas']);
+    expect(members).toContainEqual({
+      id: ana.id,
+      companyId: COMPANY_A,
+      fullName: 'Ana Rojas',
+      rfc: ana.snapshot.rfc?.value ?? null,
+    });
+    expect(members.find((m) => m.id === luis.id)?.companyId).toBe(COMPANY_B);
+  });
+
+  it('listActiveOnSite desempata por nombre cuando comparten apellido', async () => {
+    await repository.save(employee({ ...ANA, firstName: 'Beto', lastName: 'Rojas' }));
+    await repository.save(employee({ ...PEDRO, firstName: 'Alma', lastName: 'Rojas' }));
+
+    expect((await queries.listActiveOnSite(SITE_1)).map((m) => m.fullName)).toEqual([
+      'Alma Rojas',
+      'Beto Rojas',
+    ]);
+  });
+
+  it('listActiveOnSite devuelve rfc null para quien no tiene RFC', async () => {
+    const pedro = employee(PEDRO);
+    await repository.save(Employee.restore(pedro.id, { ...pedro.snapshot, rfc: null }));
+
+    expect((await queries.listActiveOnSite(SITE_1))[0]?.rfc).toBeNull();
+  });
+
+  it('listActiveOnSite de una sede sin colaboradores devuelve []', async () => {
+    await repository.save(employee(ANA));
+
+    expect(await queries.listActiveOnSite(SITE_2)).toEqual([]);
   });
 });
 

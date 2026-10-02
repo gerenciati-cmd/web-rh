@@ -5,6 +5,7 @@ import {
   Employee,
   EMPLOYEE_HIRED,
   EMPLOYEE_RFC_ASSIGNED,
+  EMPLOYEE_SITE_ASSIGNED,
   EMPLOYEE_TERMINATED,
   type EmployeeId,
 } from './employee';
@@ -110,6 +111,16 @@ describe('Employee', () => {
       expect(hired.value.pullEvents().map((e) => e.name)).toEqual([EMPLOYEE_RFC_ASSIGNED]);
     });
 
+    it('assignRfc no registra evento si el RFC no cambia', () => {
+      const hired = hire();
+      if (!hired.ok) throw hired.error;
+      hired.value.pullEvents();
+
+      expect(hired.value.assignRfc(rfcOf('GOMA850101AB1'), now).ok).toBe(true);
+
+      expect(hired.value.pullEvents()).toEqual([]);
+    });
+
     it('assignRfc rechaza con RFC_NOT_APPLICABLE a un colaborador que no es de México', () => {
       const hired = hire({ nationalId: doId.value, rfc: undefined });
       if (!hired.ok) throw hired.error;
@@ -118,6 +129,54 @@ describe('Employee', () => {
 
       expect(!result.ok && result.error.code).toBe('RFC_NOT_APPLICABLE');
       expect(hired.value.snapshot.rfc).toBeNull();
+    });
+  });
+
+  describe('sede', () => {
+    const hiredEmployee = () => {
+      const result = hire();
+      if (!result.ok) throw result.error;
+      result.value.pullEvents();
+      return result.value;
+    };
+
+    it('guarda la sede en el snapshot al contratar', () => {
+      const result = hire({ siteId: 'site-9' });
+      expect(result.ok && result.value.snapshot.siteId).toBe('site-9');
+    });
+
+    it('assignSite cambia la sede y registra EMPLOYEE_SITE_ASSIGNED con la sede previa', () => {
+      const employee = hiredEmployee();
+
+      employee.assignSite('site-2', now);
+
+      expect(employee.snapshot.siteId).toBe('site-2');
+      const events = employee.pullEvents();
+      expect(events.map((e) => e.name)).toEqual([EMPLOYEE_SITE_ASSIGNED]);
+      expect(events[0]?.payload).toEqual({
+        employeeId: 'emp-1',
+        siteId: 'site-2',
+        previousSiteId: 'site-1',
+      });
+    });
+
+    it('assignSite a una fila sin sede registra previousSiteId null', () => {
+      const source = hiredEmployee();
+      const employee = Employee.restore(source.id, { ...source.snapshot, siteId: null });
+
+      employee.assignSite('site-2', now);
+
+      expect(employee.snapshot.siteId).toBe('site-2');
+      expect(employee.pullEvents()[0]?.payload).toMatchObject({ previousSiteId: null });
+    });
+
+    it('assignSite con la misma sede no cambia nada ni registra evento', () => {
+      const employee = hiredEmployee();
+
+      employee.assignSite('site-1', now);
+
+      expect(employee.snapshot.siteId).toBe('site-1');
+      expect(employee.pullEvents()).toEqual([]);
     });
   });
 

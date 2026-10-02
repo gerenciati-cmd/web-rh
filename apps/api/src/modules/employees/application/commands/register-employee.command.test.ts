@@ -7,6 +7,7 @@ import { EMPLOYEE_HIRED } from '../../domain/employee';
 import { EmployeeAlreadyExistsError } from '../../domain/errors';
 import { InMemoryEmployeeRepository } from '../../infrastructure/in-memory/in-memory-employee.repository';
 import type { Employer, EmployerDirectory } from '../ports/employer-directory';
+import type { SiteDirectory, WorkSite } from '../ports/site-directory';
 
 import { RegisterEmployee, type RegisterEmployeeInput } from './register-employee.command';
 
@@ -16,6 +17,14 @@ class StubEmployerDirectory implements EmployerDirectory {
 
   find(companyId: string): Promise<Employer | null> {
     return Promise.resolve(this.employers.find((e) => e.id === companyId) ?? null);
+  }
+}
+
+class StubSiteDirectory implements SiteDirectory {
+  constructor(private readonly sites: WorkSite[]) {}
+
+  find(siteId: string): Promise<WorkSite | null> {
+    return Promise.resolve(this.sites.find((s) => s.id === siteId) ?? null);
   }
 }
 
@@ -38,7 +47,11 @@ describe('RegisterEmployee', () => {
         { id: INACTIVE, country: 'MX', active: false },
         { id: OTHER, country: 'MX', active: true },
       ]),
-      siteDirectory: { find: (id) => Promise.resolve({ id, country: 'MX', active: true }) },
+      siteDirectory: new StubSiteDirectory([
+        { id: 'site-1', country: 'MX', active: true },
+        { id: 'site-inactive', country: 'MX', active: false },
+        { id: 'site-do', country: 'DO', active: true },
+      ]),
       idGenerator: new SequentialIdGenerator(),
       clock: new FixedClock(),
       eventBus,
@@ -79,6 +92,24 @@ describe('RegisterEmployee', () => {
     await registerEmployee.execute(input);
     const result = await registerEmployee.execute(input);
     expect(!result.ok && result.error.code).toBe('EMPLOYEE_ALREADY_EXISTS');
+  });
+
+  describe('sede', () => {
+    it('guarda la sede del colaborador', async () => {
+      await registerEmployee.execute(input);
+      expect([...repository.employees.values()][0]?.snapshot.siteId).toBe('site-1');
+    });
+
+    it.each([
+      ['sede inexistente', 'nope', 'SITE_NOT_FOUND'],
+      ['sede inactiva', 'site-inactive', 'SITE_INACTIVE'],
+      ['sede de otro país que la razón social', 'site-do', 'SITE_COUNTRY_MISMATCH'],
+    ])('rechaza %s sin guardar ni publicar', async (_case, siteId, code) => {
+      const result = await registerEmployee.execute({ ...input, siteId });
+      expect(!result.ok && result.error.code).toBe(code);
+      expect(repository.employees.size).toBe(0);
+      expect(eventBus.names()).toEqual([]);
+    });
   });
 
   describe('RFC', () => {

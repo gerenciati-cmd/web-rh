@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 
 import {
   AssignEmployeeRfcSchema,
+  AssignEmployeeSiteSchema,
+  EmployeeListItemSchema,
   employeeRoutes,
   RegisterEmployeeSchema,
 } from './employee.contract';
@@ -107,6 +109,103 @@ describe('employeeRoutes.assignEmployeeRfc', () => {
     const uuid = '00000000-0000-4000-8000-000000000001';
     expect(route.params.safeParse({ companyId: uuid, employeeId: uuid }).success).toBe(true);
     expect(route.params.safeParse({ companyId: uuid, employeeId: 'x' }).success).toBe(false);
+  });
+});
+
+describe('RegisterEmployeeSchema › sede', () => {
+  const valid = {
+    firstName: 'Ana',
+    lastName: 'Rojas',
+    email: 'ana@example.com',
+    hireDate: '2026-01-10',
+    nationalId: { country: 'MX', number: 'GOMA850101HQRRRN04' },
+    rfc: 'GOMA850101AB1',
+    siteId: '019b1c2e-0000-7000-8000-000000000001',
+  };
+
+  it('acepta un siteId uuid', () => {
+    expect(RegisterEmployeeSchema.safeParse(valid).success).toBe(true);
+  });
+
+  it('rechaza la falta de siteId con el error en siteId', () => {
+    const { siteId: _omitido, ...withoutSite } = valid;
+    const result = RegisterEmployeeSchema.safeParse(withoutSite);
+    expect(result.success).toBe(false);
+    expect(!result.success && result.error.issues[0]?.path).toEqual(['siteId']);
+  });
+
+  it('rechaza un siteId que no es uuid, con el error en siteId', () => {
+    const result = RegisterEmployeeSchema.safeParse({ ...valid, siteId: 'sede-1' });
+    expect(result.success).toBe(false);
+    expect(!result.success && result.error.issues[0]?.path).toEqual(['siteId']);
+  });
+});
+
+describe('AssignEmployeeSiteSchema', () => {
+  it('acepta un siteId uuid', () => {
+    const siteId = '019b1c2e-0000-7000-8000-000000000001';
+    const result = AssignEmployeeSiteSchema.safeParse({ siteId });
+    expect(result.success && result.data.siteId).toBe(siteId);
+  });
+
+  it.each([[{}], [{ siteId: 'x' }], [{ siteId: '' }], [{ siteId: null }]])(
+    'rechaza %j con el error en siteId',
+    (body) => {
+      const result = AssignEmployeeSiteSchema.safeParse(body);
+      expect(result.success).toBe(false);
+      expect(!result.success && result.error.issues[0]?.path).toEqual(['siteId']);
+    },
+  );
+});
+
+describe('employeeRoutes.assignEmployeeSite', () => {
+  const route = employeeRoutes.assignEmployeeSite;
+
+  it('es PUT /companies/:companyId/employees/:employeeId/site con 204', () => {
+    expect(route.method).toBe('PUT');
+    expect(route.path).toBe('/companies/:companyId/employees/:employeeId/site');
+    expect(route.successStatus).toBe(204);
+  });
+
+  it('exige employees:update acotado a la empresa del path', () => {
+    expect(route.access).toEqual({
+      kind: 'permission',
+      permission: 'employees:update',
+      companyParam: 'companyId',
+    });
+  });
+
+  it('valida que companyId y employeeId sean uuid', () => {
+    const uuid = '00000000-0000-4000-8000-000000000001';
+    expect(route.params.safeParse({ companyId: uuid, employeeId: uuid }).success).toBe(true);
+    expect(route.params.safeParse({ companyId: 'x', employeeId: uuid }).success).toBe(false);
+  });
+});
+
+describe('EmployeeListItemSchema › siteId', () => {
+  const item = {
+    id: '00000000-0000-4000-8000-000000000001',
+    fullName: 'Ana Rojas',
+    nationalId: 'GOMA850101HQRRRN04',
+    rfc: null,
+    email: 'ana@example.com',
+    positionTitle: null,
+    hireDate: '2026-01-10',
+    status: 'ACTIVE',
+  };
+
+  it('acepta siteId null (fila anterior al campo) y uuid', () => {
+    expect(EmployeeListItemSchema.safeParse({ ...item, siteId: null }).success).toBe(true);
+    expect(
+      EmployeeListItemSchema.safeParse({
+        ...item,
+        siteId: '019b1c2e-0000-7000-8000-000000000001',
+      }).success,
+    ).toBe(true);
+  });
+
+  it('exige el campo siteId (nullable, no opcional)', () => {
+    expect(EmployeeListItemSchema.safeParse(item).success).toBe(false);
   });
 });
 

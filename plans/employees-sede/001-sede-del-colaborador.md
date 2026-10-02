@@ -1,5 +1,5 @@
 ---
-status: testing
+status: review
 module: employees
 min_implementer: mid
 depends_on: [organization-sedes/001]
@@ -139,7 +139,7 @@ for display — rejected, the name belongs to `organization`.
    - Observable result: `tests/container.test.ts` resolves the new keys.
 
 7. **Existing callers: seed and tests**
-   - Files: `apps/api/prisma/seed.ts` (modify), `apps/api/src/modules/employees/domain/employee.test.ts` (modify), `apps/api/src/modules/employees/application/commands/register-employee.command.test.ts` (modify), `apps/api/src/modules/employees/application/commands/assign-employee-rfc.command.test.ts` (modify), `packages/contracts/src/employees/employee.contract.test.ts` (modify), `apps/api/tests/http.test.ts` (modify), `apps/api/tests/authorization.test.ts` (modify), `apps/api/tests/invitations.test.ts` (modify), `apps/api/tests/password-resets.test.ts` (modify), `apps/api/tests/employee-rfc.test.ts` (modify), `apps/api/tests/attendance-attribution.test.ts` (modify), `apps/api/tests/integration/employees/prisma-employee.int.test.ts` (modify), `apps/api/tests/integration/attendance/employees-punch-owner-directory.int.test.ts` (modify), `apps/api/src/modules/employees/application/employees.facade.test.ts` (modify), `apps/api/src/modules/attendance/infrastructure/employees-punch-owner-directory.test.ts` (modify)
+   - Files: `apps/api/prisma/seed.ts` (modify), `apps/api/src/modules/employees/domain/employee.test.ts` (modify), `apps/api/src/modules/employees/application/commands/register-employee.command.test.ts` (modify), `apps/api/src/modules/employees/application/commands/assign-employee-rfc.command.test.ts` (modify), `packages/contracts/src/employees/employee.contract.test.ts` (modify), `apps/api/tests/http.test.ts` (modify), `apps/api/tests/authorization.test.ts` (modify), `apps/api/tests/invitations.test.ts` (modify), `apps/api/tests/password-resets.test.ts` (modify), `apps/api/tests/employee-rfc.test.ts` (modify), `apps/api/tests/attendance-attribution.test.ts` (modify), `apps/api/tests/integration/employees/prisma-employee.int.test.ts` (modify), `apps/api/tests/integration/attendance/employees-punch-owner-directory.int.test.ts` (modify), `apps/api/src/modules/employees/application/employees.facade.test.ts` (modify), `apps/api/src/modules/attendance/infrastructure/employees-punch-owner-directory.test.ts` (modify), `apps/api/src/modules/employees/application/commands/assign-employee-site.command.test.ts` (create), `apps/api/tests/employee-site.test.ts` (create)
    - Do: every hire gets a `siteId`: HTTP tests create one with `createTestSite`; unit tests use a
      stub `SiteDirectory` and a fixed id; integration tests pass a fixed uuid (no FK). Seed: create
      the sede `'Cancún Centro'` (`MX`, `America/Cancun`) through `createSite` (ignore
@@ -192,6 +192,31 @@ for display — rejected, the name belongs to `organization`.
 Verification run: `pnpm check` green; `pnpm test:integration` 160/160; `pnpm db:seed` x2 OK.
 
 ## Test coverage
+
+Baseline: `pnpm check` green (exit 0) before writing tests. No GAP and no NOT CONFIRMED: every
+plan promise is implemented and was confirmed by execution.
+
+| Behavior (plan / code)                                                                                                        | Source                                             | Layer       | Test                                                                                            | State     |
+| ----------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------- | ----------- | ----------------------------------------------------------------------------------------------- | --------- |
+| `hire` stores `siteId`                                                                                                        | `employee.ts` (`hire`)                             | domain      | `employee.test.ts › sede › guarda la sede…`                                                     | CONFIRMED |
+| `assignSite` changes site, records `EMPLOYEE_SITE_ASSIGNED` with previous id                                                  | `employee.ts` (`assignSite`)                       | domain      | `employee.test.ts › sede › assignSite cambia la sede…`, `…registra previousSiteId null`         | CONFIRMED |
+| `assignSite` same site is a no-op, no event                                                                                   | `employee.ts` (`assignSite`)                       | domain      | `employee.test.ts › sede › …misma sede no cambia nada…`                                         | CONFIRMED |
+| `assignRfc` event only when the RFC changes                                                                                   | `employee.ts` (`assignRfc`)                        | domain      | `employee.test.ts › RFC › …registra EMPLOYEE_RFC_ASSIGNED…`, `…no registra evento si no cambia` | CONFIRMED |
+| `RegisterEmployee` saves site; `SITE_NOT_FOUND` / `SITE_INACTIVE` / `SITE_COUNTRY_MISMATCH` (nothing saved or published)      | `register-employee.command.ts` (`checkSite`)       | application | `register-employee.command.test.ts › sede`                                                      | CONFIRMED |
+| `AssignEmployeeSite`: change + event, null→site, idempotent, other company, missing employer, three site errors, save failure | `assign-employee-site.command.ts`                  | application | `assign-employee-site.command.test.ts` (10 tests)                                               | CONFIRMED |
+| `AssignEmployeeRfc` publishes `EMPLOYEE_RFC_ASSIGNED` on change only                                                          | `assign-employee-rfc.command.ts`                   | application | `assign-employee-rfc.command.test.ts › publica… / no publica…`                                  | CONFIRMED |
+| Facade `siteId` in `findEmployee`; `listActiveOnSite` delegates                                                               | `employees.facade.ts`                              | application | `employees.facade.test.ts`                                                                      | CONFIRMED |
+| `siteId` required uuid in register; `AssignEmployeeSiteSchema`; route access; list item `siteId` nullable                     | `employee.contract.ts:16,35,72,115`                | contract    | `employee.contract.test.ts` (sede, AssignEmployeeSiteSchema, assignEmployeeSite, ListItem)      | CONFIRMED |
+| Hire: 400 w/o `siteId`, 404 `SITE_NOT_FOUND`, 422 `SITE_INACTIVE`, 422 `SITE_COUNTRY_MISMATCH`, 201 lists `siteId`            | router + commands                                  | http        | `tests/employee-site.test.ts › POST…`                                                           | CONFIRMED |
+| PUT site: 204 (HR), idempotent, legacy NULL row, 400, 404, 422 x2, other company 404/403, 401, OpenAPI                        | router + `assign-employee-site.command.ts`         | http        | `tests/employee-site.test.ts › PUT…`, `› OpenAPI`                                               | CONFIRMED |
+| `site_id` persisted/updated; NULL rows; `listDirectory.siteId`                                                                | `employee.mapper.ts`, `prisma-employee.queries.ts` | integration | `prisma-employee.int.test.ts › Sede en PrismaEmployeeRepository…` (4 tests)                     | CONFIRMED |
+| `listActiveOnSite`: ACTIVE only, one site, all companies, order, null RFC, empty                                              | `prisma-employee.queries.ts:122`                   | integration | same describe (4 tests)                                                                         | CONFIRMED |
+| Events checked at HTTP level                                                                                                  | n/a                                                | http        | not written: the HTTP container has no event recorder; covered at application layer             | n/a       |
+| `pnpm db:seed` creates "Cancún Centro", idempotent                                                                            | `seed.ts`                                          | —           | not a test layer; run by the implementer (Deviation 4) and left to the verifier                 | n/a       |
+
+New tests: domain 5, application 20, contract 13, http 17, integration 8.
+
+Closing run: `pnpm check` green; `pnpm test:integration` 168/168 (160 before).
 
 ## Review findings
 
