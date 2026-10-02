@@ -136,15 +136,15 @@ owner.companyId } : null }`. Replace the plan-001 comment with one citing README
 
 ## Acceptance criteria
 
-- [ ] With a MX colaborador whose RFC is `R` in company A, a registered device pushing ATTLOG
+- [x] With a MX colaborador whose RFC is `R` in company A, a registered device pushing ATTLOG
       with PIN `R` and PIN `1`: `GET /api/v1/attendance/punches` as HOLDING_ADMIN lists both; the
       `R` punch has `employee: { id, fullName, companyId: A }`, the `1` punch has `employee: null`.
-- [ ] As HR of company A: 200 with only the `R` punch (filters `deviceId`, `from`, `to`, `pin`
+- [x] As HR of company A: 200 with only the `R` punch (filters `deviceId`, `from`, `to`, `pin`
       still apply). As HR of company B (no colaborador with that RFC): 200 with an empty page.
-- [ ] A punch received **before** its colaborador had an RFC becomes attributed as soon as the RFC
+- [x] A punch received **before** its colaborador had an RFC becomes attributed as soon as the RFC
       is set with `PUT …/employees/:id/rfc` (no reprocessing).
 - [ ] A terminated colaborador's punches stay attributed to them.
-- [ ] Anonymous → 401; an actor without the permission → 403.
+- [x] Anonymous → 401; an actor without the permission → 403.
 - [ ] Real device: a person enrolled with their RFC as PIN marks, and their punch shows their
       `employee` (user with the SenseFace 2A; NOT VERIFIED if unavailable).
 
@@ -240,3 +240,37 @@ Status stays `review`: M1 needs a (docs-only) change in a plan file.
 Plan to `verify`.
 
 ## Verification
+
+Verifier (main session, inline), 2026-10-02, on `4e08e68`.
+
+**Suites:** `pnpm check` green (api `656 passed | 4 skipped`, contracts `183`, domain `86`);
+`pnpm test:integration`: `Tests 153 passed (153)`. No schema change in this plan.
+
+**App running** (`pnpm dev:api`, port 3000) on a freshly reset dev DB (reset by the user): seed
+colaboradores Ana `GOMA850101AB1` and Pedro `PEXL900215AB2` in APS Holding S.A. de C.V.
+(company A). Set up through the API: company B "Verificación RFC S.A. de C.V." with colaboradora
+Gabriela, RFC `GOMA850101VR1`; users `verif-att-admin` (HOLDING_ADMIN), `verif-att-hr` (HR A),
+`verif-att-hr-b` (HR B), `verif-att-none` (no role); device `VERIFAT576061` (`America/Cancun`).
+One ATTLOG push with PINs `GOMA850101AB1`, `1`, `GOMA850101VR1`, `PEXL900215VR1` → `OK: 4`.
+16/16 checks passed:
+
+| Criterion               | Observed                                                                                                                                                     |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Admin view              | 200 `total=4`; `GOMA850101AB1` → `{ fullName: "Ana Rojas", companyId: A }`; `GOMA850101VR1` → Gabriela, company B; `1` → `null`; `PEXL900215VR1` → `null`    |
+| HR scope                | HR A → 200 `total=1` (only Ana's); HR A with `from` after the punch → 0; HR A asking `pin=GOMA850101VR1` (company B) → 0; HR B → `total=1` (only Gabriela's) |
+| RFC set after the punch | HR A `PUT …/employees/{Pedro}/rfc` `PEXL900215VR1` → 204; HR A then sees `total=2`, the earlier punch now `employee: Pedro Soto`                             |
+| Access                  | anonymous → 401; user without role → 403 `FORBIDDEN`                                                                                                         |
+
+**NOT VERIFIED:**
+
+- "A terminated colaborador's punches stay attributed": the API has no endpoint to terminate a
+  colaborador, so it cannot be driven in the running app. Covered by the http test
+  (`apps/api/tests/attendance-attribution.test.ts`) and the integration test
+  (`employees-punch-owner-directory.int.test.ts`), both green above.
+- Real device: the dev DB reset also removed the SenseFace 2A registration; it needs to be
+  registered again and a person enrolled with their RFC as PIN. To be driven by the user.
+
+**Left in the dev DB:** company B with Gabriela, Pedro's RFC changed to `PEXL900215VR1`, device
+`VERIFAT576061` with its 4 punches, users `verif-att-*@example.test`.
+
+Result: **PASS** on every criterion exercisable here. Status stays `verify`.
