@@ -22,6 +22,7 @@ function setup() {
     listDirectory: vi.fn(),
     findByRfcs,
     rfcsInCompanies,
+    listActiveOnSite: vi.fn(),
   };
   return {
     employeeRepository,
@@ -41,6 +42,7 @@ function hired(rfc: string | null) {
     companyId: 'company-a',
     nationalId: nationalId.value,
     rfc: parsed?.ok ? parsed.value : null,
+    siteId: null,
     firstName: 'Ana',
     lastName: 'Rojas',
     email: email.value,

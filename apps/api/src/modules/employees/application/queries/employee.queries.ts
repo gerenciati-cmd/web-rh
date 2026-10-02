@@ -18,9 +18,19 @@ export interface EmployeeRfcOwner {
   active: boolean;
 }
 
+/** Colaborador activo de una sede. Consumidor: la sincronización de asistencia. */
+export interface SiteMember {
+  id: string;
+  companyId: string;
+  fullName: string;
+  rfc: string | null;
+}
+
 /** Puerto de lectura: listados y vistas de colaboradores. */
 export interface EmployeeQueries {
   listDirectory(filters: EmployeeDirectoryFilters): Promise<Page<EmployeeListItem>>;
   findByRfcs(rfcs: readonly string[]): Promise<EmployeeRfcOwner[]>;
   rfcsInCompanies(companyIds: readonly string[]): Promise<string[]>;
+  /** Colaboradores ACTIVOS de la sede, ordenados por apellido, nombre e id. */
+  listActiveOnSite(siteId: string): Promise<SiteMember[]>;
 }

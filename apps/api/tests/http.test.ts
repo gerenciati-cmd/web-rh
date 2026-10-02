@@ -6,7 +6,7 @@ import { API_PREFIX, createApp } from '@/http/app';
 import { EmployeeAlreadyExistsError } from '@/modules/employees/domain/errors';
 import { CompanyAlreadyExistsError } from '@/modules/organization/domain/errors';
 
-import { buildTestContainer, signInAs } from './test-app';
+import { buildTestContainer, createTestSite, signInAs } from './test-app';
 
 /**
  * Tests de integración del adaptador HTTP: contrato → validación → caso de uso →
@@ -15,11 +15,13 @@ import { buildTestContainer, signInAs } from './test-app';
 describe('API HTTP', () => {
   let app: ReturnType<typeof createApp>;
   let adminToken: string;
+  let siteId: string;
 
   beforeEach(async () => {
     const container = buildTestContainer();
     app = createApp(container);
     adminToken = await signInAs(container, { role: 'HOLDING_ADMIN' });
+    siteId = await createTestSite(container);
   });
 
   // Las rutas de negocio exigen sesión (plan 002): todas se llaman como HOLDING_ADMIN.
@@ -116,6 +118,7 @@ describe('API HTTP', () => {
         lastName: 'Rojas',
         email: 'ana@aps.cl',
         hireDate: '2026-01-10',
+        siteId,
       })
       .expect(201);
 
@@ -138,6 +141,7 @@ describe('API HTTP', () => {
           lastName: 'Rojas',
           email: 'ana@aps.cl',
           hireDate: '2026-01-10',
+          siteId,
         });
 
     await registerAna().expect(201);
@@ -156,6 +160,7 @@ describe('API HTTP', () => {
         lastName: 'Rojas',
         email: 'ana@aps.cl',
         hireDate: '2026-01-10',
+        siteId,
       })
       .expect(400);
 
@@ -175,6 +180,7 @@ describe('API HTTP', () => {
         lastName: 'Rojas',
         email: 'ana@aps.cl',
         hireDate: '2026-01-10',
+        siteId,
       })
       .expect(400);
 
@@ -200,6 +206,7 @@ describe('API HTTP', () => {
     const container = buildTestContainer();
     const localApp = createApp(container);
     const token = await signInAs(container, { role: 'HOLDING_ADMIN' });
+    const localSiteId = await createTestSite(container);
     const company = await request(localApp)
       .post(`${API_PREFIX}/companies`)
       .set('Authorization', `Bearer ${token}`)
@@ -218,6 +225,7 @@ describe('API HTTP', () => {
         lastName: 'Persona',
         email: 'fixture@example.invalid',
         hireDate: '2026-01-10',
+        siteId: localSiteId,
       })
       .expect(409);
     expect(response.body.code).toBe('EMPLOYEE_ALREADY_EXISTS');

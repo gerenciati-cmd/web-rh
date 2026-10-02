@@ -67,6 +67,8 @@ model Employee {
   nationalIdNumber  String         @map("national_id_number") @db.VarChar(20)
   /// RFC persona física (solo MX), único en el holding
   rfc               String?        @unique @db.VarChar(13)
+  /// referencia por id a organization.sites, sin FK (ADR 0010)
+  siteId            String?        @map("site_id") @db.Uuid
   firstName         String         @map("first_name") @db.VarChar(100)
   lastName          String         @map("last_name") @db.VarChar(100)
   email             String         @db.VarChar(254)
@@ -78,6 +80,7 @@ model Employee {
 
   @@unique([companyId, nationalIdCountry, nationalIdNumber])
   @@index([companyId, status])
+  @@index([siteId, status])
   @@map("employees")
   @@schema("employees")
 }

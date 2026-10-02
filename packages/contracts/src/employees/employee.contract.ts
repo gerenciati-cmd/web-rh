@@ -13,6 +13,7 @@ export const EmployeeListItemSchema = z
     fullName: z.string(),
     nationalId: z.string().describe('Formateado para mostrar, p. ej. GOMA850101HQRRRN04'),
     rfc: z.string().nullable(),
+    siteId: z.uuid().nullable(),
     email: z.email(),
     positionTitle: z.string().nullable(),
     hireDate: z.iso.date(),
@@ -31,6 +32,7 @@ export const RegisterEmployeeSchema = z
     positionTitle: z.string().trim().min(1).max(150).optional(),
     hireDate: z.iso.date(),
     rfc: z.string().trim().optional(),
+    siteId: z.uuid(),
   })
   .refine((input) => NationalId.isValid(input.nationalId.country, input.nationalId.number), {
     path: ['nationalId', 'number'],
@@ -67,6 +69,11 @@ export const AssignEmployeeRfcSchema = z
   .meta({ id: 'AssignEmployeeRfcInput' });
 export type AssignEmployeeRfcInput = z.input<typeof AssignEmployeeRfcSchema>;
 
+export const AssignEmployeeSiteSchema = z
+  .object({ siteId: z.uuid() })
+  .meta({ id: 'AssignEmployeeSiteInput' });
+export type AssignEmployeeSiteInput = z.input<typeof AssignEmployeeSiteSchema>;
+
 export const ListEmployeesQuerySchema = PageQuerySchema.extend({
   status: EmployeeStatusSchema.optional(),
   search: z.string().trim().min(1).optional(),
@@ -102,6 +109,16 @@ export const employeeRoutes = {
     access: requires('employees:update', { companyParam: 'companyId' }),
     params: z.object({ companyId: z.uuid(), employeeId: z.uuid() }),
     body: AssignEmployeeRfcSchema,
+    response: z.undefined(),
+    successStatus: 204,
+  }),
+  assignEmployeeSite: defineRoute({
+    method: 'PUT',
+    path: '/companies/:companyId/employees/:employeeId/site',
+    summary: 'Asigna o cambia la sede de un colaborador',
+    access: requires('employees:update', { companyParam: 'companyId' }),
+    params: z.object({ companyId: z.uuid(), employeeId: z.uuid() }),
+    body: AssignEmployeeSiteSchema,
     response: z.undefined(),
     successStatus: 204,
   }),

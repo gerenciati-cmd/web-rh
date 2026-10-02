@@ -41,6 +41,7 @@ function employee(input: {
     companyId: input.companyId ?? COMPANY_A,
     nationalId: nationalId.value,
     rfc: rfc.value,
+    siteId: '019b1c2e-0000-7000-8000-000000000001',
     firstName: input.firstName,
     lastName: input.lastName,
     email: email.value,
@@ -198,7 +199,7 @@ describe('RFC en PrismaEmployeeRepository', () => {
     const rfc = PersonalRfc.create('GOMA850101AB1');
     if (!found || !rfc.ok) throw new Error('fixture inválido');
 
-    found.assignRfc(rfc.value);
+    found.assignRfc(rfc.value, NOW);
     expect((await repository.save(found)).ok).toBe(true);
 
     expect((await repository.findById(ana.id))?.snapshot.rfc?.value).toBe('GOMA850101AB1');
@@ -217,7 +218,7 @@ describe('RFC en PrismaEmployeeRepository', () => {
     await repository.save(pedro);
     const rfc = PersonalRfc.create('GOMA850101AB1');
     if (!rfc.ok) throw rfc.error;
-    pedro.assignRfc(rfc.value);
+    pedro.assignRfc(rfc.value, NOW);
 
     const result = await repository.save(pedro);
 

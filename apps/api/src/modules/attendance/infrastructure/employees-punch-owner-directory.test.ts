@@ -9,7 +9,7 @@ function setup() {
   const rfcsInCompanies = vi.fn<EmployeesApi['rfcsInCompanies']>();
   const findEmployee = vi.fn<EmployeesApi['findEmployee']>();
   const directory = new EmployeesPunchOwnerDirectory({
-    employeesApi: { findEmployee, findByRfcs, rfcsInCompanies },
+    employeesApi: { findEmployee, findByRfcs, rfcsInCompanies, listActiveOnSite: vi.fn() },
   });
   return { directory, findByRfcs, rfcsInCompanies };
 }

@@ -38,6 +38,7 @@ describe('RegisterEmployee', () => {
         { id: INACTIVE, country: 'MX', active: false },
         { id: OTHER, country: 'MX', active: true },
       ]),
+      siteDirectory: { find: (id) => Promise.resolve({ id, country: 'MX', active: true }) },
       idGenerator: new SequentialIdGenerator(),
       clock: new FixedClock(),
       eventBus,
@@ -51,6 +52,7 @@ describe('RegisterEmployee', () => {
     firstName: 'Ana',
     lastName: 'Rojas',
     email: 'Ana@APS.cl',
+    siteId: 'site-1',
     hireDate: '2026-01-10',
   };
 

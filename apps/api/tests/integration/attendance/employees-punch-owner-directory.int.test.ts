@@ -44,6 +44,7 @@ async function hire(input: {
     companyId: input.companyId,
     nationalId: nationalId.value,
     rfc: rfc.value,
+    siteId: '019b1c2e-0000-7000-8000-000000000001',
     firstName: input.firstName,
     lastName: input.lastName,
     email: email.value,

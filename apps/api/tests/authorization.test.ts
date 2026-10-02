@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { API_PREFIX, createApp } from '@/http/app';
 import type { CompanyId } from '@/modules/organization/domain/company';
 
-import { buildTestContainer, signInAs } from './test-app';
+import { buildTestContainer, createTestSite, signInAs } from './test-app';
 
 /**
  * Autorización de punta a punta (plan 002, ADR 0012): contrato → `bindRoute` (401/403) →
@@ -16,7 +16,7 @@ const PASSWORD = 'contraseña-larga-y-valida';
 
 const validCompany = { legalName: 'Gamma SA de CV', taxId: 'BBB020202BB2', country: 'MX' };
 
-const employeeBody = {
+const baseEmployeeBody = {
   nationalId: { country: 'MX', number: 'GOMA850101HQRRRN04' },
   rfc: 'GOMA850101AB1',
   firstName: 'Ana',
@@ -33,6 +33,7 @@ describe('autorización HTTP', () => {
   let noRoleToken: string;
   let companyA: string;
   let companyB: string;
+  let employeeBody: typeof baseEmployeeBody & { siteId: string };
 
   const as = (token: string | null) => ({
     get: (path: string) => withAuth(request(app).get(`${API_PREFIX}${path}`), token),
@@ -78,6 +79,7 @@ describe('autorización HTTP', () => {
     container = buildTestContainer();
     app = createApp(container);
     adminToken = await signInAs(container, { role: 'HOLDING_ADMIN' });
+    employeeBody = { ...baseEmployeeBody, siteId: await createTestSite(container) };
     companyA = await createCompany('Alfa SA de CV', 'EKU9003173C9');
     companyB = await createCompany('Beta SA de CV', 'AAA010101AAA');
     hrToken = await signInAs(container, { role: 'HR', companyId: companyA });

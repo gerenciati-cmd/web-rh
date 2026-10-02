@@ -14,8 +14,16 @@ import type { Actor } from '@/shared/application/actor';
 const env = loadEnv();
 const logger = createLogger(env);
 const container = buildContainer(env, logger);
-const { createCompany, registerEmployee, listCompanies, registerUser, listUsers, assignRole } =
-  container.cradle;
+const {
+  createCompany,
+  createSite,
+  listSites,
+  registerEmployee,
+  listCompanies,
+  registerUser,
+  listUsers,
+  assignRole,
+} = container.cradle;
 
 // El seed corre sin sesión: actúa como el sistema, con lectura de todo el holding.
 const seedActor: Actor = {
@@ -40,7 +48,23 @@ for (const company of companies) {
 const { items } = await listCompanies.execute({ page: 1, pageSize: 10, actor: seedActor });
 const holding = items.find((company) => company.legalName === 'APS Holding S.A. de C.V.');
 
+/** Crea la sede (o la reutiliza si ya existe) y devuelve su id. */
+async function seedSite(name: string): Promise<string> {
+  const result = await createSite.execute({ name, country: 'MX', timeZone: 'America/Cancun' });
+  if (result.ok) {
+    logger.info({ site: name }, 'sede creada');
+    return result.value.id;
+  }
+  if (result.error.code !== 'SITE_ALREADY_EXISTS') throw result.error;
+
+  const found = await listSites.execute({ page: 1, pageSize: 100 });
+  const existing = found.items.find((site) => site.name === name);
+  if (!existing) throw new Error(`No se encontró la sede ya existente ${name}`);
+  return existing.id;
+}
+
 if (holding) {
+  const siteId = await seedSite('Cancún Centro');
   const employees = [
     {
       nationalId: 'GOMA850101HQRRRN04',
@@ -63,6 +87,7 @@ if (holding) {
     const result = await registerEmployee.execute({
       ...employee,
       companyId: holding.id,
+      siteId,
       nationalId: { country: 'MX', number: employee.nationalId },
       hireDate: '2026-01-05',
     });

@@ -23,6 +23,8 @@ export interface EmployeeProps {
   nationalId: NationalId;
   /** RFC de persona física: obligatorio al contratar en México; nulo en filas anteriores al campo. */
   rfc: PersonalRfc | null;
+  /** Sede de trabajo: obligatoria al contratar; nula en filas anteriores al campo. */
+  siteId: string | null;
   firstName: string;
   lastName: string;
   email: Email;
@@ -33,6 +35,8 @@ export interface EmployeeProps {
 
 export const EMPLOYEE_HIRED = 'employees.employee.hired';
 export const EMPLOYEE_TERMINATED = 'employees.employee.terminated';
+export const EMPLOYEE_SITE_ASSIGNED = 'employees.employee.site-assigned';
+export const EMPLOYEE_RFC_ASSIGNED = 'employees.employee.rfc-assigned';
 
 /** Máximo de anticipación para registrar una contratación futura. */
 const MAX_DAYS_HIRE_IN_ADVANCE = 90;
@@ -54,6 +58,7 @@ export class Employee extends AggregateRoot<EmployeeId> {
     lastName: string;
     email: Email;
     rfc?: PersonalRfc | undefined;
+    siteId: string;
     positionTitle?: string | undefined;
     hireDate: Date;
     now: Date;
@@ -84,6 +89,7 @@ export class Employee extends AggregateRoot<EmployeeId> {
       companyId: input.companyId,
       nationalId: input.nationalId,
       rfc: input.rfc ?? null,
+      siteId: input.siteId,
       firstName,
       lastName,
       email: input.email,
@@ -117,10 +123,22 @@ export class Employee extends AggregateRoot<EmployeeId> {
   }
 
   /** Captura o corrige el RFC; la unicidad en el holding la verifica el caso de uso. */
-  assignRfc(rfc: PersonalRfc): Result<void, BusinessRuleViolationError> {
+  assignRfc(rfc: PersonalRfc, now: Date): Result<void, BusinessRuleViolationError> {
     if (this.props.nationalId.country !== 'MX') return err(new RfcNotApplicableError());
+    if (this.props.rfc?.value === rfc.value) return ok(undefined);
     this.props = { ...this.props, rfc };
+    this.record(createEvent(EMPLOYEE_RFC_ASSIGNED, { employeeId: this.id }, now));
     return ok(undefined);
+  }
+
+  /** Asigna o cambia la sede; la validez de la sede la verifica el caso de uso. */
+  assignSite(siteId: string, now: Date): void {
+    const previousSiteId = this.props.siteId;
+    if (previousSiteId === siteId) return;
+    this.props = { ...this.props, siteId };
+    this.record(
+      createEvent(EMPLOYEE_SITE_ASSIGNED, { employeeId: this.id, siteId, previousSiteId }, now),
+    );
   }
 
   get snapshot(): Readonly<EmployeeProps> {

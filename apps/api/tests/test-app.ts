@@ -97,6 +97,7 @@ export function buildTestContainer(env: Env = testEnv) {
             fullName: `${s.firstName} ${s.lastName}`,
             nationalId: s.nationalId.format(),
             rfc: s.rfc?.value ?? null,
+            siteId: s.siteId,
             email: s.email.value,
             positionTitle: s.positionTitle,
             hireDate: s.hireDate.toISOString().slice(0, 10),
@@ -126,6 +127,21 @@ export function buildTestContainer(env: Env = testEnv) {
         [...employees.employees.values()].flatMap((employee) => {
           const s = employee.snapshot;
           return s.rfc && companyIds.includes(s.companyId) ? [s.rfc.value] : [];
+        }),
+      ),
+    listActiveOnSite: (siteId) =>
+      Promise.resolve(
+        [...employees.employees.values()].flatMap((employee) => {
+          const s = employee.snapshot;
+          if (s.siteId !== siteId || s.status !== 'ACTIVE') return [];
+          return [
+            {
+              id: employee.id,
+              companyId: s.companyId,
+              fullName: `${s.firstName} ${s.lastName}`,
+              rfc: s.rfc?.value ?? null,
+            },
+          ];
         }),
       ),
   };
@@ -163,6 +179,23 @@ export function buildTestContainer(env: Env = testEnv) {
 
 export function buildTestApp() {
   return createApp(buildTestContainer());
+}
+
+let siteCounter = 0;
+
+/** Crea una sede MX activa (`America/Cancun`) y devuelve su id; el nombre por defecto es único. */
+export async function createTestSite(
+  container: ReturnType<typeof buildTestContainer>,
+  name?: string,
+): Promise<string> {
+  siteCounter += 1;
+  const created = await container.cradle.createSite.execute({
+    name: name ?? `Sede de prueba ${siteCounter}`,
+    country: 'MX',
+    timeZone: 'America/Cancun',
+  });
+  if (!created.ok) throw created.error;
+  return created.value.id;
 }
 
 const SIGN_IN_PASSWORD = 'contraseña-larga-y-valida';

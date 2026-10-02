@@ -12,6 +12,7 @@ describe('RegisterEmployeeSchema › RFC', () => {
     lastName: 'Rojas',
     email: 'ana@example.com',
     hireDate: '2026-01-10',
+    siteId: '019b1c2e-0000-7000-8000-000000000001',
   };
   const mx = { country: 'MX', number: 'GOMA850101HQRRRN04' };
   const dominican = { country: 'DO', number: '00113918205' };
@@ -115,6 +116,7 @@ describe('RegisterEmployeeSchema', () => {
     lastName: 'Rojas',
     email: 'ana@example.com',
     hireDate: '2026-01-10',
+    siteId: '019b1c2e-0000-7000-8000-000000000001',
     rfc: 'GOMA850101AB1',
   };
 

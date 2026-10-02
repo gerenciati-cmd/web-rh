@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { API_PREFIX, createApp } from '@/http/app';
 import { Employee, type EmployeeId } from '@/modules/employees/domain/employee';
 
-import { buildTestContainer, signInAs } from './test-app';
+import { buildTestContainer, createTestSite, signInAs } from './test-app';
 
 /**
  * Atribución de marcaciones por RFC (plan attendance-marcaciones/002): el PIN del checador es el
@@ -48,6 +48,7 @@ describe('atribución de marcaciones por RFC (HTTP)', () => {
   let noRoleToken: string;
   let companyA: string;
   let companyB: string;
+  let siteId: string;
 
   const call = (method: 'get' | 'post' | 'put', path: string, token: string | null) => {
     const test = request(app)[method](`${API_PREFIX}${path}`);
@@ -70,7 +71,9 @@ describe('atribución de marcaciones por RFC (HTTP)', () => {
     return response.body.id as string;
   }
   async function hire(companyId: string, body: object): Promise<string> {
-    await call('post', `/companies/${companyId}/employees`, adminToken).send(body).expect(201);
+    await call('post', `/companies/${companyId}/employees`, adminToken)
+      .send({ siteId, ...body })
+      .expect(201);
     const list = await call('get', `/companies/${companyId}/employees`, adminToken).expect(200);
     const rows = list.body.items as { id: string; email: string }[];
     const row = rows.find((r) => r.email === (body as { email: string }).email);
@@ -82,6 +85,7 @@ describe('atribución de marcaciones por RFC (HTTP)', () => {
     container = buildTestContainer();
     app = createApp(container);
     adminToken = await signInAs(container, { role: 'HOLDING_ADMIN' });
+    siteId = await createTestSite(container);
     companyA = await createCompany('Alfa SA de CV', 'EKU9003173C9');
     companyB = await createCompany('Beta SA de CV', 'AAA010101AAA');
     hrAToken = await signInAs(container, { role: 'HR', companyId: companyA });
@@ -178,6 +182,7 @@ describe('atribución de marcaciones por RFC (HTTP)', () => {
         companyId: companyA,
         nationalId: nationalId.value,
         rfc: null,
+        siteId: null,
         firstName: 'Luis',
         lastName: 'Antiguo',
         email: email.value,

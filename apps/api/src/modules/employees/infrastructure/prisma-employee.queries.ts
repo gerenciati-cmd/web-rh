@@ -8,6 +8,7 @@ import type {
   EmployeeDirectoryFilters,
   EmployeeQueries,
   EmployeeRfcOwner,
+  SiteMember,
 } from '../application/queries/employee.queries';
 
 /**
@@ -47,6 +48,7 @@ export class PrismaEmployeeQueries implements EmployeeQueries {
           nationalIdCountry: true,
           nationalIdNumber: true,
           rfc: true,
+          siteId: true,
           email: true,
           positionTitle: true,
           hireDate: true,
@@ -69,6 +71,7 @@ export class PrismaEmployeeQueries implements EmployeeQueries {
         fullName: `${row.firstName} ${row.lastName}`,
         nationalId: nationalId.ok ? nationalId.value.format() : row.nationalIdNumber,
         rfc: row.rfc,
+        siteId: row.siteId,
         email: row.email,
         positionTitle: row.positionTitle,
         hireDate: row.hireDate.toISOString().slice(0, 10),
@@ -114,5 +117,19 @@ export class PrismaEmployeeQueries implements EmployeeQueries {
       select: { rfc: true },
     });
     return rows.flatMap((row) => (row.rfc === null ? [] : [row.rfc]));
+  }
+
+  async listActiveOnSite(siteId: string): Promise<SiteMember[]> {
+    const rows = await this.deps.database.client.employee.findMany({
+      where: { siteId, status: 'ACTIVE' },
+      select: { id: true, companyId: true, firstName: true, lastName: true, rfc: true },
+      orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }, { id: 'asc' }],
+    });
+    return rows.map((row) => ({
+      id: row.id,
+      companyId: row.companyId,
+      fullName: `${row.firstName} ${row.lastName}`,
+      rfc: row.rfc,
+    }));
   }
 }

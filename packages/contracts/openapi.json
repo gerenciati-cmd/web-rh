@@ -488,6 +488,57 @@
         }
       }
     },
+    "/companies/{companyId}/employees/{employeeId}/site": {
+      "put": {
+        "operationId": "assignEmployeeSite",
+        "summary": "Asigna o cambia la sede de un colaborador",
+        "tags": [
+          "employees"
+        ],
+        "x-permission": "employees:update",
+        "x-company-param": "companyId",
+        "parameters": [
+          {
+            "name": "companyId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          },
+          {
+            "name": "employeeId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssignEmployeeSiteInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Asigna o cambia la sede de un colaborador"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/auth/login": {
       "post": {
         "operationId": "logIn",
@@ -1326,6 +1377,19 @@
           "rfc"
         ]
       },
+      "AssignEmployeeSiteInput": {
+        "type": "object",
+        "properties": {
+          "siteId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          }
+        },
+        "required": [
+          "siteId"
+        ]
+      },
       "AssignRoleInput": {
         "type": "object",
         "properties": {
@@ -1626,6 +1690,18 @@
               "null"
             ]
           },
+          "siteId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "email": {
             "type": "string",
             "format": "email",
@@ -1655,6 +1731,7 @@
           "fullName",
           "nationalId",
           "rfc",
+          "siteId",
           "email",
           "positionTitle",
           "hireDate",
@@ -1866,6 +1943,11 @@
           },
           "rfc": {
             "type": "string"
+          },
+          "siteId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
           }
         },
         "required": [
@@ -1873,7 +1955,8 @@
           "firstName",
           "lastName",
           "email",
-          "hireDate"
+          "hireDate",
+          "siteId"
         ]
       },
       "RequestPasswordResetInput": {

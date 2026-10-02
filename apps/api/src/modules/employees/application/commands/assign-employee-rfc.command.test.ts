@@ -1,6 +1,8 @@
 import { Email, NationalId, PersonalRfc } from '@rrhh/domain';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { FixedClock, RecordingEventBus } from '@/shared/testing/fakes';
+
 import { Employee, type EmployeeId } from '../../domain/employee';
 import { EmployeeRfcAlreadyRegisteredError } from '../../domain/errors';
 import { InMemoryEmployeeRepository } from '../../infrastructure/in-memory/in-memory-employee.repository';
@@ -30,6 +32,7 @@ function employee(input: {
     companyId: input.companyId ?? COMPANY,
     nationalId: nationalId.value,
     rfc: rfc?.ok ? rfc.value : null,
+    siteId: 'site-1',
     firstName: 'Ana',
     lastName: 'Rojas',
     email: email.value,
@@ -45,7 +48,11 @@ describe('AssignEmployeeRfc', () => {
 
   beforeEach(() => {
     repository = new InMemoryEmployeeRepository();
-    assignEmployeeRfc = new AssignEmployeeRfc({ employeeRepository: repository });
+    assignEmployeeRfc = new AssignEmployeeRfc({
+      employeeRepository: repository,
+      clock: new FixedClock(),
+      eventBus: new RecordingEventBus(),
+    });
   });
 
   const seed = async (e: Employee) => {

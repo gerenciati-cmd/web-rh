@@ -1,5 +1,5 @@
 ---
-status: approved
+status: testing
 module: employees
 min_implementer: mid
 depends_on: [organization-sedes/001]
@@ -117,7 +117,7 @@ for display — rejected, the name belongs to `organization`.
    - Observable result: typecheck passes.
 
 5. **Persistence**
-   - Files: `apps/api/prisma/schema.prisma` (modify), `apps/api/prisma/migrations/YYYYMMDDHHMMSS_add_employee_site/migration.sql` (create), `apps/api/src/modules/employees/infrastructure/employee.mapper.ts` (modify), `apps/api/src/modules/employees/infrastructure/prisma-employee.queries.ts` (modify), `apps/api/src/modules/employees/infrastructure/in-memory/in-memory-employee.repository.ts` (modify)
+   - Files: `apps/api/prisma/schema.prisma` (modify), `apps/api/prisma/migrations/20261002210000_add_employee_site/migration.sql` (create), `apps/api/src/modules/employees/infrastructure/employee.mapper.ts` (modify), `apps/api/src/modules/employees/infrastructure/prisma-employee.queries.ts` (modify), `apps/api/src/modules/employees/infrastructure/in-memory/in-memory-employee.repository.ts` (modify)
    - Do: `Employee` gets `siteId String? @map("site_id") @db.Uuid` with
      `/// referencia por id a organization.sites, sin FK (ADR 0010)` and `@@index([siteId, status])`.
      Migration (as in `employees-rfc/001` Deviation 1 if `migrate dev` cannot run): `ADD COLUMN` +
@@ -139,7 +139,7 @@ for display — rejected, the name belongs to `organization`.
    - Observable result: `tests/container.test.ts` resolves the new keys.
 
 7. **Existing callers: seed and tests**
-   - Files: `apps/api/prisma/seed.ts` (modify), `apps/api/src/modules/employees/domain/employee.test.ts` (modify), `apps/api/src/modules/employees/application/commands/register-employee.command.test.ts` (modify), `apps/api/src/modules/employees/application/commands/assign-employee-rfc.command.test.ts` (modify), `packages/contracts/src/employees/employee.contract.test.ts` (modify), `apps/api/tests/http.test.ts` (modify), `apps/api/tests/authorization.test.ts` (modify), `apps/api/tests/invitations.test.ts` (modify), `apps/api/tests/password-resets.test.ts` (modify), `apps/api/tests/employee-rfc.test.ts` (modify), `apps/api/tests/attendance-attribution.test.ts` (modify), `apps/api/tests/integration/employees/prisma-employee.int.test.ts` (modify), `apps/api/tests/integration/attendance/employees-punch-owner-directory.int.test.ts` (modify)
+   - Files: `apps/api/prisma/seed.ts` (modify), `apps/api/src/modules/employees/domain/employee.test.ts` (modify), `apps/api/src/modules/employees/application/commands/register-employee.command.test.ts` (modify), `apps/api/src/modules/employees/application/commands/assign-employee-rfc.command.test.ts` (modify), `packages/contracts/src/employees/employee.contract.test.ts` (modify), `apps/api/tests/http.test.ts` (modify), `apps/api/tests/authorization.test.ts` (modify), `apps/api/tests/invitations.test.ts` (modify), `apps/api/tests/password-resets.test.ts` (modify), `apps/api/tests/employee-rfc.test.ts` (modify), `apps/api/tests/attendance-attribution.test.ts` (modify), `apps/api/tests/integration/employees/prisma-employee.int.test.ts` (modify), `apps/api/tests/integration/attendance/employees-punch-owner-directory.int.test.ts` (modify), `apps/api/src/modules/employees/application/employees.facade.test.ts` (modify), `apps/api/src/modules/attendance/infrastructure/employees-punch-owner-directory.test.ts` (modify)
    - Do: every hire gets a `siteId`: HTTP tests create one with `createTestSite`; unit tests use a
      stub `SiteDirectory` and a fixed id; integration tests pass a fixed uuid (no FK). Seed: create
      the sede `'Cancún Centro'` (`MX`, `America/Cancun`) through `createSite` (ignore
@@ -173,6 +173,23 @@ for display — rejected, the name belongs to `organization`.
 | e2e         | no      | (no e2e infrastructure yet)                                                                                                             |
 
 ## Deviations
+
+1. **Migration folder** (cosmetic): written by hand as `20261002210000_add_employee_site/migration.sql`
+   (`ADD COLUMN site_id UUID` + index, no `DROP`), applied to the dev DB with `db:deploy`; the
+   `YYYYMMDDHHMMSS` placeholder is replaced.
+2. **Two test files outside the Step 7 list, forced by typecheck** (cosmetic):
+   `apps/api/src/modules/employees/application/employees.facade.test.ts` (new `siteId` in
+   `EmployeeProps`, new `listActiveOnSite` in `EmployeeQueries`) and
+   `apps/api/src/modules/attendance/infrastructure/employees-punch-owner-directory.test.ts`
+   (new `listActiveOnSite` in `EmployeesApi`). Fixture-only edits.
+3. **One assertion changed** (contradicted by the plan's own new behavior):
+   `employee.test.ts` "assignRfc no emite eventos" now asserts `EMPLOYEE_RFC_ASSIGNED` is recorded
+   on change (Step 2 makes `assignRfc` record it). The tester adds the no-change/no-event cases.
+4. **Seed on existing data** (note): colaboradores already seeded keep `site_id` NULL (the seed
+   skips them as `EMPLOYEE_ALREADY_EXISTS`); only a fresh seed assigns "Cancún Centro". They can
+   get a site through `PUT …/site`. `pnpm db:seed` twice is idempotent (verified).
+
+Verification run: `pnpm check` green; `pnpm test:integration` 160/160; `pnpm db:seed` x2 OK.
 
 ## Test coverage
 
