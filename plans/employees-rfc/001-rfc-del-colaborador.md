@@ -211,21 +211,21 @@ unwrap(await deps.assignEmployeeRfc.execute({ ...params, rfc: body.rfc })))`.
 
 ## Acceptance criteria
 
-- [ ] `POST /api/v1/companies/:id/employees` for an MX colaborador **without** `rfc` → 400 with
+- [x] `POST /api/v1/companies/:id/employees` for an MX colaborador **without** `rfc` → 400 with
       the issue at `rfc`; with an invalid `rfc` → 400; with a valid `rfc` → 201 and the list shows
       `rfc` normalized (uppercase).
-- [ ] Hiring a second colaborador (any company of the holding) with an RFC already used → 409
+- [x] Hiring a second colaborador (any company of the holding) with an RFC already used → 409
       `EMPLOYEE_RFC_ALREADY_REGISTERED`; the same CURP twice in one company still → 409
       `EMPLOYEE_ALREADY_EXISTS`.
-- [ ] A DO or CO colaborador with an `rfc` → 400; without it → 201 with `rfc: null`.
-- [ ] `PUT …/employees/:employeeId/rfc` as HR of that company → 204 and the list shows the RFC;
+- [x] A DO or CO colaborador with an `rfc` → 400; without it → 201 with `rfc: null`.
+- [x] `PUT …/employees/:employeeId/rfc` as HR of that company → 204 and the list shows the RFC;
       the same RFC again → 204; an RFC owned by someone else → 409; an employee of another
       company or unknown id → 404 `EMPLOYEE_NOT_FOUND` for HOLDING_ADMIN, 403 for HR of another
       company; a DO/CO colaborador → 422 `RFC_NOT_APPLICABLE`; anonymous → 401.
-- [ ] A colaborador created before this plan (row with `rfc` NULL) still lists, and can get its
+- [x] A colaborador created before this plan (row with `rfc` NULL) still lists, and can get its
       RFC through the `PUT`.
 - [ ] `pnpm db:seed` is idempotent and the seed colaboradores have RFC.
-- [ ] `/api/v1/docs` shows the new `PUT` route.
+- [x] `/api/v1/docs` shows the new `PUT` route.
 
 ## Test layers required
 
@@ -381,3 +381,39 @@ Status stays `review`. L1 and L2 need small in-scope code changes. L3 needs a sc
 Plan to `verify`.
 
 ## Verification
+
+Verifier (main session, inline), 2026-10-02, on `34cc10a`.
+
+**Suites** (after the review repair): `pnpm check` green, no lint warnings; api `639 passed |
+3 skipped`, contracts `177`, domain `86`. `pnpm test:integration`: `Tests 145 passed (145)`.
+Migrations: `db:deploy` → `No pending migrations to apply.` (`20261002120000_add_employee_rfc`
+applied on the dev DB).
+
+**App running** (`pnpm dev:api`, port 3000). Verification users `verif-att-admin` (HOLDING_ADMIN)
+and `verif-att-hr` (HR on APS Holding S.A. de C.V.) recreated through the real use cases;
+company "Verificación RFC S.A. de C.V." (`VRF010101AA1`) created for cross-company checks.
+Scratchpad `fetch` script, synthetic CURPs from the test suite. 20/20 passed:
+
+| Criterion             | Observed                                                                                                                                     |
+| --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| MX hire               | no `rfc` → 400 path `["rfc"]`; `GOMA851301AB1` → 400; `goma850101vr1` → 201, list shows `GOMA850101VR1`                                      |
+| Duplicates            | same RFC in APS Holding → 409 `EMPLOYEE_RFC_ALREADY_REGISTERED`; same CURP twice in one company → 409 `EMPLOYEE_ALREADY_EXISTS`              |
+| DO                    | cédula `00113918205` with `rfc` → 400 `["rfc"]`; without → 201, `rfc: null`                                                                  |
+| Pre-plan row          | seed colaborador `PEXL900215MDFRPR07` listed with `rfc: null`                                                                                |
+| `PUT …/rfc`           | HR → 204, repeat → 204, list shows `PEXL900215VR1`; RFC of another person → 409; HR on another company → 403 `FORBIDDEN`                     |
+| `PUT …/rfc` not found | employee of another company (admin) → 404 `EMPLOYEE_NOT_FOUND`; unknown id → 404; DO colaborador → 422 `RFC_NOT_APPLICABLE`; anonymous → 401 |
+| Docs                  | `openapi.json` has `PUT /companies/{companyId}/employees/{employeeId}/rfc` ("Captura o corrige el RFC de un colaborador")                    |
+
+`psql` after the run: Verificación RFC / `GOMA850101HQRRRN04` → `GOMA850101VR1`; APS Holding /
+`PEXL900215MDFRPR07` → `PEXL900215VR1`; APS Servicios RD / `00113918205` → NULL.
+
+**Seed:** `pnpm db:seed` twice → `seed completado` both times (idempotent). The seed passes
+`rfc` for both colaboradores (`apps/api/prisma/seed.ts:47`, `:55`), but on this dev DB they
+already existed, so the seed skipped them (Ana keeps `rfc` NULL). **NOT VERIFIED:** "the seed
+colaboradores have RFC" on a fresh database: it needs `pnpm db:reset`, which the hooks block.
+
+**Left in the dev DB:** company "Verificación RFC S.A. de C.V." with its colaborador, the DO
+colaborador `00113918205`, Pedro's RFC `PEXL900215VR1`, users `verif-att-*@example.test`.
+
+Result: **PASS** on every criterion exercisable here; the fresh-DB seed check is NOT VERIFIED.
+Status stays `verify`.
