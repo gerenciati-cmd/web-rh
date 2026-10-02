@@ -1,5 +1,5 @@
 ---
-status: approved
+status: testing
 module: organization
 min_implementer: mid
 depends_on: []
@@ -136,7 +136,7 @@ idGenerator, clock, eventBus`; `existsByName` → `SiteAlreadyExistsError`; `Sit
    - Observable result: typecheck passes.
 
 6. **Persistence**
-   - Files: `apps/api/prisma/schema.prisma` (modify), `apps/api/prisma/migrations/YYYYMMDDHHMMSS_create_sites/migration.sql` (create), `apps/api/src/modules/organization/infrastructure/site.mapper.ts` (create), `apps/api/src/modules/organization/infrastructure/prisma-site.repository.ts` (create), `apps/api/src/modules/organization/infrastructure/prisma-site.queries.ts` (create), `apps/api/src/modules/organization/infrastructure/in-memory/in-memory-site.store.ts` (create)
+   - Files: `apps/api/prisma/schema.prisma` (modify), `apps/api/prisma/migrations/20261002195817_create_sites/migration.sql` (create), `apps/api/src/modules/organization/infrastructure/site.mapper.ts` (create), `apps/api/src/modules/organization/infrastructure/prisma-site.repository.ts` (create), `apps/api/src/modules/organization/infrastructure/prisma-site.queries.ts` (create), `apps/api/src/modules/organization/infrastructure/in-memory/in-memory-site.store.ts` (create)
    - Do, schema (recipe `db-change`), in the organization section after `Company`:
      `model Site { id String @id @db.Uuid; name String @db.VarChar(100); nameKey String @unique
 @map("name_key") @db.VarChar(100); country String @db.Char(2); timeZone String
@@ -195,6 +195,13 @@ idGenerator, clock, eventBus`; `existsByName` → `SiteAlreadyExistsError`; `Sit
 | e2e         | no      | (no e2e infrastructure yet)                                                               |
 
 ## Deviations
+
+- Cosmetic: the migration placeholder in step 6 `Files:` was replaced with the real folder
+  `20261002195817_create_sites` (as the plan asked). `pnpm db:migrate --create-only` worked
+  non-interactively, then `pnpm db:deploy` applied it to the dev DB; no `DROP`. Otherwise: None.
+- Note: `pnpm plans:scope` reports many out-of-scope paths (119 changed) because the branch
+  already carries other plans' commits versus its base; the files touched in this session are
+  all within the plan's list.
 
 ## Test coverage
 

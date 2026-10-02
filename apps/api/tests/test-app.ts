@@ -28,6 +28,11 @@ import {
   InMemoryCompanyRepository,
   InMemoryCompanyStore,
 } from '@/modules/organization/infrastructure/in-memory/in-memory-company.store';
+import {
+  InMemorySiteQueries,
+  InMemorySiteRepository,
+  InMemorySiteStore,
+} from '@/modules/organization/infrastructure/in-memory/in-memory-site.store';
 import type { TransactionRunner } from '@/shared/application/ports';
 import { RecordingEmailSender, RecordingJobQueue } from '@/shared/testing/fakes';
 
@@ -52,6 +57,7 @@ export const testEnv = loadEnv({
 export function buildTestContainer(env: Env = testEnv) {
   const container = buildContainer(env, createLogger(env));
   const companies = new InMemoryCompanyStore();
+  const sites = new InMemorySiteStore();
   const attendance = new InMemoryAttendanceStore();
   const employees = new InMemoryEmployeeRepository();
   const users = new InMemoryUserRepository();
@@ -127,6 +133,8 @@ export function buildTestContainer(env: Env = testEnv) {
   container.register({
     companyRepository: asValue(new InMemoryCompanyRepository(companies)),
     companyQueries: asValue(new InMemoryCompanyQueries(companies)),
+    siteRepository: asValue(new InMemorySiteRepository(sites)),
+    siteQueries: asValue(new InMemorySiteQueries(sites)),
     employeeRepository: asValue(employees),
     employeeQueries: asValue(employeeQueries),
     deviceRepository: asValue(new InMemoryDeviceRepository(attendance)),

@@ -35,6 +35,21 @@ model Company {
   @@schema("organization")
 }
 
+model Site {
+  id        String   @id @db.Uuid
+  name      String   @db.VarChar(100)
+  /// nombre normalizado (trim + minúsculas): unicidad sin distinguir mayúsculas
+  nameKey   String   @unique @map("name_key") @db.VarChar(100)
+  country   String   @db.Char(2)
+  timeZone  String   @map("time_zone") @db.VarChar(64)
+  active    Boolean  @default(true)
+  createdAt DateTime @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@map("sites")
+  @@schema("organization")
+}
+
 // ── Módulo: employees ───────────────────────────────────────────────────────
 
 enum EmployeeStatus {

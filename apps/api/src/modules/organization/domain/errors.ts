@@ -15,3 +15,11 @@ export class CompanyAlreadyExistsError extends ConflictError {
     super('Ya existe una empresa con ese identificador tributario', { taxId });
   }
 }
+
+export class SiteAlreadyExistsError extends ConflictError {
+  readonly code = 'SITE_ALREADY_EXISTS';
+
+  constructor(name: string) {
+    super('Ya existe una sede con ese nombre', { name });
+  }
+}

@@ -11,7 +11,7 @@
       "name": "organization",
       "status": "active",
       "path": "apps/api/src/modules/organization",
-      "summary": "Empresas del holding. Exposes OrganizationApi to other modules."
+      "summary": "Empresas y sedes del holding. Exposes OrganizationApi to other modules."
     },
     {
       "name": "identity",
