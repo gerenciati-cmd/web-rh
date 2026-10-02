@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 
 import { API_PREFIX, createApp } from '@/http/app';
 
-import { buildTestContainer, signInAs } from './test-app';
+import { buildTestContainer, createTestSite, signInAs } from './test-app';
 
 /**
  * Rutas `/api/v1/attendance/*` y su integración con `/iclock` (plan attendance-marcaciones/001),
@@ -11,7 +11,7 @@ import { buildTestContainer, signInAs } from './test-app';
  * por el router ADMS, así que el registro, la autorización del equipo y el listado se prueban
  * encadenados.
  */
-const device = { serialNumber: 'TESTSN001', name: 'Entrada principal', timeZone: 'America/Cancun' };
+const device = { serialNumber: 'TESTSN001', name: 'Entrada principal', siteId: '' };
 
 const TWO_PUNCHES =
   '1\t2026-09-28 08:01:00\t0\t1\t0\t0\t0\t0\t0\t0\t\n' +
@@ -54,6 +54,8 @@ describe('attendance HTTP', () => {
     const container = buildTestContainer();
     app = createApp(container);
     adminToken = await signInAs(container, { role: 'HOLDING_ADMIN' });
+    // La sede da la zona horaria del checador; se crea en cada prueba porque el almacén es nuevo.
+    device.siteId = await createTestSite(container);
     const created = await api(adminToken)
       .post('/companies')
       .send({ legalName: 'Alfa SA de CV', taxId: 'EKU9003173C9', country: 'MX' })
@@ -91,10 +93,19 @@ describe('attendance HTTP', () => {
       expect(response.body.code).toBe('DEVICE_ALREADY_REGISTERED');
     });
 
-    it('zona horaria inválida: 400 VALIDATION_ERROR', async () => {
+    it('sede inexistente: 404 SITE_NOT_FOUND', async () => {
       const response = await api(adminToken)
         .post('/attendance/devices')
-        .send({ ...device, timeZone: 'Mars/Olympus' })
+        .send({ ...device, siteId: '00000000-0000-4000-8000-0000000000ff' })
+        .expect(404);
+
+      expect(response.body.code).toBe('SITE_NOT_FOUND');
+    });
+
+    it('con zona horaria y sin siteId: 400 VALIDATION_ERROR', async () => {
+      const response = await api(adminToken)
+        .post('/attendance/devices')
+        .send({ serialNumber: 'TESTSN001', name: 'Entrada', timeZone: 'America/Cancun' })
         .expect(400);
 
       expect(response.body.code).toBe('VALIDATION_ERROR');
@@ -103,7 +114,7 @@ describe('attendance HTTP', () => {
     it.each([
       ['serial con símbolos', { serialNumber: 'SN-001' }],
       ['nombre vacío', { name: '' }],
-      ['sin zona horaria', { timeZone: undefined }],
+      ['sin sede', { siteId: undefined }],
     ])('%s: 400 VALIDATION_ERROR', async (_name, override) => {
       const response = await api(adminToken)
         .post('/attendance/devices')

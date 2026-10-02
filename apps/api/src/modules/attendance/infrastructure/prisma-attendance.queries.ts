@@ -3,6 +3,7 @@ import type { DeviceDto, ListPunchesQuery, Page, PageQuery } from '@rrhh/contrac
 import type { PrismaDatabase } from '@/infrastructure/database/prisma-database';
 
 import type { AttendanceQueries, RawPunch } from '../application/queries/attendance.queries';
+import { CLOCK_OFFSET_TOLERANCE_SECONDS } from '../domain/device';
 
 import { PunchMapper } from './attendance.mapper';
 
@@ -39,6 +40,12 @@ export class PrismaAttendanceQueries implements AttendanceQueries {
       registeredAt: row.registeredAt.toISOString(),
       lastSeenAt: row.lastSeenAt?.toISOString() ?? null,
       lastPunchAt: lastPunchByDevice.get(row.id)?.toISOString() ?? null,
+      siteId: row.siteId,
+      clockOffsetSeconds: row.clockOffsetSeconds,
+      clockOffsetMeasuredAt: row.clockOffsetMeasuredAt?.toISOString() ?? null,
+      clockSuspect:
+        row.clockOffsetSeconds !== null &&
+        Math.abs(row.clockOffsetSeconds) > CLOCK_OFFSET_TOLERANCE_SECONDS,
     }));
     return { items, total, page, pageSize };
   }

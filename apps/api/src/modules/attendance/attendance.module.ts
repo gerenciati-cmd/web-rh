@@ -2,10 +2,12 @@ import { asClass } from 'awilix';
 
 import type { AppModule } from '@/shared/app-module';
 
+import { AssignDeviceSite } from './application/commands/assign-device-site.command';
 import { RecordDeviceContact } from './application/commands/record-device-contact.command';
 import { RecordDevicePush } from './application/commands/record-device-push.command';
 import { RegisterDevice } from './application/commands/register-device.command';
 import type { PunchOwnerDirectory } from './application/ports/punch-owner-directory';
+import type { SiteDirectory } from './application/ports/site-directory';
 import type { AttendanceQueries } from './application/queries/attendance.queries';
 import { ListDevices } from './application/queries/list-devices.query';
 import { ListPunches } from './application/queries/list-punches.query';
@@ -14,6 +16,7 @@ import type { PunchRepository } from './domain/punch.repository';
 import { createAttendanceRouter } from './http/attendance.router';
 import { createZktecoAdmsRouter } from './http/zkteco-adms.router';
 import { EmployeesPunchOwnerDirectory } from './infrastructure/employees-punch-owner-directory';
+import { OrganizationSiteDirectory } from './infrastructure/organization-site-directory';
 import { PrismaAttendanceQueries } from './infrastructure/prisma-attendance.queries';
 import { PrismaDeviceRepository } from './infrastructure/prisma-device.repository';
 import { PrismaPunchRepository } from './infrastructure/prisma-punch.repository';
@@ -23,7 +26,9 @@ export interface AttendanceCradle {
   punchRepository: PunchRepository;
   attendanceQueries: AttendanceQueries;
   punchOwnerDirectory: PunchOwnerDirectory;
+  deviceSiteDirectory: SiteDirectory;
   registerDevice: RegisterDevice;
+  assignDeviceSite: AssignDeviceSite;
   listDevices: ListDevices;
   listPunches: ListPunches;
   recordDeviceContact: RecordDeviceContact;
@@ -38,8 +43,10 @@ export const attendanceModule: AppModule<AttendanceCradle> = {
     punchRepository: asClass(PrismaPunchRepository).singleton(),
     attendanceQueries: asClass(PrismaAttendanceQueries).singleton(),
     punchOwnerDirectory: asClass(EmployeesPunchOwnerDirectory).singleton(),
+    deviceSiteDirectory: asClass(OrganizationSiteDirectory).singleton(),
     // Casos de uso
     registerDevice: asClass(RegisterDevice).singleton(),
+    assignDeviceSite: asClass(AssignDeviceSite).singleton(),
     listDevices: asClass(ListDevices).singleton(),
     listPunches: asClass(ListPunches).singleton(),
     recordDeviceContact: asClass(RecordDeviceContact).singleton(),

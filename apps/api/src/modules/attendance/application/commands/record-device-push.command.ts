@@ -3,6 +3,7 @@ import { err, ok } from '@rrhh/domain';
 import type { Clock, IdGenerator, Logger } from '@/shared/application/ports';
 import type { Command } from '@/shared/application/use-case';
 
+import type { Device } from '../../domain/device';
 import type { DevicePushRecord } from '../../domain/device-record';
 import type { DeviceRepository } from '../../domain/device.repository';
 import { DeviceNotAllowedError } from '../../domain/errors';
@@ -31,6 +32,11 @@ interface Deps {
  * Procesa los datos que empuja un equipo registrado y activo. Un resumen va al log a nivel info y
  * cada registro a nivel debug. Solo la tabla `ATTLOG` se persiste (marcaciones, sin duplicados);
  * OPLOG, USER, BIODATA y demás siguen solo en el log (decisión 6 del README de la iniciativa).
+ *
+ * Desfase de reloj: con `Realtime=1` el equipo envía cada marcación al ocurrir, así que un envío
+ * ATTLOG de exactamente una línea válida mide `recepción − marcación`. Los reenvíos de historial
+ * (varias líneas) no se miden: sus marcaciones viejas parecerían un desfase enorme. Limitación: una
+ * marcación retrasada por una caída de red y enviada sola también parece desfasada.
  */
 export class RecordDevicePush implements Command<
   RecordDevicePushInput,
@@ -58,6 +64,7 @@ export class RecordDevicePush implements Command<
       logger.debug({ serialNumber, table, record }, 'zkteco: registro');
     }
 
+    let offsetRecorded = false;
     if (table.toUpperCase() === 'ATTLOG') {
       const receivedAt = clock.now();
       const valid: Punch[] = [];
@@ -97,12 +104,30 @@ export class RecordDevicePush implements Command<
         { serialNumber, received, inserted, duplicates: valid.length - inserted, rejected },
         'zkteco: marcaciones guardadas',
       );
+
+      offsetRecorded = this.measureClockOffset(device, valid, receivedAt);
     }
 
-    if (device.markSeen(clock.now())) await deviceRepository.save(device);
+    const seen = device.markSeen(clock.now());
+    if (seen || offsetRecorded) await deviceRepository.save(device);
 
     // `accepted` cuenta todo lo procesado, también lo rechazado: el equipo no debe reenviar esas líneas.
     return ok({ accepted: records.length });
+  }
+
+  /** Solo un envío en tiempo real (una línea válida) es comparable con la hora de recepción. */
+  private measureClockOffset(device: Device, valid: readonly Punch[], receivedAt: Date): boolean {
+    const [only] = valid;
+    if (valid.length !== 1 || !only) return false;
+    const seconds = Math.round((receivedAt.getTime() - only.occurredAt.getTime()) / 1000);
+    device.recordClockOffset(seconds, receivedAt);
+    if (device.clockSuspect) {
+      this.deps.logger.warn(
+        { serialNumber: device.serialNumber, offsetSeconds: seconds },
+        'zkteco: desfase de reloj',
+      );
+    }
+    return true;
   }
 }
 

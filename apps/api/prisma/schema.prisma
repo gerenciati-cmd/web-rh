@@ -222,7 +222,11 @@ model AttendanceDevice {
   active       Boolean           @default(true)
   registeredAt DateTime          @map("registered_at") @db.Timestamptz(3)
   lastSeenAt   DateTime?         @map("last_seen_at") @db.Timestamptz(3)
-  punches      AttendancePunch[]
+  /// referencia por id a organization.sites, sin FK (ADR 0010)
+  siteId                String?  @map("site_id") @db.Uuid
+  clockOffsetSeconds    Int?     @map("clock_offset_seconds")
+  clockOffsetMeasuredAt DateTime? @map("clock_offset_measured_at") @db.Timestamptz(3)
+  punches     AttendancePunch[]
 
   @@map("devices")
   @@schema("attendance")

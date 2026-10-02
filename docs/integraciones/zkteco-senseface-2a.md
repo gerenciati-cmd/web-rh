@@ -30,16 +30,21 @@ SenseFace 2A, firmware `ZAM70-NF24HA-Ver3.3.12`, PushVersion `Ver 3.1.2S-2025061
 
 ## Configuración
 
-1. Registra el equipo como HOLDING_ADMIN con su número de serie y su zona horaria IANA (la hora
-   local que manda el equipo se interpreta en esa zona; Cancún es `America/Cancun`):
+1. Crea primero la sede (`POST /api/v1/sites`) y registra el equipo como HOLDING_ADMIN con su
+   número de serie y el `siteId` de esa sede. La zona horaria del equipo se copia de la sede (la
+   hora local que manda el equipo se interpreta en esa zona; Cancún es `America/Cancun`):
 
    ```sh
    curl -X POST -H 'Content-Type: application/json' -H "Authorization: Bearer $TOKEN" \
-     -d '{"serialNumber":"TESTSN001","name":"Entrada principal","timeZone":"America/Cancun"}' \
+     -d '{"serialNumber":"TESTSN001","name":"Entrada principal","siteId":"<id de la sede>"}' \
      http://localhost:3001/api/v1/attendance/devices
    ```
 
-   Un serial ya registrado responde 409; un equipo no registrado recibe 403 en `/iclock`.
+   Un serial ya registrado responde 409; una sede inexistente, 404 `SITE_NOT_FOUND`; una sede
+   inactiva, `SITE_INACTIVE`; un equipo no registrado recibe 403 en `/iclock`.
+   Para equipos registrados antes de que existieran las sedes (sin sede), o para moverlos de
+   sede, usa `PUT /api/v1/attendance/devices/:id/site` con `{"siteId":"…"}`: responde 204 y
+   actualiza también la zona horaria del equipo.
 
 2. Para ver cada registro, usa `LOG_LEVEL=debug`. En `info` solo se ve el resumen por envío.
 3. Levanta el API (`pnpm dev:api`). Escucha en `PORT` (3001 por defecto) en todas las interfaces.
@@ -59,6 +64,17 @@ marcación es del colaborador y pertenece a su empresa (RRHH ve las de sus empre
 sin RFC coincidente solo las ve el administrador del holding). La atribución se resuelve al leer, así
 que un RFC capturado después alcanza también las marcaciones anteriores. Captura los RFC faltantes
 con `PUT …/employees/:id/rfc`.
+
+## Desfase de reloj
+
+Con `Realtime=1` el equipo envía cada marcación al ocurrir. Cuando un envío ATTLOG trae
+exactamente una línea válida, el API mide `hora de recepción − hora de la marcación` (segundos) y la
+guarda en el equipo (`clockOffsetSeconds`, `clockOffsetMeasuredAt` en `GET …/devices`). Si el valor
+absoluto supera 5 minutos (300 s), `clockSuspect` es `true` y el API escribe en el log (nivel warn)
+`zkteco: desfase de reloj`: el reloj del equipo está mal, o la sede asignada tiene otra zona
+horaria. Los envíos con varias líneas (reenvío de historial) no se miden, porque sus marcaciones
+viejas parecerían un desfase enorme. Limitación: una marcación retrasada por una caída de red y
+enviada sola también parece desfasada.
 
 ## Simular el equipo con curl
 

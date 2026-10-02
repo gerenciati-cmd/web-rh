@@ -23,6 +23,7 @@ async function savedDevice(serialNumber: string, name = `Equipo ${serialNumber}`
     id: ids.next() as DeviceId,
     serialNumber,
     name,
+    siteId: '00000000-0000-4000-8000-0000000000a1',
     timeZone: 'America/Cancun',
     now: NOW,
   });
@@ -85,6 +86,7 @@ describe('PrismaDeviceRepository', () => {
       id: ids.next() as DeviceId,
       serialNumber: 'TESTSN001',
       name: 'Duplicado',
+      siteId: '00000000-0000-4000-8000-0000000000a1',
       timeZone: 'UTC',
       now: NOW,
     });

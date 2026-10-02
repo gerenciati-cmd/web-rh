@@ -25,6 +25,7 @@ async function setUp(registeredSerials: readonly string[]) {
       id: idGenerator.next() as DeviceId,
       serialNumber,
       name: `Equipo ${serialNumber}`,
+      siteId: '00000000-0000-4000-8000-0000000000a1',
       timeZone: 'America/Cancun',
       now: clock.now(),
     });
@@ -373,6 +374,9 @@ describe('RecordDevicePush', () => {
           active: true,
           registeredAt: new Date('2026-01-15T12:00:00Z'),
           lastSeenAt: null,
+          siteId: null,
+          clockOffsetSeconds: null,
+          clockOffsetMeasuredAt: null,
         }),
       );
 
@@ -397,5 +401,8 @@ function inactiveDevice(serialNumber: string): Device {
     active: false,
     registeredAt: new Date('2026-01-15T12:00:00Z'),
     lastSeenAt: null,
+    siteId: null,
+    clockOffsetSeconds: null,
+    clockOffsetMeasuredAt: null,
   });
 }

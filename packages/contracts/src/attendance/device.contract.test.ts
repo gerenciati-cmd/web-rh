@@ -3,13 +3,17 @@ import { describe, expect, it } from 'vitest';
 import { RegisterDeviceSchema, attendanceDeviceRoutes } from './device.contract';
 
 describe('RegisterDeviceSchema', () => {
-  const valid = { serialNumber: 'TESTSN001', name: 'Entrada', timeZone: 'America/Cancun' };
+  const valid = {
+    serialNumber: 'TESTSN001',
+    name: 'Entrada',
+    siteId: '00000000-0000-4000-8000-0000000000a1',
+  };
 
   it('acepta un alta válida y recorta espacios', () => {
     const parsed = RegisterDeviceSchema.parse({
       serialNumber: ' TESTSN001 ',
       name: '  Entrada ',
-      timeZone: ' America/Cancun ',
+      siteId: valid.siteId,
     });
 
     expect(parsed).toEqual(valid);
@@ -32,12 +36,21 @@ describe('RegisterDeviceSchema', () => {
     expect(!result.success && result.error.issues[0]?.path).toEqual(['name']);
   });
 
-  it('rechaza una zona horaria inválida con el mismo mensaje del dominio', () => {
-    const result = RegisterDeviceSchema.safeParse({ ...valid, timeZone: 'Mars/Olympus' });
+  it('rechaza un alta con zona horaria y sin siteId', () => {
+    const result = RegisterDeviceSchema.safeParse({
+      serialNumber: 'TESTSN001',
+      name: 'Entrada',
+      timeZone: 'America/Cancun',
+    });
 
     expect(result.success).toBe(false);
-    expect(!result.success && result.error.issues[0]?.path).toEqual(['timeZone']);
-    expect(!result.success && result.error.issues[0]?.message).toBe('Zona horaria inválida');
+    expect(!result.success && result.error.issues[0]?.path).toEqual(['siteId']);
+  });
+
+  it('rechaza un siteId que no es UUID', () => {
+    const result = RegisterDeviceSchema.safeParse({ ...valid, siteId: 'sede-1' });
+
+    expect(!result.success && result.error.issues[0]?.path).toEqual(['siteId']);
   });
 
   it('rechaza un body al que le falta un campo', () => {

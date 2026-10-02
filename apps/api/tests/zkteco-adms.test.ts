@@ -35,6 +35,7 @@ describe('ADMS /iclock', () => {
         id: idGenerator.next() as DeviceId,
         serialNumber,
         name: `Equipo ${serialNumber}`,
+        siteId: '00000000-0000-4000-8000-0000000000a1',
         timeZone: 'America/Cancun',
         now: clock.now(),
       });

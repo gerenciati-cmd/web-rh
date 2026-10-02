@@ -4,6 +4,7 @@ import { Router } from 'express';
 import { bindRoute, unwrap } from '@/http/bind-route';
 import { requireActor } from '@/http/request-context';
 
+import type { AssignDeviceSite } from '../application/commands/assign-device-site.command';
 import type { RegisterDevice } from '../application/commands/register-device.command';
 import type { ListDevices } from '../application/queries/list-devices.query';
 import type { ListPunches } from '../application/queries/list-punches.query';
@@ -12,6 +13,7 @@ import type { ListPunches } from '../application/queries/list-punches.query';
 export function createAttendanceRouter(deps: {
   listDevices: ListDevices;
   registerDevice: RegisterDevice;
+  assignDeviceSite: AssignDeviceSite;
   listPunches: ListPunches;
 }): Router {
   const router = Router();
@@ -23,6 +25,11 @@ export function createAttendanceRouter(deps: {
   bindRoute(router, attendanceDeviceRoutes.registerDevice, async ({ body }) =>
     unwrap(await deps.registerDevice.execute(body)),
   );
+
+  bindRoute(router, attendanceDeviceRoutes.assignDeviceSite, async ({ params, body }) => {
+    unwrap(await deps.assignDeviceSite.execute({ deviceId: params.deviceId, siteId: body.siteId }));
+    return undefined;
+  });
 
   bindRoute(router, attendancePunchRoutes.listPunches, ({ query }, ctx) =>
     deps.listPunches.execute({ ...query, actor: requireActor(ctx) }),

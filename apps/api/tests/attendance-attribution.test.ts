@@ -13,7 +13,7 @@ import { buildTestContainer, createTestSite, signInAs } from './test-app';
  * alta por la API, todo sobre persistencia en memoria.
  */
 const RFC_ANA = 'GOMA850101AB1';
-const device = { serialNumber: 'TESTSN001', name: 'Entrada', timeZone: 'America/Cancun' };
+const device = { serialNumber: 'TESTSN001', name: 'Entrada' };
 
 const ana = {
   nationalId: { country: 'MX', number: 'GOMA850101HQRRRN04' },
@@ -104,7 +104,9 @@ describe('atribución de marcaciones por RFC (HTTP)', () => {
     });
     if (!session.ok) throw session.error;
     noRoleToken = session.value.token;
-    await call('post', '/attendance/devices', adminToken).send(device).expect(201);
+    await call('post', '/attendance/devices', adminToken)
+      .send({ ...device, siteId })
+      .expect(201);
   });
 
   it('HOLDING_ADMIN lista ambas: la del RFC lleva employee, la del PIN "1" lleva null', async () => {

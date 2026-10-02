@@ -114,6 +114,10 @@ export class InMemoryAttendanceQueries implements AttendanceQueries {
       registeredAt: device.registeredAt.toISOString(),
       lastSeenAt: device.lastSeenAt?.toISOString() ?? null,
       lastPunchAt: times.length > 0 ? new Date(Math.max(...times)).toISOString() : null,
+      siteId: device.siteId,
+      clockOffsetSeconds: device.clockOffsetSeconds,
+      clockOffsetMeasuredAt: device.clockOffsetMeasuredAt?.toISOString() ?? null,
+      clockSuspect: device.clockSuspect,
     };
   }
 

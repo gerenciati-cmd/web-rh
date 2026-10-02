@@ -20,6 +20,9 @@ export const DeviceMapper = {
       active: row.active,
       registeredAt: row.registeredAt,
       lastSeenAt: row.lastSeenAt,
+      siteId: row.siteId,
+      clockOffsetSeconds: row.clockOffsetSeconds,
+      clockOffsetMeasuredAt: row.clockOffsetMeasuredAt,
     });
   },
 
@@ -32,6 +35,9 @@ export const DeviceMapper = {
       active: device.active,
       registeredAt: device.registeredAt,
       lastSeenAt: device.lastSeenAt,
+      siteId: device.siteId,
+      clockOffsetSeconds: device.clockOffsetSeconds,
+      clockOffsetMeasuredAt: device.clockOffsetMeasuredAt,
     };
   },
 };

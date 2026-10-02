@@ -1,5 +1,5 @@
 ---
-status: approved
+status: testing
 module: attendance
 min_implementer: mid
 depends_on: [organization-sedes/001]
@@ -114,7 +114,7 @@ NotFoundError` (`'DEVICE_NOT_FOUND'`, `'El checador no existe'`).
    - Observable result: typecheck passes.
 
 4. **Persistence and read side**
-   - Files: `apps/api/prisma/schema.prisma` (modify), `apps/api/prisma/migrations/YYYYMMDDHHMMSS_add_device_site_and_offset/migration.sql` (create), `apps/api/src/modules/attendance/infrastructure/attendance.mapper.ts` (modify), `apps/api/src/modules/attendance/infrastructure/prisma-attendance.queries.ts` (modify), `apps/api/src/modules/attendance/infrastructure/in-memory/in-memory-attendance.store.ts` (modify)
+   - Files: `apps/api/prisma/schema.prisma` (modify), `apps/api/prisma/migrations/20261002220840_add_device_site_and_offset/migration.sql` (create), `apps/api/src/modules/attendance/infrastructure/attendance.mapper.ts` (modify), `apps/api/src/modules/attendance/infrastructure/prisma-attendance.queries.ts` (modify), `apps/api/src/modules/attendance/infrastructure/in-memory/in-memory-attendance.store.ts` (modify)
    - Do: `AttendanceDevice` adds `siteId String? @map("site_id") @db.Uuid` (`/// referencia por id
 a organization.sites, sin FK (ADR 0010)`), `clockOffsetSeconds Int? @map("clock_offset_seconds")`,
      `clockOffsetMeasuredAt DateTime? @map("clock_offset_measured_at") @db.Timestamptz(3)`.
@@ -172,6 +172,20 @@ asClass(OrganizationSiteDirectory)` and `assignDeviceSite` in cradle and registr
 | e2e         | no      | (no e2e infrastructure yet)                                                              |
 
 ## Deviations
+
+1. **Cradle key renamed** (design-neutral, cosmetic). The plan says to register `siteDirectory`
+   in attendance, but employees already registers `siteDirectory` (its own `WorkSite` adapter);
+   awilix keys are global, so attendance's adapter silently replaced it and
+   `authorization.test.ts` failed with `SITE_COUNTRY_MISMATCH`. The attendance one is registered
+   as `deviceSiteDirectory` (deps of `RegisterDevice` / `AssignDeviceSite` renamed too). The port
+   type keeps the name `SiteDirectory` (module-local).
+2. **Migration** created with `pnpm db:migrate --name add_device_site_and_offset`
+   (`20261002220840_add_device_site_and_offset`); only `ADD COLUMN` x3, no placeholder folder.
+3. **`RecordDevicePush`**: the offset measurement was extracted to a private method
+   `measureClockOffset` to keep `execute` under the lint complexity limit (same behavior).
+4. **Temp file**: `apps/api/tests/zz-scratch.test.ts` was created by me while debugging and the
+   `guard-bash` hook forbids deleting it; it is now a skipped empty suite. The main session must
+   delete it.
 
 ## Test coverage
 

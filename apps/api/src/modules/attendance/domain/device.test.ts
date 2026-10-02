@@ -12,6 +12,7 @@ function register(
     id: ID,
     serialNumber: 'TESTSN001',
     name: 'Entrada principal',
+    siteId: '00000000-0000-4000-8000-0000000000a1',
     timeZone: 'America/Cancun',
     now: NOW,
     ...overrides,
@@ -115,6 +116,9 @@ describe('Device.restore', () => {
       active: false,
       registeredAt: NOW,
       lastSeenAt: NOW,
+      siteId: null,
+      clockOffsetSeconds: null,
+      clockOffsetMeasuredAt: null,
     });
 
     expect(device.active).toBe(false);

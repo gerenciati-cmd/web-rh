@@ -1,4 +1,3 @@
-import { isValidTimeZone } from '@rrhh/domain';
 import { z } from 'zod';
 
 import { CreatedSchema, PageQuerySchema, pageOf } from '../common';
@@ -15,6 +14,14 @@ export const DeviceSchema = z
     registeredAt: z.iso.datetime(),
     lastSeenAt: z.iso.datetime().nullable(),
     lastPunchAt: z.iso.datetime().nullable(),
+    siteId: z.uuid().nullable(),
+    clockOffsetSeconds: z
+      .number()
+      .int()
+      .nullable()
+      .describe('Hora recibida − hora de la marcación, medida en el último envío en tiempo real'),
+    clockOffsetMeasuredAt: z.iso.datetime().nullable(),
+    clockSuspect: z.boolean(),
   })
   .meta({ id: 'AttendanceDevice' });
 export type DeviceDto = z.infer<typeof DeviceSchema>;
@@ -27,11 +34,16 @@ export const RegisterDeviceSchema = z
       .trim()
       .regex(/^[A-Za-z0-9]{1,64}$/),
     name: z.string().trim().min(1).max(100),
-    // La MISMA regla del dominio (`Device.register`).
-    timeZone: z.string().trim().refine(isValidTimeZone, 'Zona horaria inválida'),
+    // La zona horaria del equipo se toma de su sede.
+    siteId: z.uuid(),
   })
   .meta({ id: 'RegisterAttendanceDeviceInput' });
 export type RegisterDeviceInput = z.input<typeof RegisterDeviceSchema>;
+
+export const AssignDeviceSiteSchema = z
+  .object({ siteId: z.uuid() })
+  .meta({ id: 'AssignAttendanceDeviceSiteInput' });
+export type AssignDeviceSiteInput = z.input<typeof AssignDeviceSiteSchema>;
 
 // ── Rutas ──────────────────────────────────────────────────────────────────
 export const attendanceDeviceRoutes = {
@@ -51,5 +63,15 @@ export const attendanceDeviceRoutes = {
     body: RegisterDeviceSchema,
     response: CreatedSchema,
     successStatus: 201,
+  }),
+  assignDeviceSite: defineRoute({
+    method: 'PUT',
+    path: '/attendance/devices/:deviceId/site',
+    summary: 'Asigna la sede de un checador (y su zona horaria)',
+    access: requires('attendance.devices:manage'),
+    params: z.object({ deviceId: z.uuid() }),
+    body: AssignDeviceSiteSchema,
+    response: z.undefined(),
+    successStatus: 204,
   }),
 };
