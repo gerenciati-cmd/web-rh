@@ -149,17 +149,17 @@ for display — rejected, the name belongs to `organization`.
 
 ## Acceptance criteria
 
-- [ ] `POST …/employees` without `siteId` → 400 at `siteId`; with an unknown site → 404
+- [x] `POST …/employees` without `siteId` → 400 at `siteId`; with an unknown site → 404
       `SITE_NOT_FOUND`; with a valid active site → 201 and the list shows `siteId`.
-- [ ] `PUT …/employees/:id/site` as HR of that company → 204 and the list shows the new site;
+- [x] `PUT …/employees/:id/site` as HR of that company → 204 and the list shows the new site;
       unknown site → 404 `SITE_NOT_FOUND`; a DO site for an MX company → 422
       `SITE_COUNTRY_MISMATCH` (also on hire); employee of another company → 404/403 as for `PUT …/rfc`;
       anonymous → 401.
-- [ ] A colaborador created before this plan (`site_id` NULL) lists with `siteId: null` and can get
+- [x] A colaborador created before this plan (`site_id` NULL) lists with `siteId: null` and can get
       a site through the `PUT`.
-- [ ] Changing the site publishes `employees.employee.site-assigned`; changing the RFC publishes
+- [x] Changing the site publishes `employees.employee.site-assigned`; changing the RFC publishes
       `employees.employee.rfc-assigned` (checked in tests; no consumer yet).
-- [ ] `pnpm db:seed` creates "Cancún Centro" and assigns it; idempotent.
+- [x] `pnpm db:seed` creates "Cancún Centro" and assigns it; idempotent.
 
 ## Test layers required
 
@@ -293,3 +293,28 @@ encontró la sede ya existente". This is a dev-only script and acceptable for no
 All checklist items passed. Status → `verify`.
 
 ## Verification
+
+**PASS** — 2026-10-02, main session, at `b586557`, against the dev API on `localhost:3000`
+(migration `20261002210000_add_employee_site` applied to the dev DB).
+
+- Suites: `pnpm check` and `pnpm test:integration` (168) green at the review; `plans:scope
+--base a06fbf5` all in scope.
+- Script over HTTP (synthetic data: a new MX company, two MX sedes and one DO sede with a
+  random suffix), 17/17 PASS:
+  - Hire without `siteId` → 400 at `siteId`; unknown site → 404 `SITE_NOT_FOUND`; DO site for the
+    MX company → 422 `SITE_COUNTRY_MISMATCH`; active MX site → 201, the list shows `siteId`.
+  - `PUT …/site` to the other MX site → 204 and the list shows it; same site again → 204; unknown
+    → 404 `SITE_NOT_FOUND`; DO site → 422 `SITE_COUNTRY_MISMATCH`; HR of another company → 403;
+    anonymous → 401.
+  - A seed colaborador of the holding listed with `siteId: null`; `PUT` through the wrong company
+    → 404 `EMPLOYEE_NOT_FOUND`; as HR of the holding → 204 and it lists the site.
+  - `/api/v1/openapi.json` has the `PUT …/site` route.
+- Events (criterion 4): verified by the application tests with `RecordingEventBus`
+  (`assign-employee-site.command.test.ts`, `assign-employee-rfc.command.test.ts`); no consumer
+  exists yet, so there is nothing to observe in the running app.
+- Seed: `pnpm db:seed` run twice more on the dev DB → "seed completado" both times; `GET /sites`
+  lists exactly one "Cancún Centro" (MX, `America/Cancun`, active). On this pre-existing DB the
+  two seed colaboradores keep `site_id` NULL (Deviation 4); a fresh DB assigns them the sede.
+- Data left in the dev DB: the company `Verificación Sede <suffix> S.A. de C.V.` with one
+  colaborador, three `Verificación sede …` sedes, and one seed colaborador of the holding now
+  assigned to `Verificación sede A …` (reassignable with `PUT …/site`).
