@@ -180,13 +180,13 @@ idGenerator, clock, eventBus`; `existsByName` → `SiteAlreadyExistsError`; `Sit
 
 ## Acceptance criteria
 
-- [ ] `POST /api/v1/sites` as HOLDING_ADMIN `{ name: 'Cancún Centro', country: 'MX', timeZone:
+- [x] `POST /api/v1/sites` as HOLDING_ADMIN `{ name: 'Cancún Centro', country: 'MX', timeZone:
 'America/Cancun' }` → 201 `{ id }`; `GET /api/v1/sites` lists it with `active: true`.
-- [ ] Same name with different case (`'cancún centro'`) → 409 `SITE_ALREADY_EXISTS`.
-- [ ] `country: 'MX', timeZone: 'America/Bogota'` → 400 at `timeZone`; `country: 'DO', timeZone:
+- [x] Same name with different case (`'cancún centro'`) → 409 `SITE_ALREADY_EXISTS`.
+- [x] `country: 'MX', timeZone: 'America/Bogota'` → 400 at `timeZone`; `country: 'DO', timeZone:
 'America/Santo_Domingo'` → 201; an invented zone → 400.
-- [ ] HR → `GET /sites` 200, `POST /sites` 403; anonymous → 401.
-- [ ] `/api/v1/docs` shows the two routes.
+- [x] HR → `GET /sites` 200, `POST /sites` 403; anonymous → 401.
+- [x] `/api/v1/docs` shows the two routes.
 
 ## Test layers required
 
@@ -330,3 +330,20 @@ and accepts L2 and L3, no code changes are pending and the plan can go to `verif
 - **I1:** no change.
 
 ## Verification
+
+**PASS** — 2026-10-02, main session, at `113122d`, against the dev API on `localhost:3000`
+(running from the branch, with migration `20261002195817_create_sites` applied to the dev DB).
+
+- Suites: `pnpm check` green; `pnpm test:integration` 14 files / 160 tests green;
+  `pnpm plans:scope … --base 2ce01f9` all in scope.
+- Script over HTTP (synthetic names with a random suffix), 11/11 PASS:
+  - HOLDING_ADMIN `POST /sites` MX `America/Cancun` → 201; `GET /sites` lists it with
+    `active: true` and its zone.
+  - Same name lowercased with extra spaces → 409 `SITE_ALREADY_EXISTS`; same name in NFD
+    (review L3) → 409 `SITE_ALREADY_EXISTS`.
+  - MX + `America/Bogota` → 400 at `timeZone`; DO + `America/Santo_Domingo` → 201; invented zone
+    `America/Atlantida` → 400 at `timeZone`.
+  - HR: `GET /sites` 200, `POST /sites` 403; anonymous `GET /sites` 401.
+  - `/api/v1/openapi.json` has `/sites` with `get` and `post` (the source of `/api/v1/docs`).
+- Data left in the dev DB: two sedes named `Verificación … <suffix>` (MX and DO). There is no
+  delete endpoint; they are harmless and recognizable.
