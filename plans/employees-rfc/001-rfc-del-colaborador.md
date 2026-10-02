@@ -224,7 +224,7 @@ unwrap(await deps.assignEmployeeRfc.execute({ ...params, rfc: body.rfc })))`.
       company; a DO/CO colaborador → 422 `RFC_NOT_APPLICABLE`; anonymous → 401.
 - [x] A colaborador created before this plan (row with `rfc` NULL) still lists, and can get its
       RFC through the `PUT`.
-- [ ] `pnpm db:seed` is idempotent and the seed colaboradores have RFC.
+- [x] `pnpm db:seed` is idempotent and the seed colaboradores have RFC.
 - [x] `/api/v1/docs` shows the new `PUT` route.
 
 ## Test layers required
@@ -422,3 +422,8 @@ Status stays `verify`.
 
 The user accepted the plan and moved it to `done`, with the fresh-DB seed check still NOT
 VERIFIED (its checkbox stays unchecked on purpose).
+
+### Fresh-DB seed (main session, 2026-10-02) — supersedes the NOT VERIFIED above
+
+The user reset the dev DB and seeded it. `psql`: APS Holding S.A. de C.V. / `GOMA850101HQRRRN04`
+→ `GOMA850101AB1`, `PEXL900215MDFRPR07` → `PEXL900215AB2`. The seed criterion is now checked.
