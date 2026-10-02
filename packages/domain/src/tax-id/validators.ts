@@ -19,7 +19,7 @@ export const mexicanRfcMoralValidator: TaxIdValidator = {
 };
 
 /** El RFC no indica el siglo: se acepta la fecha si existe en alguno de los dos. */
-function isValidYymmdd(yymmdd: string): boolean {
+export function isValidYymmdd(yymmdd: string): boolean {
   const yy = Number(yymmdd.slice(0, 2));
   const month = Number(yymmdd.slice(2, 4));
   const day = Number(yymmdd.slice(4, 6));

@@ -1,4 +1,4 @@
-import { Email, NationalId } from '@rrhh/domain';
+import { Email, NationalId, PersonalRfc } from '@rrhh/domain';
 import { describe, expect, it } from 'vitest';
 
 import { Employee, EMPLOYEE_HIRED, EMPLOYEE_TERMINATED, type EmployeeId } from './employee';
@@ -8,12 +8,14 @@ const now = new Date('2026-01-15T12:00:00Z');
 function hire(overrides: Partial<Parameters<typeof Employee.hire>[0]> = {}) {
   const nationalId = NationalId.create('MX', 'GOMA850101HQRRRN04');
   const email = Email.create('ana@aps.cl');
-  if (!nationalId.ok || !email.ok) throw new Error('fixture inválido');
+  const rfc = PersonalRfc.create('GOMA850101AB1');
+  if (!nationalId.ok || !email.ok || !rfc.ok) throw new Error('fixture inválido');
 
   return Employee.hire({
     id: 'emp-1' as EmployeeId,
     companyId: 'company-1',
     nationalId: nationalId.value,
+    rfc: rfc.value,
     firstName: 'Ana',
     lastName: 'Rojas',
     email: email.value,

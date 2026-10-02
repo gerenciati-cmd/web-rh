@@ -8,6 +8,30 @@ export class EmployeeAlreadyExistsError extends ConflictError {
   }
 }
 
+export class EmployeeNotFoundError extends NotFoundError {
+  readonly code = 'EMPLOYEE_NOT_FOUND';
+
+  constructor(employeeId: string) {
+    super('El colaborador no existe', { employeeId });
+  }
+}
+
+export class EmployeeRfcAlreadyRegisteredError extends ConflictError {
+  readonly code = 'EMPLOYEE_RFC_ALREADY_REGISTERED';
+
+  constructor(rfc: string) {
+    super('Ya hay un colaborador registrado con ese RFC', { rfc });
+  }
+}
+
+export class RfcNotApplicableError extends BusinessRuleViolationError {
+  override readonly code = 'RFC_NOT_APPLICABLE';
+
+  constructor() {
+    super('El RFC solo aplica a colaboradores de México');
+  }
+}
+
 export class EmployerNotFoundError extends NotFoundError {
   readonly code = 'COMPANY_NOT_FOUND';
 

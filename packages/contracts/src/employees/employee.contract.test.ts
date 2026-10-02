@@ -8,6 +8,7 @@ describe('RegisterEmployeeSchema', () => {
     lastName: 'Rojas',
     email: 'ana@example.com',
     hireDate: '2026-01-10',
+    rfc: 'GOMA850101AB1',
   };
 
   it('acepta una CURP válida (México)', () => {

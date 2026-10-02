@@ -1,4 +1,4 @@
-import { Email, NationalId } from '@rrhh/domain';
+import { Email, NationalId, PersonalRfc } from '@rrhh/domain';
 import { describe, expect, it } from 'vitest';
 
 import { Employee, type EmployeeId } from '@/modules/employees/domain/employee';
@@ -17,6 +17,7 @@ const ids = new SequentialIdGenerator();
 const COMPANY_A = '00000000-0000-4000-8000-00000000000a';
 const COMPANY_B = '00000000-0000-4000-8000-00000000000b';
 const NOW = new Date('2026-01-15T12:00:00Z');
+let rfcSequence = 0;
 
 function employee(input: {
   companyId?: string;
@@ -27,11 +28,17 @@ function employee(input: {
 }): Employee {
   const nationalId = NationalId.create('MX', input.curp);
   const email = Email.create(`${input.firstName}.${input.lastName}@aps.cl`);
-  if (!nationalId.ok || !email.ok) throw new Error('fixture inválido');
+  // Homoclave distinta por alta: el RFC es único en el holding aunque el CURP se repita.
+  rfcSequence += 1;
+  const rfc = PersonalRfc.create(
+    `${input.curp.slice(0, 10)}A${String(rfcSequence).padStart(2, '0')}`,
+  );
+  if (!nationalId.ok || !email.ok || !rfc.ok) throw new Error('fixture inválido');
   const hired = Employee.hire({
     id: ids.next() as EmployeeId,
     companyId: input.companyId ?? COMPANY_A,
     nationalId: nationalId.value,
+    rfc: rfc.value,
     firstName: input.firstName,
     lastName: input.lastName,
     email: email.value,

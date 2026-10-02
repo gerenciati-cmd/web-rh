@@ -1,4 +1,4 @@
-import { createEvent, Email, NationalId } from '@rrhh/domain';
+import { createEvent, Email, NationalId, PersonalRfc } from '@rrhh/domain';
 import request from 'supertest';
 import { beforeEach, describe, expect, it } from 'vitest';
 
@@ -24,6 +24,7 @@ import { buildTestContainer, signInAs } from './test-app';
 const PASSWORD = 'contraseña-larga-y-valida';
 const NO_EMPLOYEE = '00000000-0000-4000-8000-00000000dead';
 const CURP = 'GOMA850101HQRRRN04';
+let rfcSequence = 0;
 
 describe('invitaciones — HTTP', () => {
   let container: ReturnType<typeof buildTestContainer>;
@@ -63,10 +64,16 @@ describe('invitaciones — HTTP', () => {
     const email = Email.create(rawEmail);
     if (!nationalId.ok) throw nationalId.error;
     if (!email.ok) throw email.error;
+    // Mismo CURP en dos empresas, pero el RFC es único en el holding: homoclave distinta por alta.
+    const rfc = PersonalRfc.create(
+      `${CURP.slice(0, 10)}A${String(++rfcSequence).padStart(2, '0')}`,
+    );
+    if (!rfc.ok) throw rfc.error;
     const employee = Employee.hire({
       id: id as EmployeeId,
       companyId,
       nationalId: nationalId.value,
+      rfc: rfc.value,
       firstName: 'Ana',
       lastName: 'Rojas',
       email: email.value,

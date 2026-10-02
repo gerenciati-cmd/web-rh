@@ -8,6 +8,7 @@ export const PERMISSIONS = [
   'organization.companies:create',
   'employees:read',
   'employees:register',
+  'employees:update',
   'attendance.devices:read',
   'attendance.devices:manage',
   'attendance.punches:read',

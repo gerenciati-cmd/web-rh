@@ -9,6 +9,7 @@ export * from './identity/access';
 export * from './money';
 export * from './national-id/national-id';
 export * from './national-id/validators';
+export * from './tax-id/personal-rfc';
 export * from './tax-id/tax-id';
 export * from './tax-id/validators';
 export * from './result';

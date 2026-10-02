@@ -1,4 +1,4 @@
-import { Email, NationalId, type CountryCode } from '@rrhh/domain';
+import { Email, NationalId, PersonalRfc, type CountryCode } from '@rrhh/domain';
 
 import type { Employee as EmployeeRow } from '@/infrastructure/database/generated/client';
 
@@ -13,10 +13,13 @@ export const EmployeeMapper = {
     const email = Email.create(row.email);
     if (!nationalId.ok) throw nationalId.error;
     if (!email.ok) throw email.error;
+    const rfc = row.rfc === null ? null : PersonalRfc.create(row.rfc);
+    if (rfc && !rfc.ok) throw rfc.error;
 
     return Employee.restore(row.id as EmployeeId, {
       companyId: row.companyId,
       nationalId: nationalId.value,
+      rfc: rfc?.value ?? null,
       firstName: row.firstName,
       lastName: row.lastName,
       email: email.value,
@@ -33,6 +36,7 @@ export const EmployeeMapper = {
       companyId: s.companyId,
       nationalIdCountry: s.nationalId.country,
       nationalIdNumber: s.nationalId.value,
+      rfc: s.rfc?.value ?? null,
       firstName: s.firstName,
       lastName: s.lastName,
       email: s.email.value,

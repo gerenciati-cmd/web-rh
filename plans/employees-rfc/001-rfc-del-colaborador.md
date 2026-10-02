@@ -1,5 +1,5 @@
 ---
-status: approved
+status: testing
 module: employees
 min_implementer: mid
 depends_on: []
@@ -166,7 +166,7 @@ Promise<boolean>`; `save` returns
    - Observable result: typecheck passes for these files.
 
 6. **Persistence, HTTP and module**
-   - Files: `apps/api/prisma/schema.prisma` (modify), `apps/api/prisma/migrations/YYYYMMDDHHMMSS_add_employee_rfc/migration.sql` (create), `apps/api/src/modules/employees/infrastructure/employee.mapper.ts` (modify), `apps/api/src/modules/employees/infrastructure/prisma-employee.repository.ts` (modify), `apps/api/src/modules/employees/infrastructure/prisma-employee.queries.ts` (modify), `apps/api/src/modules/employees/infrastructure/in-memory/in-memory-employee.repository.ts` (modify), `apps/api/src/modules/employees/http/employees.router.ts` (modify), `apps/api/src/modules/employees/employees.module.ts` (modify), `apps/api/src/modules/employees/index.ts` (modify), `apps/api/tests/test-app.ts` (modify)
+   - Files: `apps/api/prisma/schema.prisma` (modify), `apps/api/prisma/migrations/20261002120000_add_employee_rfc/migration.sql` (create), `apps/api/src/modules/employees/infrastructure/employee.mapper.ts` (modify), `apps/api/src/modules/employees/infrastructure/prisma-employee.repository.ts` (modify), `apps/api/src/modules/employees/infrastructure/prisma-employee.queries.ts` (modify), `apps/api/src/modules/employees/infrastructure/in-memory/in-memory-employee.repository.ts` (modify), `apps/api/src/modules/employees/http/employees.router.ts` (modify), `apps/api/src/modules/employees/employees.module.ts` (modify), `apps/api/src/modules/employees/index.ts` (modify), `apps/api/tests/test-app.ts` (modify)
    - Do, schema (recipe `db-change`): in `Employee` add
      `rfc String? @unique @db.VarChar(13)` with `/// RFC persona física (solo MX), único en el holding`.
      `pnpm db:migrate --name add_employee_rfc`; SQL must be an `ALTER TABLE … ADD COLUMN` plus a
@@ -234,6 +234,29 @@ unwrap(await deps.assignEmployeeRfc.execute({ ...params, rfc: body.rfc })))`.
 | e2e         | no      | (no e2e infrastructure yet)                                                                                                                                       |
 
 ## Deviations
+
+1. Step 6, migration: `pnpm db:migrate` (`prisma migrate dev`) refuses to run non-interactively.
+   Generated the SQL with `prisma migrate diff --from-config-datasource --to-schema` (output is
+   exactly `ADD COLUMN "rfc" VARCHAR(13)` + `CREATE UNIQUE INDEX "employees_rfc_key"`, no DROP),
+   wrote it by hand as `20261002120000_add_employee_rfc/migration.sql` and applied it with
+   `prisma migrate deploy` to the local dev DB. The `Files:` placeholder was replaced with that
+   folder. Cosmetic.
+2. Step 6, `save` disambiguation order (cosmetic, kept the existing concurrency test green): the
+   plan said "if the employee has an RFC and `existsByRfc` → RFC error, else CURP error". Doing so
+   made the existing test `register-employee.command.test.ts` "dos comandos concurrentes" (same
+   CURP and same RFC) return `EMPLOYEE_RFC_ALREADY_REGISTERED` instead of `EMPLOYEE_ALREADY_EXISTS`.
+   Both `PrismaEmployeeRepository.save` and the in-memory repository now check the CURP duplicate
+   in the company first (same order as the command) and only then the RFC. Test assertions were not changed.
+3. Step 2/7: `role-catalog.test.ts` also had two grant counts (`grantsFor`: HR 6 to 7, two HR
+   companies 12 to 14) besides the HR permission list; updated (+1 per HR grant). `test-app.ts`:
+   only the `employeeQueries` double was extended; the `EmployeeDirectory` double there belongs to
+   the identity module and was left alone.
+4. Step 7 test fixtures: in `invitations.test.ts`, `password-resets.test.ts` and the Prisma
+   integration fixture the RFC is generated per hire from the CURP prefix plus a sequence
+   (`<CURP[0..10]>A01`, `A02`, ...), because the same CURP is hired several times (decision 4).
+   Dev DB note: the two seed colaboradores already existing in the local dev DB keep `rfc` NULL
+   (seed skips existing CURPs); a fresh DB gets the RFCs.
+5. `RegisterEmployee` got a private `findDuplicate` helper (lint complexity limit); no behavior change.
 
 ## Test coverage
 

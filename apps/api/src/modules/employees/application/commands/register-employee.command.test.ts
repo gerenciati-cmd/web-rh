@@ -45,6 +45,7 @@ describe('RegisterEmployee', () => {
   const input: RegisterEmployeeInput = {
     companyId: ACTIVE,
     nationalId: { country: 'MX', number: 'GOMA850101HQRRRN04' },
+    rfc: 'GOMA850101AB1',
     firstName: 'Ana',
     lastName: 'Rojas',
     email: 'Ana@APS.cl',

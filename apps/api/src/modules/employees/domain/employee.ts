@@ -9,8 +9,11 @@ import {
   type EmployeeStatus,
   type Id,
   type NationalId,
+  type PersonalRfc,
   type Result,
 } from '@rrhh/domain';
+
+import { RfcNotApplicableError } from './errors';
 
 export type EmployeeId = Id<'Employee'>;
 export type { EmployeeStatus } from '@rrhh/domain';
@@ -18,6 +21,8 @@ export type { EmployeeStatus } from '@rrhh/domain';
 export interface EmployeeProps {
   companyId: string;
   nationalId: NationalId;
+  /** RFC de persona física: obligatorio al contratar en México; nulo en filas anteriores al campo. */
+  rfc: PersonalRfc | null;
   firstName: string;
   lastName: string;
   email: Email;
@@ -48,6 +53,7 @@ export class Employee extends AggregateRoot<EmployeeId> {
     firstName: string;
     lastName: string;
     email: Email;
+    rfc?: PersonalRfc | undefined;
     positionTitle?: string | undefined;
     hireDate: Date;
     now: Date;
@@ -67,9 +73,17 @@ export class Employee extends AggregateRoot<EmployeeId> {
       );
     }
 
+    if (input.nationalId.country === 'MX' && !input.rfc) {
+      return err(new InvalidValueError('El RFC es obligatorio para colaboradores de México'));
+    }
+    if (input.nationalId.country !== 'MX' && input.rfc) {
+      return err(new InvalidValueError('El RFC solo aplica a colaboradores de México'));
+    }
+
     const employee = new Employee(input.id, {
       companyId: input.companyId,
       nationalId: input.nationalId,
+      rfc: input.rfc ?? null,
       firstName,
       lastName,
       email: input.email,
@@ -99,6 +113,13 @@ export class Employee extends AggregateRoot<EmployeeId> {
     }
     this.props = { ...this.props, status: 'TERMINATED' };
     this.record(createEvent(EMPLOYEE_TERMINATED, { employeeId: this.id, terminationDate }, now));
+    return ok(undefined);
+  }
+
+  /** Captura o corrige el RFC; la unicidad en el holding la verifica el caso de uso. */
+  assignRfc(rfc: PersonalRfc): Result<void, BusinessRuleViolationError> {
+    if (this.props.nationalId.country !== 'MX') return err(new RfcNotApplicableError());
+    this.props = { ...this.props, rfc };
     return ok(undefined);
   }
 

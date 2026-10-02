@@ -111,6 +111,7 @@ describe('API HTTP', () => {
       .post(`${API_PREFIX}/companies/${body.id}/employees`)
       .send({
         nationalId: { country: 'MX', number: 'GOMA850101HQRRRN04' },
+        rfc: 'GOMA850101AB1',
         firstName: 'Ana',
         lastName: 'Rojas',
         email: 'ana@aps.cl',
@@ -132,6 +133,7 @@ describe('API HTTP', () => {
         .post(`${API_PREFIX}/companies/${body.id}/employees`)
         .send({
           nationalId: { country: 'MX', number: 'GOMA850101HQRRRN04' },
+          rfc: 'GOMA850101AB1',
           firstName: 'Ana',
           lastName: 'Rojas',
           email: 'ana@aps.cl',
@@ -211,6 +213,7 @@ describe('API HTTP', () => {
       .set('Authorization', `Bearer ${token}`)
       .send({
         nationalId: { country: 'MX', number: 'GOMA850101HQRRRN04' },
+        rfc: 'GOMA850101AB1',
         firstName: 'Fixture',
         lastName: 'Persona',
         email: 'fixture@example.invalid',
