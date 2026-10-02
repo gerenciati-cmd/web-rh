@@ -6,6 +6,8 @@ import {
   PersonalRfc,
   type CountryCode,
   type DomainError,
+  type InvalidValueError,
+  type Result,
 } from '@rrhh/domain';
 
 import type { Clock, EventBus, IdGenerator } from '@/shared/application/ports';
@@ -56,10 +58,10 @@ export class RegisterEmployee implements Command<RegisterEmployeeInput, { id: Em
     if (!nationalId.ok) return nationalId;
     const email = Email.create(input.email);
     if (!email.ok) return email;
-    const rfc = input.rfc === undefined ? undefined : PersonalRfc.create(input.rfc);
-    if (rfc && !rfc.ok) return rfc;
+    const rfc = parseOptionalRfc(input.rfc);
+    if (!rfc.ok) return rfc;
 
-    const duplicate = await this.findDuplicate(input.companyId, nationalId.value, rfc?.value);
+    const duplicate = await this.findDuplicate(input.companyId, nationalId.value, rfc.value);
     if (duplicate) return duplicate;
 
     const employee = Employee.hire({
@@ -69,7 +71,7 @@ export class RegisterEmployee implements Command<RegisterEmployeeInput, { id: Em
       firstName: input.firstName,
       lastName: input.lastName,
       email: email.value,
-      rfc: rfc?.value,
+      rfc: rfc.value,
       positionTitle: input.positionTitle,
       hireDate: new Date(`${input.hireDate}T00:00:00Z`),
       now: clock.now(),
@@ -94,4 +96,11 @@ export class RegisterEmployee implements Command<RegisterEmployeeInput, { id: Em
     }
     return null;
   }
+}
+
+/** El RFC es opcional en la entrada: la regla de si corresponde por país la aplica el agregado. */
+function parseOptionalRfc(
+  raw: string | undefined,
+): Result<PersonalRfc | undefined, InvalidValueError> {
+  return raw === undefined ? ok(undefined) : PersonalRfc.create(raw);
 }

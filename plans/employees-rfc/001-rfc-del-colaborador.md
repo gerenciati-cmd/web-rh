@@ -1,5 +1,5 @@
 ---
-status: review
+status: verify
 module: employees
 min_implementer: mid
 depends_on: []
@@ -204,6 +204,11 @@ unwrap(await deps.assignEmployeeRfc.execute({ ...params, rfc: body.rfc })))`.
    - Observable result: `pnpm check` passes; `pnpm test:integration` passes; `pnpm db:seed`
      runs twice without errors.
 
+8. **Review repair** (added by the main session after review, see Deviation 7)
+   - Files: `docs/adr/0009-paises-soportados-e-identificadores.md` (modify)
+   - Do: dated note on the RFC line (review L3).
+   - Observable result: the ADR no longer says the RFC waits for payroll.
+
 ## Acceptance criteria
 
 - [ ] `POST /api/v1/companies/:id/employees` for an MX colaborador **without** `rfc` → 400 with
@@ -257,6 +262,13 @@ unwrap(await deps.assignEmployeeRfc.execute({ ...params, rfc: body.rfc })))`.
    Dev DB note: the two seed colaboradores already existing in the local dev DB keep `rfc` NULL
    (seed skips existing CURPs); a fresh DB gets the RFCs.
 5. `RegisterEmployee` got a private `findDuplicate` helper (lint complexity limit); no behavior change.
+   _Corrected by the main session (review L2):_ the helper alone left `execute` at complexity 13
+   (limit 12, warning). A module-level `parseOptionalRfc` now brings it under the limit; `pnpm
+lint` has no warnings.
+6. (Review I1) `RegisterEmployeeSchema` uses `.superRefine` for the RFC rule instead of the
+   plan's second `.refine`: same issues and path (`['rfc']`), one issue per case.
+7. (Main session) Step 8 added to declare `docs/adr/0009-paises-soportados-e-identificadores.md`
+   for the review L3 note.
 
 ## Test coverage
 
@@ -285,5 +297,87 @@ facade), contract 18, http 20, integration 15. Closing run: `pnpm check` green (
 domain green); `pnpm test:integration` 145 passed (baseline 130).
 
 ## Review findings
+
+Reviewed on 2026-10-02 against commits `2f3b5a0` (implementation) and `44c8a82` (tests). The
+earlier doc commits (`0d1f337`, `e70b049`, `02f2236`, `1205f38`, `22a7c00`) were excluded.
+
+### Checklist: 10/13
+
+- [ ] `plans:scope --base origin/main`: exits 1, but only because of 6 files from the excluded
+      doc commits (ADR 0013, zkteco doc, attendance plans). Every file in the two plan commits is
+      declared. **Failed item**: the hot file `schema.prisma` has a change that is not append-only
+      (L1 below).
+- [x] `pnpm check` passes (api 639 passed / 3 skipped, contracts 177, domain 86, arch, plans, harness).
+      It shows 1 lint warning (L2).
+- [x] `pnpm test:integration`: 145 passed (12 files).
+- [x] Business rules are in `domain/`. The contract's country refine reuses `PersonalRfc.isValid`,
+      the same pattern as `NationalId`, as the plan specifies.
+- [x] CQRS-lite: `AssignEmployeeRfc` uses aggregate → repository → `Result`. `findByRfcs` and
+      `rfcsInCompanies` are on `EmployeeQueries`. The repository only got `existsByRfc`, which is
+      an invariant check, not a screen query.
+- [x] Types come from `@rrhh/contracts`. `openapi.json` was regenerated.
+- [x] Errors use stable codes (`EMPLOYEE_NOT_FOUND`, `EMPLOYEE_RFC_ALREADY_REGISTERED`,
+      `RFC_NOT_APPLICABLE`). Internals don't leak.
+- [x] Money, dates and IDs: nothing new.
+- [x] The new migration adds the column and a unique index only, with no DROP and no cross-module FK.
+- [x] DI: `assignEmployeeRfc` is registered once, and the facade gets `employeeQueries`.
+      `container.test.ts` passes.
+- [x] No secrets or real personal data. Fixtures are synthetic.
+- [ ] `## Deviations` is not fully accurate (L2, I1). I spot-checked Deviation 2: it matches
+      `prisma-employee.repository.ts:51-62`.
+- [ ] A stale doc was not updated (L3).
+
+### Findings
+
+No Critical, High or Medium findings. The bug hunt traced POST/PUT from contract to response.
+It also checked tenancy (403 from `companyParam`, then 404 for another company's employee
+inside the command), concurrent hires and assigns (the unique index is disambiguated with CURP
+first), legacy NULL rows and seed idempotency (the CURP check runs first, so a re-run still gets
+`EMPLOYEE_ALREADY_EXISTS`). No correctness bug was found.
+
+**Low**
+
+- **L1** `apps/api/prisma/schema.prisma:59`: whitespace-only change to an untouched line. It
+  removes one space, so the `hireDate` column is out of alignment with every other field in the
+  model. Effect: the hot file is not append-only, and the next `prisma format` will produce an
+  unrelated diff. There is no runtime effect. Fix: restore the original alignment.
+- **L2** `apps/api/src/modules/employees/application/commands/register-employee.command.ts:48`:
+  `execute` has complexity 13 (limit 12). This plan introduced it, and it is the only lint
+  warning in the repo; the code at `22a7c00` had no warning. Deviation 5 says the
+  `findDuplicate` helper was added for the complexity limit, but the limit is still exceeded,
+  so the deviation reads as if the problem were fixed. Judgement: not a bug, but it should be
+  fixed rather than accepted while the repo is otherwise warning-free. One cheap option is to
+  move the `PersonalRfc` parsing (`:59-60`, ternary plus `&&`) into a helper or into
+  `findDuplicate`'s caller logic. Then correct Deviation 5.
+- **L3** `docs/adr/0009-paises-soportados-e-identificadores.md:35`: still says "En México el
+  colaborador se registra con CURP. RFC y NSS se agregan con la nómina." That is no longer true:
+  the RFC is now required at hire. The file is not in the plan's file list. The main session or
+  the user must decide how to handle it, for example a deviation that adds a dated note pointing
+  to `plans/employees-rfc/README.md`, or a superseding ADR. Uncertain: if ADRs are treated as
+  immutable history, this may be acceptable as is, and the user should confirm.
+
+**Info (no change required)**
+
+- **I1** `packages/contracts/src/employees/employee.contract.ts:53`: Step 3 asked for a second
+  `.refine`, and the code uses `.superRefine`. The behavior is the same, and `superRefine` is
+  needed for the two different messages. This is not recorded in Deviations; add one line when
+  you fix L2.
+- **I2** `apps/api/src/modules/employees/infrastructure/prisma-employee.repository.ts:51-62`: the
+  unique-violation branch now runs 1-2 extra queries. Today `employeeRepository.save` is never
+  called inside `transactionRunner.run`, so this is safe. If it ever runs inside a transaction,
+  Postgres aborts the transaction after the violation, and these queries would throw (500 instead
+  of 409). This is latent only and is not a finding against this plan.
+
+Status stays `review`. L1 and L2 need small in-scope code changes. L3 needs a scope decision.
+
+### Resolution (main session, 2026-10-02)
+
+- **L1 fixed**: `hireDate` alignment restored in `schema.prisma`; `prisma format` leaves it as is.
+- **L2 fixed**: `parseOptionalRfc` helper in `register-employee.command.ts`; Deviation 5 corrected.
+- **L3 fixed**: dated "Actualización" note in ADR 0009 (decision: an amendment note, not a new
+  ADR, since only one sentence of 0009 changes); declared in Step 8.
+- **I1** recorded as Deviation 6. **I2** acknowledged, no change (no transaction wraps `save`).
+
+Plan to `verify`.
 
 ## Verification
