@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { Site, SITE_CREATED, type SiteId } from './site';
+import { Site, SITE_CREATED, siteNameKey, type SiteId } from './site';
 
 const NOW = new Date('2026-01-15T12:00:00Z');
 const ID = '00000000-0000-4000-8000-000000000001' as SiteId;
@@ -45,6 +45,11 @@ describe('Site', () => {
   it('rechaza una zona que no es del país', () => {
     const result = Site.create({ ...valid, timeZone: 'America/Bogota' });
     expect(!result.ok && result.error.code).toBe('INVALID_VALUE');
+  });
+
+  it('siteNameKey iguala mayúsculas, espacios extremos y acentos NFC/NFD', () => {
+    expect(siteNameKey('  CANCÚN Centro '.normalize('NFD'))).toBe(siteNameKey('cancún centro'));
+    expect(siteNameKey('Cancún'.normalize('NFD'))).toBe('cancún'.normalize('NFC'));
   });
 
   it('restore no emite eventos', () => {

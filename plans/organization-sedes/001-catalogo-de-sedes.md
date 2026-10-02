@@ -1,5 +1,5 @@
 ---
-status: review
+status: verify
 module: organization
 min_implementer: mid
 depends_on: []
@@ -173,6 +173,11 @@ idGenerator, clock, eventBus`; `existsByName` → `SiteAlreadyExistsError`; `Sit
      "Empresas y sedes del holding. Exposes OrganizationApi to other modules."
    - Observable result: `pnpm check` passes.
 
+9. **Test files of this plan** (added after review L1; written by the tester)
+   - Files: `packages/domain/src/site-time-zones.test.ts` (create), `packages/contracts/src/organization/site.contract.test.ts` (create), `apps/api/src/modules/organization/domain/site.test.ts` (create), `apps/api/src/modules/organization/application/commands/create-site.command.test.ts` (create), `apps/api/src/modules/organization/application/queries/list-sites.query.test.ts` (create), `apps/api/src/modules/organization/application/organization.facade.test.ts` (create), `apps/api/tests/sites.test.ts` (create), `apps/api/tests/integration/organization/prisma-site.int.test.ts` (create)
+   - Do: the layers of "Test layers required".
+   - Observable result: `pnpm check` and `pnpm test:integration` pass.
+
 ## Acceptance criteria
 
 - [ ] `POST /api/v1/sites` as HOLDING_ADMIN `{ name: 'Cancún Centro', country: 'MX', timeZone:
@@ -227,5 +232,101 @@ green (153). No GAP and no NOT CONFIRMED found: every behavior was confirmed fro
 | e2e                                                                     | no infrastructure                                      | e2e         | n/a (plan: no)                                                   | n/a       |
 
 ## Review findings
+
+Reviewed 2026-10-02, diff `2ce01f9..HEAD` (`ce63106` implementation + `4e5e958` tests), working
+tree clean.
+
+**Checklist: 12/13 — FAIL (1 item).**
+
+- [ ] `pnpm plans:scope --base 2ce01f9`: exits 1. 37 files changed. The 29 implementation files
+      are all declared. The 8 test files the tester wrote are not declared in any `Files:` line
+      (L1). Hot files: `schema.prisma` (new `Site` model after `Company`, as step 6 says),
+      `test-app.ts` (additions only), `contracts/src/index.ts` (additions only; `sites:` is
+      inserted after `organization:`, not at the end, but step 3 declares it) and `modules.json`
+      (one line edited, declared in step 8). All are in scope. Note: without `--base`, the tool
+      compares against `main` and also lists 90+ paths from other plans' commits on this branch.
+- [x] `pnpm check` green: api 682 passed / 4 skipped, contracts 198, domain 98, web 2, mobile 5,
+      arch, plans, harness, hooks, quality. No lint warnings.
+- [x] `pnpm test:integration` green: 14 files, 160 tests.
+- [x] Business rules are in `domain/`: the name bounds and the zone rule are in `Site.create`, and
+      the zone list is in the shared kernel (`site-time-zones.ts`). The contract reuses
+      `isSiteTimeZone`, the same pattern as `TaxId`. The router, mapper and adapters contain no
+      rules.
+- [x] CQRS-lite: `CreateSite` goes aggregate → `SiteRepository` → `Result`. `ListSites` →
+      `SiteQueries` → `SiteDto`. The repository only has `findById`, `existsByName` (an invariant
+      check) and `save`.
+- [x] Types come from `@rrhh/contracts`. `openapi.json` was regenerated (the count is now 25).
+      The command's local `CreateSiteInput` follows the same pattern as `CreateCompanyInput`.
+- [x] Errors: `SITE_ALREADY_EXISTS` (Conflict → 409), `InvalidValueError` for domain validation.
+      The unique violation maps to the domain error. Internals don't leak.
+- [x] No money. `createdAt` comes from `Clock` and is stored as `Timestamptz`. The id comes from
+      `IdGenerator`.
+- [x] New migration `20261002195817_create_sites`: CREATE TABLE plus a unique index only. No DROP
+      and no FK.
+- [x] DI: `siteRepository`, `siteQueries`, `createSite` and `listSites` are each registered once
+      in `organization.module.ts`. The facade receives `siteRepository`. `container.test.ts` is
+      green.
+- [x] No secrets or real personal data. The fixtures are synthetic sede names.
+- [x] Deviations are honest. I spot-checked the migration folder: it matches the step 6 `Files:`
+      line and contains no `DROP`.
+- [x] Docs: `modules.json` was updated. `architecture.md` and `conventions.md` don't describe sedes
+      or the organization endpoints in a way that is now wrong.
+
+### Findings
+
+**Critical / High / Medium: none.** I traced the bug hunt end to end for POST and GET `/sites`:
+contract (trim, refine on `timeZone`) → `CreateSite` (trimmed name, `existsByName` on
+`name_key`) → `Site.create` → upsert → 201. I also checked case-insensitive duplicates, the race
+between two requests (the unique index → 409, covered in integration), and authorization (HR
+read-only and holding-level, by design; anonymous → 401). `findSite` works for an unknown id
+(returns null).
+
+**Low**
+
+- **L1 — the plan doesn't declare its test files** (plan, step list). These files are missing
+  from every `Files:` line, so `plans:scope` fails:
+  `domain/site.test.ts`, `application/commands/create-site.command.test.ts`,
+  `application/queries/list-sites.query.test.ts`, `application/organization.facade.test.ts`
+  (under `apps/api/src/modules/organization/`), `apps/api/tests/sites.test.ts`,
+  `apps/api/tests/integration/organization/prisma-site.int.test.ts`,
+  `packages/contracts/src/organization/site.contract.test.ts`,
+  `packages/domain/src/site-time-zones.test.ts`. Fix: the main session adds a step "Test files
+  of this plan", as in `attendance-marcaciones/002` step 6. This is a plan edit only; no code
+  changes.
+- **L2 — `name_key` can be longer than `VARCHAR(100)`** (`site.mapper.ts:28`,
+  `schema.prisma:42`). `toLowerCase()` can make a string longer. For example, `'İ'` (U+0130)
+  becomes `'i̇'`, which is 2 code points. A 100-character name containing that letter passes the
+  contract and the domain, but the insert fails with Postgres 22001. That is an unexpected
+  exception, so the client gets a 500 instead of a 400. Not reproduced, because the hook blocks
+  inline `node -e`; this is based on documented `String.prototype.toLowerCase` semantics. It is
+  very unlikely with real sede names. Possible fixes: widen `name_key`, which needs a new
+  migration, or accept it and record the decision.
+- **L3 — Unicode normalization (uncertain)** (`site.mapper.ts:28`,
+  `prisma-site.repository.ts:22`). The normalized key doesn't apply `normalize('NFC')`.
+  `'Cancún'` with a precomposed `ú` and the same name with `u` + a combining accent produce
+  different keys, so two sedes that look identical can both be created. Some input methods and
+  copy-paste sources produce NFD. Whether this matters is a product decision; the plan only
+  defines the key as "trim + lowercase", so as written the code follows the plan.
+
+**Info**
+
+- I1 — The in-memory `list` sorts with `localeCompare` and Prisma sorts with the database
+  collation. The two orders can differ for mixed-case names. Only the Prisma order is observable
+  in production, and it is covered in integration. No change needed.
+
+Status stays `review`. L1 needs a plan edit by the main session. L2 and L3 need a decision:
+accept and record it, or make a small in-scope fix. If the main session declares the test files
+and accepts L2 and L3, no code changes are pending and the plan can go to `verify`.
+
+### Resolution (main session, 2026-10-02)
+
+- **L1 — fixed:** step 9 declares the eight test files.
+- **L2 — accepted:** the 500 needs a 100-character name built from letters such as `İ` that grow
+  when lowercased; sede names are short Spanish place names. Widening the column needs a new
+  migration for no observed case. Revisit if a sede name ever fails this way.
+- **L3 — fixed:** `siteNameKey` in `domain/site.ts` (trim → NFC → lowercase) is the only key
+  function, used by the mapper, the Prisma repository and the in-memory store. Regression tests:
+  `site.test.ts` (`siteNameKey` NFC/NFD) and `create-site.command.test.ts` (NFD duplicate → 409).
+- **I1:** no change.
 
 ## Verification

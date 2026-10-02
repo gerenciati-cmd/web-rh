@@ -3,7 +3,7 @@ import type { CountryCode } from '@rrhh/domain';
 
 import type { Site as SiteRow } from '@/infrastructure/database/generated/client';
 
-import { Site, type SiteId } from '../domain/site';
+import { Site, siteNameKey, type SiteId } from '../domain/site';
 
 /**
  * Traductor entre el mundo de persistencia (filas Prisma) y el dominio/DTOs.
@@ -25,7 +25,7 @@ export const SiteMapper = {
       id: site.id,
       name: site.name,
       // Unicidad sin distinguir mayúsculas: el índice único vive sobre esta clave.
-      nameKey: site.name.trim().toLowerCase(),
+      nameKey: siteNameKey(site.name),
       country: site.country,
       timeZone: site.timeZone,
       active: site.active,

@@ -23,6 +23,12 @@ export interface SiteProps {
 export const SITE_CREATED = 'organization.site.created';
 
 /**
+ * Clave de unicidad del nombre: sin espacios extremos, en NFC y en minúsculas. NFC porque
+ * "Cancún" pegado con el acento como carácter aparte (NFD) se ve igual y debe chocar.
+ */
+export const siteNameKey = (name: string): string => name.trim().normalize('NFC').toLowerCase();
+
+/**
  * Agregado Site (sede del holding). Su zona horaria sale de una lista cerrada por país:
  * una zona válida pero equivocada desplazaría todas las marcaciones de la sede.
  */

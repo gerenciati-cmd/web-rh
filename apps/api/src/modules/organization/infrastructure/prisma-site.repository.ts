@@ -4,7 +4,7 @@ import type { PrismaDatabase } from '@/infrastructure/database/prisma-database';
 import { isUniqueViolation } from '@/infrastructure/database/prisma-errors';
 
 import { SiteAlreadyExistsError } from '../domain/errors';
-import type { Site, SiteId } from '../domain/site';
+import { siteNameKey, type Site, type SiteId } from '../domain/site';
 import type { SiteRepository } from '../domain/site.repository';
 
 import { SiteMapper } from './site.mapper';
@@ -19,7 +19,7 @@ export class PrismaSiteRepository implements SiteRepository {
 
   async existsByName(name: string): Promise<boolean> {
     const count = await this.deps.database.client.site.count({
-      where: { nameKey: name.trim().toLowerCase() },
+      where: { nameKey: siteNameKey(name) },
     });
     return count > 0;
   }

@@ -53,6 +53,17 @@ describe('CreateSite', () => {
     expect(eventBus.names()).toEqual([SITE_CREATED]);
   });
 
+  it('rechaza el mismo nombre escrito con el acento como carácter aparte (NFD)', async () => {
+    await createSite.execute(validInput);
+    const result = await createSite.execute({
+      ...validInput,
+      name: validInput.name.normalize('NFD'),
+    });
+
+    expect(!result.ok && result.error.code).toBe('SITE_ALREADY_EXISTS');
+    expect(store.sites.size).toBe(1);
+  });
+
   it('rechaza una zona que no es del país sin persistir', async () => {
     const result = await createSite.execute({ ...validInput, timeZone: 'America/Bogota' });
 

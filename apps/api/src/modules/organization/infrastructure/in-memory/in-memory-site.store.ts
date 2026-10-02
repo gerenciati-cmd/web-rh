@@ -3,7 +3,7 @@ import { err, ok, type Result } from '@rrhh/domain';
 
 import type { SiteQueries } from '../../application/queries/site.queries';
 import { SiteAlreadyExistsError } from '../../domain/errors';
-import type { Site, SiteId } from '../../domain/site';
+import { siteNameKey, type Site, type SiteId } from '../../domain/site';
 import type { SiteRepository } from '../../domain/site.repository';
 
 /**
@@ -14,7 +14,7 @@ export class InMemorySiteStore {
   readonly sites = new Map<string, Site>();
 }
 
-const keyOf = (name: string): string => name.trim().toLowerCase();
+const keyOf = siteNameKey;
 
 export class InMemorySiteRepository implements SiteRepository {
   constructor(private readonly store: InMemorySiteStore) {}
