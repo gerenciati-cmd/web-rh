@@ -85,11 +85,12 @@ export const API_ERRORS = {
   },
   PAYLOAD_TOO_LARGE: {
     status: 413,
-    description: 'El cuerpo de la petición supera el límite de 1 MB.',
+    description:
+      'El cuerpo de la petición supera el límite: 1 MB en `/api/v1` (5 MB en las rutas `/iclock` de los checadores).',
     examples: {
       default: {
         code: 'PAYLOAD_TOO_LARGE',
-        message: 'El cuerpo de la petición supera 1 MB',
+        message: 'El cuerpo de la petición supera el tamaño permitido',
       },
     },
   },

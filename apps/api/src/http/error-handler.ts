@@ -87,7 +87,7 @@ export function errorHandler(logger: Logger): ErrorRequestHandler {
       if (error.type === 'entity.too.large') {
         const body: ApiErrorBody = {
           code: 'PAYLOAD_TOO_LARGE',
-          message: 'El cuerpo de la petición supera 1 MB',
+          message: 'El cuerpo de la petición supera el tamaño permitido',
         };
         res.status(413).json(body);
         return;

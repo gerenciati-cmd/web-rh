@@ -108,7 +108,10 @@ POST /api/v1/companies/:id/employees
   con `code` estable. La capa HTTP traduce la **categoría** a status:
   `NotFoundError→404`, `ConflictError→409`, `InvalidValueError/BusinessRuleViolationError→422`,
   `AuthenticationError→401`, `TooManyRequestsError→429`.
-- **Entrada HTTP inválida** → 400 `VALIDATION_ERROR` con los issues de Zod por campo.
+- **Entrada HTTP inválida** → 400 `VALIDATION_ERROR` con los issues de Zod por campo (mensajes
+  de Zod en español: `z.config(z.locales.es())` en `src/http/bind-route.ts`).
+- **Cuerpo ilegible** → 400 `MALFORMED_JSON` (JSON mal formado) o 413 `PAYLOAD_TOO_LARGE` (más de
+  1 MB; 5 MB en `/iclock`): errores del parser, traducidos en `src/http/error-handler.ts`.
 - **Sin sesión válida** (o token desconocido/vencido) → 401 `AUTHENTICATION_REQUIRED`: error de
   adaptador (`src/http/request-context.ts`), igual que `RequestValidationError`, no una categoría
   de dominio.

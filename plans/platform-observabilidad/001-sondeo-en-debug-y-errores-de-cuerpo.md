@@ -1,5 +1,5 @@
 ---
-status: review
+status: verify
 module: platform
 min_implementer: mid
 depends_on: [platform-openapi/002]
@@ -84,7 +84,7 @@ cuerpo de la petición supera 1 MB' }`). Narrow with a small type guard, no `any
    - Observable result: typecheck passes.
 
 4. **Docs and regeneration**
-   - Files: `packages/contracts/openapi.json` (modify), `docs/integraciones/zkteco-senseface-2a.md` (modify), `packages/contracts/src/openapi.test.ts` (modify), `apps/api/tests/request-logging-and-body-errors.test.ts` (create)
+   - Files: `packages/contracts/openapi.json` (modify), `docs/integraciones/zkteco-senseface-2a.md` (modify), `packages/contracts/src/openapi.test.ts` (modify), `apps/api/tests/request-logging-and-body-errors.test.ts` (create), `docs/architecture.md` (modify)
    - Do: regenerate the OpenAPI snapshot (new catalogue codes). Runbook: note that the polling
      `request completed` lines appear only with `LOG_LEVEL=debug`.
    - Observable result: `pnpm check` passes.
@@ -139,5 +139,76 @@ Línea base: `pnpm check` verde antes de escribir tests. Tests nuevos: 7 http en
 | `LOG_LEVEL=info` en `.env.example`, nota en runbook (docs)           | `.env.example`, runbook             | —        | no testeable (config/documentación)                                         | n/a       |
 
 ## Review findings
+
+Revisión 2026-10-03, diff `b9f6363..HEAD` (`504a478`, `ed92bc7`), árbol limpio.
+
+**Checklist: 12/13** (falla: docs existentes desactualizados).
+
+- [x] `pnpm plans:scope … --base b9f6363`: 13 cambiados, todos dentro del alcance. (Sin
+      `--base` compara contra `main` e incluye las otras series de la rama: no aplica.)
+- [x] `pnpm check` verde (api 838 passed / 5 skipped, contracts 259, 19/19 tareas turbo, arch,
+      plans, harness, quality).
+- [x] `infrastructure/` sin cambios → no aplica `test:integration`.
+- [x] Sin reglas de negocio fuera de `domain/` (cambios de plataforma HTTP y catálogo).
+- [x] CQRS: no aplica (sin commands/queries nuevos).
+- [x] Cuerpos de error tipados con `ApiErrorBody` de `@rrhh/contracts`; códigos en `API_ERRORS`.
+- [x] Errores esperados con `code` estable; el detalle de body-parser no se filtra al cliente.
+- [x] Money/fechas/Clock: no aplica.
+- [x] Sin cambio de esquema.
+- [x] DI: sin registros nuevos; `container.test.ts` verde.
+- [x] Sin secretos ni datos personales (seriales y nombres de prueba ficticios).
+- [~] `## Deviations` existe; verificado contra el código (las dos entradas `generic(...)` están
+  en `error-catalog.test.ts:128-133`). Detalle menor: dice que el archivo está "fuera de la
+  lista del plan", pero el paso 2 sí lo lista. Inexacto, no deshonesto; no bloquea.
+- [ ] Docs existentes: `docs/architecture.md:107-117` (sección _Errores_) enumera los errores de
+      adaptador HTTP (`VALIDATION_ERROR`, `AUTHENTICATION_REQUIRED`, `FORBIDDEN`) y dice que lo
+      no reconocido es 500 `INTERNAL_ERROR`; no menciona `MALFORMED_JSON` (400) ni
+      `PAYLOAD_TOO_LARGE` (413), ni que los mensajes integrados de Zod salen en español. Ver L-2.
+
+### Hallazgos
+
+**High:** ninguno. **Medium:** ninguno.
+
+**Low**
+
+- **L-1 — `apps/api/src/http/error-handler.ts:87-93`: el 413 siempre dice "supera 1 MB", pero
+  `/iclock` tiene un límite de 5 MB.** `zkteco-adms.router.ts:33` monta
+  `express.text({ limit: '5mb' })`; su `entity.too.large` sube por la cadena de Express al mismo
+  `errorHandler` de la app (`app.ts:72`) y recibe `{ code: 'PAYLOAD_TOO_LARGE', message: 'El
+cuerpo de la petición supera 1 MB' }`. Escenario: un checador empuja un lote de `ATTLOG` de 6 MB
+  → 413 con un mensaje que afirma un límite falso (antes del plan era 500). El equipo ignora el
+  cuerpo, así que el impacto es solo de diagnóstico; confirmado por lectura, no ejecutado. Arreglo
+  posible dentro del alcance: mensaje sin cifra ("supera el tamaño permitido") o tomar el límite
+  de `error.limit` que body-parser adjunta; ajustar el ejemplo/descr. en
+  `packages/contracts/src/errors.ts` y el test de `request-logging-and-body-errors.test.ts` si
+  cambia el texto.
+- **L-2 — `docs/architecture.md:107-117` desactualizado** (ver checklist). No está en la lista de
+  archivos del plan: o se añade (cambio de alcance menor, desvío documentado) o el usuario decide
+  dejarlo a un hallazgo aparte.
+
+**Info (sin acción requerida)**
+
+- `app.ts:33-35`: `customLogLevel` compara `req.url` exacto. Express enruta sin distinguir
+  mayúsculas ni barra final, así que `/iclock/getrequest/` o `/ICLOCK/getrequest` responderían 200
+  pero se registrarían en info. El firmware observado usa la forma exacta; sin impacto práctico.
+- Otros errores de body-parser (`encoding.unsupported`, `charset.unsupported`,
+  `request.aborted`) siguen cayendo en 500 `INTERNAL_ERROR`; comportamiento previo y fuera del
+  alcance del plan (que nombra solo dos tipos).
+- Locale de Zod: `apps/api` y `packages/contracts` resuelven al mismo `zod@4.6.5`
+  (`node_modules/.pnpm/zod@4.6.5`), y el test HTTP lo confirma con un mensaje integrado de los
+  contratos.
+
+Estado: se queda en `review` (L-1 y L-2 requieren cambios de código/docs).
+
+### Resolution (main session, 2026-10-03)
+
+- **L-1 — fixed:** the 413 message no longer names a size ("El cuerpo de la petición supera el
+  tamaño permitido"), valid for both the 1 MB JSON limit and the 5 MB `/iclock` text limit; the
+  catalogue description states both limits. Tests and example updated.
+- **L-2 — fixed:** `docs/architecture.md` "Errores" mentions `MALFORMED_JSON`, `PAYLOAD_TOO_LARGE`
+  and the Spanish Zod messages; declared in step 4's file list (deviation recorded here).
+- Deviations inaccuracy (`error-catalog.test.ts` is in step 2's list): it was added to step 2 by
+  the main session after implementation; the implementer's note was right at the time.
+- Info: no change.
 
 ## Verification

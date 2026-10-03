@@ -118,7 +118,7 @@ describe('errores de cuerpo', () => {
     expect(response.status).toBe(413);
     expect(response.body).toEqual({
       code: 'PAYLOAD_TOO_LARGE',
-      message: 'El cuerpo de la petición supera 1 MB',
+      message: 'El cuerpo de la petición supera el tamaño permitido',
     });
     expect(lines.some((line) => line.msg === 'unhandled error')).toBe(false);
   });

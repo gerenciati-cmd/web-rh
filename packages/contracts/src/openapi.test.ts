@@ -438,7 +438,7 @@ describe('buildOpenApiDocument — documentación por endpoint y errores', () =>
     });
     expect(document.components.examples.PAYLOAD_TOO_LARGE?.value).toEqual({
       code: 'PAYLOAD_TOO_LARGE',
-      message: 'El cuerpo de la petición supera 1 MB',
+      message: 'El cuerpo de la petición supera el tamaño permitido',
     });
     expect(document.info.description).toMatch(/\| `MALFORMED_JSON` \| 400 \|/);
     expect(document.info.description).toMatch(/\| `PAYLOAD_TOO_LARGE` \| 413 \|/);
