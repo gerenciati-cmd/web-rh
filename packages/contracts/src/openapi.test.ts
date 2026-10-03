@@ -104,8 +104,14 @@ describe('buildOpenApiDocument', () => {
       responses: Record<string, unknown>;
     };
     expect(createCompany.responses.default).toEqual({ $ref: '#/components/responses/Error' });
-    expect(createCompany.responses).not.toHaveProperty('400');
-    expect(createCompany.responses).not.toHaveProperty('401');
+    // Plan platform-openapi/002: 400/401/403 se derivan de lo que la ruta declara, pero como
+    // `$ref` a components.responses (no copias en línea).
+    expect(createCompany.responses['400']).toEqual({
+      $ref: '#/components/responses/ValidationError',
+    });
+    expect(createCompany.responses['401']).toEqual({
+      $ref: '#/components/responses/Unauthenticated',
+    });
   });
 
   it('components.responses.Error referencia components.schemas.ApiError', () => {
@@ -158,6 +164,7 @@ describe('buildOpenApiDocument — catálogos inválidos (finding 2 y 3 de la re
           method: 'GET',
           path: '/duplicated',
           summary: 'Primera',
+          description: 'Descripción de prueba',
           access: authenticated,
           response: z.string(),
         }),
@@ -167,6 +174,7 @@ describe('buildOpenApiDocument — catálogos inválidos (finding 2 y 3 de la re
           method: 'GET',
           path: '/duplicated',
           summary: 'Segunda',
+          description: 'Descripción de prueba',
           access: authenticated,
           response: z.string(),
         }),
@@ -187,6 +195,7 @@ describe('buildOpenApiDocument — catálogos inválidos (finding 2 y 3 de la re
           method: 'GET',
           path: '/anonymous',
           summary: 'Recursivo sin nombre',
+          description: 'Descripción de prueba',
           access: authenticated,
           response: wrapper,
         }),
@@ -205,6 +214,7 @@ describe('buildOpenApiDocument — catálogos inválidos (finding 2 y 3 de la re
           method: 'GET',
           path: '/dup-a',
           summary: 's',
+          description: 'Descripción de prueba',
           access: authenticated,
           response: dupA,
         }),
@@ -212,6 +222,7 @@ describe('buildOpenApiDocument — catálogos inválidos (finding 2 y 3 de la re
           method: 'GET',
           path: '/dup-b',
           summary: 's',
+          description: 'Descripción de prueba',
           access: authenticated,
           response: dupB,
         }),
@@ -229,6 +240,7 @@ describe('buildOpenApiDocument — catálogos inválidos (finding 2 y 3 de la re
           method: 'GET',
           path: '/named-params/:companyId',
           summary: 's',
+          description: 'Descripción de prueba',
           access: authenticated,
           params: namedParams,
           response: z.string(),
@@ -264,6 +276,7 @@ describe('buildOpenApiDocument — orden de components.schemas (info 3, ronda de
           method: 'GET',
           path: '/order-a',
           summary: 's',
+          description: 'Descripción de prueba',
           access: authenticated,
           response: lower,
         }),
@@ -271,6 +284,7 @@ describe('buildOpenApiDocument — orden de components.schemas (info 3, ronda de
           method: 'GET',
           path: '/order-b',
           summary: 's',
+          description: 'Descripción de prueba',
           access: authenticated,
           response: upper,
         }),
@@ -286,5 +300,132 @@ describe('buildOpenApiDocument — orden de components.schemas (info 3, ronda de
     // 'Bbb' (66) va antes que 'aaa' (97). Un `localeCompare` case-insensitive daría
     // ['aaa', 'ApiError', 'Bbb'] (comprobado aparte) en vez de este orden.
     expect(Object.keys(document.components.schemas)).toEqual(['ApiError', 'Bbb', 'aaa']);
+  });
+});
+
+/**
+ * Plan platform-openapi/002: descripción por operación, errores derivados y declarados, y
+ * ejemplos emitidos una sola vez (`components.examples`) con las operaciones solo por `$ref`.
+ */
+describe('buildOpenApiDocument — documentación por endpoint y errores', () => {
+  interface DocumentedOperation {
+    description?: string;
+    parameters?: { name: string; description?: string }[];
+    responses: Record<
+      string,
+      {
+        $ref?: string;
+        description?: string;
+        content?: { 'application/json': { examples?: Record<string, unknown> } };
+      }
+    >;
+  }
+  const document = buildOpenApiDocument(apiRoutes) as unknown as {
+    info: { description: string };
+    paths: Record<string, Record<string, DocumentedOperation>>;
+    components: {
+      examples: Record<string, { summary: string; value: { code: string } }>;
+      responses: Record<string, unknown>;
+    };
+  };
+  const operations = Object.entries(document.paths).flatMap(([path, methods]) =>
+    Object.entries(methods).map(([method, operation]) => ({ path, method, operation })),
+  );
+
+  it('toda operación lleva una descripción no vacía', () => {
+    for (const { path, method, operation } of operations) {
+      expect(operation.description?.trim(), `${method} ${path}`).toBeTruthy();
+    }
+  });
+
+  it('los ejemplos de error solo viven en components.examples: las operaciones usan $ref', () => {
+    const inline = JSON.stringify(document.paths);
+    // Un ejemplo en línea llevaría `value`; las referencias solo `$ref`.
+    expect(inline).not.toContain('"value"');
+    expect(inline).not.toContain('"example"');
+    for (const { operation } of operations) {
+      for (const response of Object.values(operation.responses)) {
+        for (const example of Object.values(
+          response.content?.['application/json'].examples ?? {},
+        )) {
+          expect(Object.keys(example as object)).toEqual(['$ref']);
+        }
+      }
+    }
+  });
+
+  it('todo código declarado por una ruta existe en components.examples', () => {
+    for (const group of Object.values(apiRoutes)) {
+      for (const route of Object.values(group) as RouteDefinition[]) {
+        for (const code of route.errors ?? []) {
+          expect(document.components.examples).toHaveProperty([code]);
+        }
+      }
+    }
+  });
+
+  it('deriva 400/401/403 de lo que la ruta declara', () => {
+    const assignSite =
+      document.paths['/companies/{companyId}/employees/{employeeId}/site']?.put?.responses;
+    expect(Object.keys(assignSite ?? {})).toEqual(
+      expect.arrayContaining(['204', '400', '401', '403', '404', '422', 'default']),
+    );
+    expect(assignSite?.['400']).toEqual({ $ref: '#/components/responses/ValidationError' });
+    expect(assignSite?.['401']).toEqual({ $ref: '#/components/responses/Unauthenticated' });
+    expect(assignSite?.['403']).toEqual({ $ref: '#/components/responses/Forbidden' });
+  });
+
+  it('una ruta pública no deriva 401/403; el 401 es el declarado (credenciales)', () => {
+    const logIn = document.paths['/auth/login']?.post?.responses;
+    expect(logIn?.['401']?.description).toBe('INVALID_CREDENTIALS');
+    expect(logIn).not.toHaveProperty('403');
+  });
+
+  it('una ruta autenticada sin entrada ni permiso solo deriva 401', () => {
+    const me = document.paths['/auth/me']?.get?.responses;
+    expect(me).not.toHaveProperty('400');
+    expect(me).not.toHaveProperty('403');
+    expect(me?.['401']).toEqual({ $ref: '#/components/responses/Unauthenticated' });
+  });
+
+  it('agrupa los errores declarados por status, con un ejemplo por código', () => {
+    const responses =
+      document.paths['/companies/{companyId}/employees/{employeeId}/site']?.put?.responses;
+    expect(responses?.['404']?.description).toBe(
+      'EMPLOYEE_NOT_FOUND, SITE_NOT_FOUND, COMPANY_NOT_FOUND',
+    );
+    expect(responses?.['404']?.content?.['application/json'].examples).toEqual({
+      EMPLOYEE_NOT_FOUND: { $ref: '#/components/examples/EMPLOYEE_NOT_FOUND' },
+      SITE_NOT_FOUND: { $ref: '#/components/examples/SITE_NOT_FOUND' },
+      COMPANY_NOT_FOUND: { $ref: '#/components/examples/COMPANY_NOT_FOUND' },
+    });
+    expect(responses?.['422']?.description).toBe('SITE_INACTIVE, SITE_COUNTRY_MISMATCH');
+  });
+
+  it('copia la descripción del esquema al parámetro', () => {
+    const parameters = document.paths['/attendance/punches']?.get?.parameters ?? [];
+    expect(parameters.find((p) => p.name === 'page')?.description).toMatch(/por defecto 1/);
+    expect(parameters.find((p) => p.name === 'from')?.description).toMatch(/^Opcional/);
+  });
+
+  it('la portada explica autenticación, forma del error, paginación y lista cada código', () => {
+    expect(document.info.description).toMatch(/Autenticación/);
+    expect(document.info.description).toMatch(/Paginación/);
+    for (const code of Object.keys(document.components.examples)) {
+      expect(document.info.description).toContain(`\`${code}\``);
+    }
+  });
+
+  it('lanza si una ruta declara un error con un status que ya se deriva solo', () => {
+    const clash: RouteDefinition = defineRoute({
+      method: 'GET',
+      path: '/clash',
+      summary: 's',
+      description: 'd',
+      errors: ['AUTHENTICATION_REQUIRED'],
+      access: authenticated,
+      response: z.string(),
+    });
+    expect(() => buildOpenApiDocument({ moduleA: { clash } })).toThrow(/ya se derivan solos/);
   });
 });

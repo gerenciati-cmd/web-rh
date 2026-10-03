@@ -194,7 +194,7 @@ describe('OpenAPI: seguridad por operación', () => {
   const document = buildOpenApiDocument(apiRoutes) as {
     paths: Record<string, Record<string, Operation>>;
     security: unknown[];
-    components: { responses: { Error: { description: string } } };
+    components: { responses: { Forbidden: { description: string } } };
   };
 
   it('la seguridad global no admite anónimos (sin {})', () => {
@@ -229,7 +229,9 @@ describe('OpenAPI: seguridad por operación', () => {
     );
   });
 
-  it('la respuesta Error menciona el 403', () => {
-    expect(document.components.responses.Error.description).toContain('403');
+  // Plan platform-openapi/002: el 403 ya no vive en la respuesta genérica `Error` (ahora solo
+  // 500), sino en `components.responses.Forbidden`, que las rutas con permiso referencian.
+  it('la respuesta Forbidden documenta el 403 (FORBIDDEN)', () => {
+    expect(document.components.responses.Forbidden.description).toContain('FORBIDDEN');
   });
 });

@@ -2,6 +2,7 @@ export * from './attendance/device-command.contract';
 export * from './attendance/device.contract';
 export * from './attendance/punch.contract';
 export * from './common';
+export * from './errors';
 export * from './employees/employee.contract';
 export * from './http';
 export * from './identity/access.contract';

@@ -1,6 +1,8 @@
 import type { Permission } from '@rrhh/domain';
 import type { z } from 'zod';
 
+import type { ApiErrorCode } from './errors';
+
 export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 
 /** Quién puede llamar a una ruta. Ver `RouteDefinition.access`. */
@@ -32,6 +34,16 @@ export interface RouteDefinition {
   /** Estilo Express: `/companies/:companyId/employees` */
   readonly path: string;
   readonly summary: string;
+  /**
+   * Explicación en markdown para la referencia de la API: qué hace, quién puede llamarla, qué
+   * necesita y qué efectos tiene.
+   */
+  readonly description: string;
+  /**
+   * Códigos de error de dominio que la ruta puede devolver (404, 409, 422, 429). Los genéricos
+   * 400, 401 y 403 se derivan de lo que la ruta ya declara (entrada y acceso).
+   */
+  readonly errors?: readonly ApiErrorCode[];
   /**
    * Negado por defecto: toda ruta declara quién la puede llamar. `companyParam` nombra el
    * parámetro de path cuya empresa debe estar en el alcance del actor.

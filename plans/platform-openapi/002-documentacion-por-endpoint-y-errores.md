@@ -1,5 +1,5 @@
 ---
-status: approved
+status: testing
 module: platform
 min_implementer: mid
 depends_on: []
@@ -149,7 +149,7 @@ None
    - Observable result: contracts typecheck passes.
 
 5. **Snapshot, structure test and drift test**
-   - Files: `packages/contracts/openapi.json` (modify), `packages/contracts/src/openapi.test.ts` (modify), `apps/api/tests/error-catalog.test.ts` (create)
+   - Files: `packages/contracts/openapi.json` (modify), `packages/contracts/src/openapi.test.ts` (modify), `apps/api/tests/error-catalog.test.ts` (create), `packages/contracts/src/identity/access.contract.test.ts` (modify), `apps/api/tests/authorization.test.ts` (modify)
    - Do: regenerate the snapshot (`pnpm --filter @rrhh/contracts openapi`). In `openapi.test.ts`
      add: every operation has a non-empty `description`; no operation contains an inline
      `example`/`examples` value (only `$ref`), so examples exist once; every code declared by a
@@ -191,6 +191,27 @@ None
 | e2e         | no      | (no e2e infrastructure yet)                                                             |
 
 ## Deviations
+
+Fecha: 2026-10-03. Pasos 1–5 hechos (5/5).
+
+1. **Cosmético, fuera de la lista de archivos**: dos tests existentes afirmaban el comportamiento
+   que este plan reemplaza a propósito (`components.responses.Error` mencionaba "403"; ahora `Error`
+   es solo el 500 y el 403 vive en `components.responses.Forbidden`). Se actualizaron con el mínimo
+   cambio: `packages/contracts/src/identity/access.contract.test.ts` (test "la respuesta Forbidden
+   documenta el 403") y `apps/api/tests/authorization.test.ts` (afirma `responses['403']` →
+   `$ref` a `Forbidden`). `pnpm plans:scope --base 5567936` los lista como fuera de alcance por esto.
+2. **Cosmético**: en `openapi.test.ts` también se ajustó el test de ronda 1 "cada operación
+   referencia components.responses.Error como respuesta default": ya no exige que falten 400/401
+   (ahora se derivan como `$ref`); sí sigue exigiendo el `default`. Ese archivo sí está en la lista.
+3. Líneas finales de `packages/contracts/openapi.json`: **3,838** (el plan estimaba ~3,400; el
+   criterio de aceptación pide < 4,000: se cumple).
+4. `ROUTE_NOT_FOUND` lleva el mensaje `No existe GET /nada` en el ejemplo (el handler real arma
+   `No existe ${method} ${path}`). `BUSINESS_RULE_VIOLATION` (código base) no está en el catálogo:
+   ninguna clase concreta lo emite y el test de deriva solo lee los archivos listados en el plan.
+5. Los criterios de aceptación que exigen ver `/api/v1/docs` y comparar ejemplos con el API en
+   marcha (`SITE_ALREADY_EXISTS`, `FORBIDDEN`, `VALIDATION_ERROR`, `SITE_COUNTRY_MISMATCH`) NO se
+   ejercieron en esta fase: quedan para `verify`. Los mensajes de `details` del ejemplo
+   `VALIDATION_ERROR` (issue de Zod con `origin`/`format`) están por confirmar contra el API real.
 
 ## Test coverage
 

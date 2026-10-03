@@ -468,14 +468,16 @@ describe('autorización HTTP', () => {
   });
 
   describe('OpenAPI', () => {
-    it('GET /openapi.json: login sin seguridad, negocio con x-permission y 403 en Error', async () => {
+    it('GET /openapi.json: login sin seguridad, negocio con x-permission y 403 documentado', async () => {
       const response = await request(app).get(`${API_PREFIX}/openapi.json`).expect(200);
 
       expect(response.body.paths['/auth/login'].post.security).toEqual([]);
       expect(response.body.paths['/companies'].get['x-permission']).toBe(
         'organization.companies:read',
       );
-      expect(response.body.components.responses.Error.description).toContain('403');
+      expect(response.body.paths['/companies'].get.responses['403']).toEqual({
+        $ref: '#/components/responses/Forbidden',
+      });
     });
   });
 });
