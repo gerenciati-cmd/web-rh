@@ -1,5 +1,5 @@
 ---
-status: review
+status: verify
 module: attendance
 min_implementer: mid
 depends_on: ['003']
@@ -202,5 +202,94 @@ tests): `device-command.test.ts`, `queue-device-command.command.test.ts`,
 `device-record.test.ts` y `record-device-contact.command.test.ts`.
 
 ## Review findings
+
+Revisión 2026-10-02 (reviewer, base del diff `3fd317f`). `status` sigue en `review`: hay un
+hallazgo High que requiere cambio de código.
+
+**Checklist: 12/13.**
+
+- [x] `pnpm plans:scope … --base 3fd317f`: solo queda fuera `apps/api/tests/zz-scratch.test.ts`
+      (untracked, temporal, el usuario lo borra; no es parte del diff). Hot files: `index.ts` e
+      `test-app.ts` solo agregan; `schema.prisma` agrega el modelo y además la back-relation
+      `commands` dentro de `AttendanceDevice`, que Prisma exige (aceptable).
+- [x] `pnpm check` verde.
+- [x] `pnpm test:integration`: 15 archivos / 178 tests verdes.
+- [x] Reglas en `domain/` (patrón y largo en `DeviceCommand.queue`, `markSent`).
+- [x] CQRS ligero: comandos vía agregado y repositorio; bitácora vía `AttendanceQueries` con DTO.
+- [x] Tipos de `@rrhh/contracts`, sin duplicados (el regex duplicado en dominio lo pide el plan).
+- [x] `Result` + `DEVICE_NOT_FOUND` / `INVALID_VALUE`.
+- [x] `Clock` / `IdGenerator`; fechas `timestamptz`.
+- [x] Migración nueva, solo `CREATE TABLE` + índice + FK al mismo schema.
+- [x] DI resuelve (`container.test.ts` verde), módulo registrado una vez.
+- [x] Sin secretos ni datos reales (RFC y nombre de fixtures son ficticios).
+- [x] Deviations honestas (verificada la 5: `bodyLength` sigue en el log, `body` no).
+- [ ] **Docs al día — FALLA**: ver L1.
+
+### High
+
+- **H1 — El filtro "solo USERINFO" se evade con saltos de línea.**
+  `packages/contracts/src/attendance/device-command.contract.ts:10` y
+  `apps/api/src/modules/attendance/domain/device-command.ts:20`/`:42`. El patrón solo ancla el
+  inicio (`^…USERINFO `) y no restringe el resto; `\n`/`\r` pasan. `getrequest` devuelve el texto
+  tal cual (`http/zkteco-adms.router.ts:91`), y en ADMS la respuesta de `getrequest` puede traer
+  varios comandos, uno por línea. Escenario: un HOLDING_ADMIN (o una sesión de admin robada, o un
+  error de copiado) encola `"DATA QUERY USERINFO PIN=1\nC:99:CLEAR DATA"` → 201 (ambos niveles
+  lo aceptan) → el equipo recibe dos comandos y el segundo puede borrar usuarios o marcaciones del
+  equipo físico. Así queda sin efecto la contención que justifica la sonda ("To limit damage,
+  only commands about users are accepted") y el criterio 1 (`CLEAR …` → 400) se cumple solo si
+  `CLEAR` va al principio. Corrección esperada (en el contrato y en el dominio, con su test):
+  rechazar `\r`, `\n` y los demás caracteres de control salvo `\t` (p. ej. `[^\x00-\x08\x0A-\x1F\x7F]`
+  al final del patrón con `$`). Hoy ningún test prueba texto multilínea.
+
+### Medium
+
+- **M1 — El texto encolado (RFC + nombre) sale a quien sepa el número de serie** (requiere
+  decisión del usuario, no necesariamente cambio de código). `http/zkteco-adms.router.ts:86-92` +
+  `application/commands/take-device-command.command.ts:23-27`. El SN es la única credencial del
+  equipo (ADR 0013, riesgo aceptado para tráfico _entrante_). Este plan hace que `getrequest`
+  devuelva datos personales que escribió un admin: cualquiera que conozca el SN (viene impreso en
+  la etiqueta del equipo) y llegue a `/iclock` puede sondear antes que el equipo, recibir el
+  comando con PIN/RFC y nombre, y dejarlo en `SENT`, así que el equipo real nunca lo recibe. El
+  ADR 0013 ya anota la señal ("si se exponen los `/iclock` fuera de una red controlada…"). Para
+  la sonda en red local puede aceptarse; antes del sync (plan 005) hay que decidirlo. Propuesta:
+  registrarlo en el README de la serie o en un ADR.
+
+### Low
+
+- **L1 — Doc desactualizada.** `docs/integraciones/zkteco-senseface-2a.md:22` sigue diciendo
+  "No envía comandos al equipo: `getrequest` siempre responde `OK`", y contradice la nueva
+  sección "Sonda de comandos" (`:96-111`).
+- **L2 — Entrega no atómica: un comando puede salir dos veces.** `take-device-command.command.ts:23-27`
+  hace `findFirst` QUEUED y luego `upsert`, sin reclamo condicional (`updateMany … where status =
+'QUEUED'` y comprobar `count`). Dos `getrequest` concurrentes del mismo SN (reintento del equipo
+  o el sondeo de M1) reciben el mismo texto. Para `DATA UPDATE/QUERY` es casi inofensivo; para la
+  sonda alcanza con saberlo. Debe resolverse en el 005.
+- **L3 — Si llegan varios resultados en un mismo `devicecmd`, solo se registra el último (sin
+  confirmar).** `domain/device-record.ts:73-77` mezcla en un solo objeto todos los pares de todas
+  las líneas. Si el equipo junta varios resultados en un cuerpo (uno por línea, cada uno con
+  `ID&Return&CMD`), los anteriores se pisan y se pierden `ID`/`Return` justo en la evidencia que
+  la sonda quiere juntar. Como el formato no se ha observado, queda como incierto; el verificador
+  debería revisar `bodyLength` contra lo registrado.
+- **L4 — `CMD` puede llevar el texto del comando al log (sin confirmar).** `CMD` está en la
+  allowlist (`device-record.ts:51`) con un tope de 64 caracteres. Si el firmware repite el
+  comando completo en `CMD` (la literatura dice solo `DATA`), un comando corto como
+  `DATA UPDATE USERINFO PIN=X\tName=Ana Rojas` (≤ 64) quedaría con el nombre en el log nivel info.
+  El PIN ya se registra por diseño; el nombre no debería. Es un riesgo del formato no observado:
+  el verificador debe mirar el valor real de `CMD`.
+
+### Resolution (main session, 2026-10-02)
+
+- **H1 — fixed:** the pattern (contract and domain) is anchored with `$`, uses the `u` flag and
+  admits no control character except `\t` (`(?:\t|[^\p{Cc}])*`). Regression cases in
+  `device-command.contract.test.ts` and `device-command.test.ts` (`\n`, `\r\n`, `\r`, `\u0000`
+  followed by `CLEAR DATA`); `openapi.json` regenerated (the pattern is in the schema).
+- **M1 — pending user decision**, recorded in the series README dependency notes: the serial
+  number is the only credential, and now queued commands (PIN/RFC and name) go out through it. For
+  the probe on the local network it is accepted; plan 005 must not be written without the user
+  deciding the barrier (network, proxy, or accepting it in an ADR).
+- **L1 — fixed:** runbook line about `getrequest`.
+- **L2, L3 — for plan 005** (noted in the README): atomic take of the next command; several
+  results per `devicecmd` body.
+- **L4 — checked in verification** with the real device's `CMD` value; NOT VERIFIED until then.
 
 ## Verification

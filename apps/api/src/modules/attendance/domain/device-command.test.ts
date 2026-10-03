@@ -39,6 +39,10 @@ describe('DeviceCommand.queue', () => {
     'data update userinfo PIN=1',
     ' DATA UPDATE USERINFO PIN=1',
     'C:x:DATA UPDATE USERINFO PIN=1',
+    // Hallazgo H1 de la revisión: un salto de línea colaría un segundo comando.
+    'DATA QUERY USERINFO PIN=1\nC:99:CLEAR DATA',
+    'DATA QUERY USERINFO PIN=1\r\nCLEAR DATA',
+    'DATA QUERY USERINFO PIN=1\u0000',
   ])('rechaza %j con INVALID_VALUE', (command) => {
     const result = DeviceCommand.queue({ ...base, command });
 

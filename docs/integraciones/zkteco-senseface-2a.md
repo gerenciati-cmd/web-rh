@@ -19,7 +19,8 @@ equipo (`options`).
 - El estado de cada equipo (último contacto, última marcación) se consulta con
   `GET /api/v1/attendance/devices`; las marcaciones, con `GET /api/v1/attendance/punches`
   (HOLDING_ADMIN todas; RRHH solo las de colaboradores de sus empresas, ver "Atribución").
-- No envía comandos al equipo: `getrequest` siempre responde `OK`.
+- Solo envía al equipo los comandos `USERINFO` que un HOLDING_ADMIN encola a mano (ver "Sonda de
+  comandos"); sin comando pendiente, `getrequest` responde `OK`.
 - Asocia el PIN a un colaborador solo cuando coincide con su RFC (ver "Atribución").
 - Plantillas, fotos (`Tmp`, `Content`), nombres, claves y tarjetas **nunca** aparecen en el log:
   salen como `[redactado:<largo>]`.

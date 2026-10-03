@@ -5,9 +5,12 @@ import { defineRoute, requires } from '../http';
 
 /**
  * Familia de comandos que acepta la sonda. Es una HIPÓTESIS tomada de la literatura del protocolo
- * PUSH de ZKTeco, no observada en el equipo: la sonda existe para confirmarla.
+ * PUSH de ZKTeco, no observada en el equipo: la sonda existe para confirmarla. Anclada al final
+ * y sin caracteres de control salvo el tab: un salto de línea colaría otro comando (el equipo lee
+ * uno por línea), p. ej. `CLEAR DATA`.
  */
-export const DEVICE_COMMAND_PATTERN = /^(C:\d+:)?DATA (UPDATE|QUERY|DELETE) USERINFO /;
+export const DEVICE_COMMAND_PATTERN =
+  /^(C:\d+:)?DATA (UPDATE|QUERY|DELETE) USERINFO (?:\t|[^\p{Cc}])*$/u;
 
 // ── Modelos de lectura ─────────────────────────────────────────────────────
 export const DeviceCommandSchema = z

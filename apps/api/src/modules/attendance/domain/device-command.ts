@@ -16,8 +16,9 @@ export interface DeviceCommandProps {
 }
 
 // Duplica `DEVICE_COMMAND_PATTERN` de @rrhh/contracts (el dominio no importa contratos). Es una
-// hipótesis de la sonda, no un formato observado en el equipo.
-const COMMAND_PATTERN = /^(C:\d+:)?DATA (UPDATE|QUERY|DELETE) USERINFO /;
+// hipótesis de la sonda, no un formato observado en el equipo. Sin saltos de línea: colarían otro
+// comando en la respuesta de getrequest.
+const COMMAND_PATTERN = /^(C:\d+:)?DATA (UPDATE|QUERY|DELETE) USERINFO (?:\t|[^\p{Cc}])*$/u;
 const MAX_COMMAND_LENGTH = 500;
 
 /** Comando que un operador encoló para entregarse al checador en su próximo sondeo. */

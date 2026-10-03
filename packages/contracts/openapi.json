@@ -2159,7 +2159,7 @@
             "type": "string",
             "minLength": 1,
             "maxLength": 500,
-            "pattern": "^(C:\\d+:)?DATA (UPDATE|QUERY|DELETE) USERINFO "
+            "pattern": "^(C:\\d+:)?DATA (UPDATE|QUERY|DELETE) USERINFO (?:\\t|[^\\p{Cc}])*$"
           }
         },
         "required": [

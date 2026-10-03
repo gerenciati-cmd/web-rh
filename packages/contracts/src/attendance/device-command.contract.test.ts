@@ -17,15 +17,20 @@ describe('QueueDeviceCommandSchema', () => {
     expect(QueueDeviceCommandSchema.safeParse({ command }).success).toBe(true);
   });
 
-  it.each(['CLEAR DATA', 'REBOOT', 'DATA UPDATE BIODATA Pin=1', 'DATA UPDATE USERINFO'])(
-    'rechaza el comando %j',
-    (command) => {
-      const result = QueueDeviceCommandSchema.safeParse({ command });
+  it.each([
+    'CLEAR DATA',
+    'REBOOT',
+    'DATA UPDATE BIODATA Pin=1',
+    'DATA UPDATE USERINFO',
+    // Hallazgo H1 de la revisión: un salto de línea colaría un segundo comando.
+    'DATA QUERY USERINFO PIN=1\nC:99:CLEAR DATA',
+    'DATA QUERY USERINFO PIN=1\rCLEAR DATA',
+  ])('rechaza el comando %j', (command) => {
+    const result = QueueDeviceCommandSchema.safeParse({ command });
 
-      expect(result.success).toBe(false);
-      expect(!result.success && result.error.issues[0]?.path).toEqual(['command']);
-    },
-  );
+    expect(result.success).toBe(false);
+    expect(!result.success && result.error.issues[0]?.path).toEqual(['command']);
+  });
 
   it('no recorta espacios: el tabulador final y los iniciales cuentan', () => {
     const withTab = 'DATA UPDATE USERINFO PIN=1\t';

@@ -33,6 +33,11 @@ needs the colaborador's sede and the change events from `employees-sede/001`. No
 of `employees-sede/001`): a site change on a TERMINATED colaborador also publishes
 `site-assigned`, so the sync must check `EmployeeSummary.active` before pushing a user.
 
+Before writing 005 (review of 004): **the user must decide the barrier for outgoing commands**
+(M1: anyone who knows a serial number can poll `getrequest` and take a queued command with a PIN
+and a name); 005 must take the next command atomically (L2) and handle several results per
+`devicecmd` body (L3).
+
 ## Decisions with the user
 
 1. (2026-10-01) Going beyond the log-only probe is the right next step: the probe's goal (observe
