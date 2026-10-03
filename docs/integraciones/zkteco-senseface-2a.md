@@ -47,7 +47,8 @@ SenseFace 2A, firmware `ZAM70-NF24HA-Ver3.3.12`, PushVersion `Ver 3.1.2S-2025061
    sede, usa `PUT /api/v1/attendance/devices/:id/site` con `{"siteId":"…"}`: responde 204 y
    actualiza también la zona horaria del equipo.
 
-2. Para ver cada registro, usa `LOG_LEVEL=debug`. En `info` solo se ve el resumen por envío.
+2. Para ver cada registro, usa `LOG_LEVEL=debug`. En `info` solo se ve el resumen por envío. Las líneas `request completed` del sondeo
+   (`GET /iclock/getrequest`, cada ~10 s) aparecen solo con `LOG_LEVEL=debug`; si fallan (p. ej. 403) se ven siempre.
 3. Levanta el API (`pnpm dev:api`). Escucha en `PORT` (3001 por defecto) en todas las interfaces.
 4. El equipo debe poder llegar a tu máquina: abre ese puerto TCP de entrada en el firewall,
    idealmente solo para la IP del equipo.

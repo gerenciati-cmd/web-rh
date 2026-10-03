@@ -125,6 +125,12 @@ generic(
 generic('http/RequestValidationError', new RequestValidationError('body', []), false);
 generic('http/AuthenticationRequiredError', new AuthenticationRequiredError(), true);
 generic('http/PermissionDeniedError', new PermissionDeniedError(), true);
+generic(
+  'http/body-parser parse',
+  Object.assign(new Error('x'), { type: 'entity.parse.failed' }),
+  true,
+);
+generic('http/body-parser size', Object.assign(new Error('x'), { type: 'entity.too.large' }), true);
 generic('http/error inesperado', new Error('detalle interno'), true);
 
 const keysOf = (details: unknown): string[] =>

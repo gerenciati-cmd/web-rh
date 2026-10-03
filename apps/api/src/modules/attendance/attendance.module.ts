@@ -67,4 +67,6 @@ export const attendanceModule: AppModule<AttendanceCradle> = {
   },
   router: createAttendanceRouter,
   deviceRouter: createZktecoAdmsRouter,
+  // El checador pregunta por comandos cada ~10 s (`Delay=10`).
+  quietRequestPaths: ['/iclock/getrequest'],
 };

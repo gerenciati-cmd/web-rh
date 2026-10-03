@@ -1,5 +1,5 @@
 ---
-status: approved
+status: testing
 module: platform
 min_implementer: mid
 depends_on: [platform-openapi/002]
@@ -67,7 +67,7 @@ an attendance protocol detail.
    - Observable result: typecheck passes.
 
 2. **Body errors as client errors**
-   - Files: `apps/api/src/http/error-handler.ts` (modify), `packages/contracts/src/errors.ts` (modify)
+   - Files: `apps/api/src/http/error-handler.ts` (modify), `packages/contracts/src/errors.ts` (modify), `apps/api/tests/error-catalog.test.ts` (modify)
    - Do: before the unexpected branch, recognize body-parser errors (an object with `type`
      `'entity.parse.failed'` → 400 `{ code: 'MALFORMED_JSON', message: 'El cuerpo de la petición
 no es JSON válido' }`; `'entity.too.large'` → 413 `{ code: 'PAYLOAD_TOO_LARGE', message: 'El
@@ -113,6 +113,11 @@ cuerpo de la petición supera 1 MB' }`). Narrow with a small type guard, no `any
 | e2e         | no      | (no e2e infrastructure yet)                                                 |
 
 ## Deviations
+
+- Cosmético: se tocó `apps/api/tests/error-catalog.test.ts` (fuera de la lista del plan) con dos
+  entradas `generic(...)` (body-parser `entity.parse.failed` / `entity.too.large`). Sin ellas el test
+  de deriva falla ("no documenta códigos que ninguna clase devuelve") por los dos códigos nuevos,
+  y el plan exige que pase. Los tests por capas siguen siendo trabajo de la fase de tests.
 
 ## Test coverage
 

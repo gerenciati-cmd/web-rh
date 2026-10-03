@@ -1,7 +1,7 @@
 import type { ApiErrorBody } from './common';
 
 /** Estados HTTP con los que la API responde un error de la forma `ApiError`. */
-export type ApiErrorStatus = 400 | 401 | 403 | 404 | 409 | 422 | 429 | 500;
+export type ApiErrorStatus = 400 | 401 | 403 | 404 | 409 | 413 | 422 | 429 | 500;
 
 /** Documentación de un código de error: cuándo ocurre y cómo se ve el cuerpo. */
 export interface ApiErrorDoc {
@@ -70,6 +70,26 @@ export const API_ERRORS = {
             },
           ],
         },
+      },
+    },
+  },
+  MALFORMED_JSON: {
+    status: 400,
+    description: 'El cuerpo de la petición no es JSON válido.',
+    examples: {
+      default: {
+        code: 'MALFORMED_JSON',
+        message: 'El cuerpo de la petición no es JSON válido',
+      },
+    },
+  },
+  PAYLOAD_TOO_LARGE: {
+    status: 413,
+    description: 'El cuerpo de la petición supera el límite de 1 MB.',
+    examples: {
+      default: {
+        code: 'PAYLOAD_TOO_LARGE',
+        message: 'El cuerpo de la petición supera 1 MB',
       },
     },
   },
