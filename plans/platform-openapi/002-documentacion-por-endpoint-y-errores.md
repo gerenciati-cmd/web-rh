@@ -1,5 +1,5 @@
 ---
-status: testing
+status: review
 module: platform
 min_implementer: mid
 depends_on: []
@@ -149,7 +149,7 @@ None
    - Observable result: contracts typecheck passes.
 
 5. **Snapshot, structure test and drift test**
-   - Files: `packages/contracts/openapi.json` (modify), `packages/contracts/src/openapi.test.ts` (modify), `apps/api/tests/error-catalog.test.ts` (create), `packages/contracts/src/identity/access.contract.test.ts` (modify), `apps/api/tests/authorization.test.ts` (modify)
+   - Files: `packages/contracts/openapi.json` (modify), `packages/contracts/src/openapi.test.ts` (modify), `apps/api/tests/error-catalog.test.ts` (create), `packages/contracts/src/identity/access.contract.test.ts` (modify), `apps/api/tests/authorization.test.ts` (modify), `apps/api/tests/error-examples.test.ts` (create)
    - Do: regenerate the snapshot (`pnpm --filter @rrhh/contracts openapi`). In `openapi.test.ts`
      add: every operation has a non-empty `description`; no operation contains an inline
      `example`/`examples` value (only `$ref`), so examples exist once; every code declared by a
@@ -214,6 +214,33 @@ Fecha: 2026-10-03. Pasos 1–5 hechos (5/5).
    `VALIDATION_ERROR` (issue de Zod con `origin`/`format`) están por confirmar contra el API real.
 
 ## Test coverage
+
+Baseline `pnpm check` (2026-10-03): verde (contracts 257, api 823 + 5 skipped). Las pruebas de los
+pasos 1–5 ya las dejó el Implementer (`openapi.test.ts`, `error-catalog.test.ts`); el tester
+agregó `apps/api/tests/error-examples.test.ts` para el criterio "cada ejemplo coincide con lo que
+devuelve el API".
+
+| Comportamiento                                                                                                                                                              | Fuente                                     | Capa     | Test                                                                                  | Estado                                                                                   |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ | -------- | ------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| Toda operación tiene `description` no vacía                                                                                                                                 | `openapi.ts` `operationFor`                | contract | `openapi.test.ts › toda operación lleva una descripción no vacía`                     | CONFIRMED                                                                                |
+| Ejemplos solo por `$ref` en operaciones (una vez en `components.examples`)                                                                                                  | `openapi.ts`                               | contract | `openapi.test.ts › los ejemplos de error solo viven…`                                 | CONFIRMED                                                                                |
+| Código declarado por una ruta existe en `components.examples`                                                                                                               | `http.ts`, `openapi.ts`                    | contract | `openapi.test.ts › todo código declarado…`                                            | CONFIRMED                                                                                |
+| 400/401/403 derivados; ruta pública sin 401/403 derivados; solo 401 en `me`                                                                                                 | `openapi.ts`                               | contract | `openapi.test.ts › deriva 400/401/403…`, `una ruta pública…`, `una ruta autenticada…` | CONFIRMED                                                                                |
+| Errores agrupados por status con un ejemplo por código                                                                                                                      | `openapi.ts`                               | contract | `openapi.test.ts › agrupa los errores declarados por status…`                         | CONFIRMED                                                                                |
+| Descripción del campo se copia al parámetro                                                                                                                                 | `openapi.ts` `parametersFrom`              | contract | `openapi.test.ts › copia la descripción del esquema al parámetro`                     | CONFIRMED                                                                                |
+| Portada: autenticación, paginación y todos los códigos                                                                                                                      | `openapi.ts`                               | contract | `openapi.test.ts › la portada explica…`                                               | CONFIRMED                                                                                |
+| Error declarado con status ya derivado lanza                                                                                                                                | `openapi.ts`                               | contract | `openapi.test.ts › lanza si una ruta declara un error…`                               | CONFIRMED                                                                                |
+| Snapshot `openapi.json` al día                                                                                                                                              | `openapi.json`                             | contract | `openapi.test.ts › openapi.json está al día…`                                         | CONFIRMED                                                                                |
+| Catálogo = códigos que el código emite; status = categoría de la clase                                                                                                      | `errors.ts` de módulos, `http/*`           | http     | `error-catalog.test.ts` (5 tests; lee fuentes, como pide el paso 5 del plan)          | CONFIRMED                                                                                |
+| `/openapi.json` servido sin sesión                                                                                                                                          | `docs.router.ts`                           | http     | `docs.test.ts` (existente)                                                            | CONFIRMED                                                                                |
+| Ejemplo coincide con la respuesta real: `SITE_ALREADY_EXISTS`, `FORBIDDEN`, `AUTHENTICATION_REQUIRED`, `SITE_COUNTRY_MISMATCH` (status, code, message, claves de `details`) | `errors.ts` ejemplos                       | http     | `error-examples.test.ts` (4 tests)                                                    | CONFIRMED                                                                                |
+| Ejemplo `ROUTE_NOT_FOUND` coincide con la respuesta real                                                                                                                    | `errors.ts`, `error-handler.ts`            | http     | `error-examples.test.ts › GAP: …ROUTE_NOT_FOUND…`                                     | GAP: el ejemplo dice `No existe GET /nada`; el API devuelve `No existe GET /api/v1/nada` |
+| Ejemplo `VALIDATION_ERROR` coincide con la respuesta real                                                                                                                   | `errors.ts`, `request-validation-error.ts` | http     | `error-examples.test.ts › GAP: …VALIDATION_ERROR…`                                    | GAP: el issue real de uuid trae además la clave `pattern`                                |
+| Vista en `/api/v1/docs` (Scalar renderizado)                                                                                                                                | —                                          | e2e      | —                                                                                     | NOT CONFIRMED: sin infraestructura e2e; queda para verify                                |
+
+Conteos de esta fase: contract 0 nuevos (ya cubiertos), http 6 nuevos (4 normales + 2 `it.fails`).
+Los dos GAP son de documentación (ejemplos en `packages/contracts/src/errors.ts`), no del
+comportamiento del API; al corregir el ejemplo, el `it.fails` se pondrá rojo y debe promoverse.
 
 ## Review findings
 
