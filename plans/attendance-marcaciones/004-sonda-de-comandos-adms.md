@@ -122,11 +122,11 @@ deps.takeDeviceCommand.execute({ deviceId })` — the contact use case must retu
 
 ## Acceptance criteria
 
-- [ ] `POST /api/v1/attendance/devices/:id/commands` as HOLDING_ADMIN with a `DATA UPDATE USERINFO …`
+- [x] `POST /api/v1/attendance/devices/:id/commands` as HOLDING_ADMIN with a `DATA UPDATE USERINFO …`
       text → 201; a `CLEAR …` text → 400; HR → 403; unknown device → 404.
-- [ ] The next `GET /iclock/getrequest?SN=<that device>` answers exactly the queued text; the
+- [x] The next `GET /iclock/getrequest?SN=<that device>` answers exactly the queued text; the
       following one answers `OK`; `GET …/commands` shows it `SENT` with `sentAt`.
-- [ ] A `POST /iclock/devicecmd` with `ID=1&Return=0&CMD=DATA` logs `zkteco: resultado de comando`
+- [x] A `POST /iclock/devicecmd` with `ID=1&Return=0&CMD=DATA` logs `zkteco: resultado de comando`
       with those three values; other fields come out redacted.
 - [ ] **Real device (the point of the probe):** a command creating user PIN `GOMA850101AB1`, name
       `Ana Rojas` is accepted by the SenseFace 2A — the user appears in the device's user list,
@@ -293,3 +293,29 @@ hallazgo High que requiere cambio de código.
 - **L4 — checked in verification** with the real device's `CMD` value; NOT VERIFIED until then.
 
 ## Verification
+
+**Partial: criteria 1–3 PASS; criterion 4 (real device) NOT VERIFIED** — 2026-10-02, main
+session, at `d820386`, against the dev API on `localhost:3000` started from the branch (migration
+`20261003031633_create_device_commands` applied). The plan stays in `verify` until the user runs
+the real-device probe: it is the point of this plan.
+
+- Suites at `d820386`: `pnpm check` green (api 818 passed / 6 skipped, contracts 247);
+  `pnpm test:integration` 178 green at the tester phase (the fix touched no infrastructure).
+- Script over HTTP and `/iclock` (synthetic sede `Verificación sonda <suffix>`, device
+  `SONDA<suffix>`), 9/9 PASS:
+  - HOLDING_ADMIN queues `C:1:DATA UPDATE USERINFO PIN=9100\tName=Prueba Sonda` → 201;
+    `CLEAR DATA` → 400; review H1 `DATA QUERY USERINFO PIN=1\nC:99:CLEAR DATA` → 400; HR → 403;
+    unknown device → 404 `DEVICE_NOT_FOUND`.
+  - Next `GET /iclock/getrequest` answers exactly the queued text (with its tab); the following
+    one answers `OK`; `GET …/commands` shows it `SENT` with `sentAt`.
+  - `POST /iclock/devicecmd` `ID=1&Return=0&CMD=DATA&Name=Prueba Sonda` → `OK`; the API log shows
+    `zkteco: resultado de comando` with `ID: "1"`, `Return: "0"`, `CMD: "DATA"`,
+    `Name: "[redactado:12]"`.
+  - Logs: `comando encolado` and `comando entregado` carry only ids; the text `Prueba Sonda` appears
+    0 times in the API output.
+- **NOT VERIFIED — criterion 4 and review L4** (needs the SenseFace 2A): register the device with a
+  sede, queue the user command for PIN `GOMA850101AB1` / `Ana Rojas`, check the device's user list,
+  enroll, mark, see the punch attributed to Ana; record here the exact accepted text, the
+  `devicecmd` reply and the real `CMD` value.
+- Data left in the dev DB: sede `Verificación sonda <suffix>`, device `SONDA<suffix>` with one
+  `SENT` command.
