@@ -21,6 +21,9 @@ personales, router sin lógica de negocio) sigue vigente.
   warn `zkteco: dispositivo no autorizado`.
 - Los equipos se registran con `POST /api/v1/attendance/devices` (permiso
   `attendance.devices:manage`), con serial, nombre y zona horaria IANA.
+  _Actualización 2026-10-02 (plan `attendance-marcaciones/003`):_ el equipo ya no recibe la zona;
+  se registra con una sede (`siteId`) y copia su zona, que sale de la lista cerrada por país de
+  `organization-sedes/001`. Se cambia con `PUT /api/v1/attendance/devices/:deviceId/site`.
 - La verificación la hacen los casos de uso del módulo (`RecordDeviceContact`, `RecordDevicePush`)
   contra el puerto `DeviceRepository`, no el router.
 - `ZKTECO_ALLOWED_SERIALS` se elimina; si queda en un `.env`, se ignora.

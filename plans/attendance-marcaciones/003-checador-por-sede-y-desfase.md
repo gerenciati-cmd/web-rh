@@ -1,5 +1,5 @@
 ---
-status: review
+status: verify
 module: attendance
 min_implementer: mid
 depends_on: [organization-sedes/001]
@@ -133,7 +133,7 @@ asClass(OrganizationSiteDirectory)` and `assignDeviceSite` in cradle and registr
    - Observable result: `tests/container.test.ts` resolves the new keys.
 
 6. **Existing tests and docs**
-   - Files: `apps/api/src/modules/attendance/domain/device.test.ts` (modify), `apps/api/src/modules/attendance/application/commands/register-device.command.test.ts` (modify), `apps/api/src/modules/attendance/application/commands/record-device-contact.command.test.ts` (modify), `apps/api/src/modules/attendance/application/commands/record-device-push.command.test.ts` (modify), `apps/api/src/modules/attendance/application/queries/list-punches.query.test.ts` (modify), `packages/contracts/src/attendance/device.contract.test.ts` (modify), `apps/api/tests/attendance.test.ts` (modify), `apps/api/tests/attendance-attribution.test.ts` (modify), `apps/api/tests/zkteco-adms.test.ts` (modify), `apps/api/tests/integration/attendance/prisma-attendance.int.test.ts` (modify), `docs/integraciones/zkteco-senseface-2a.md` (modify), `apps/api/src/modules/attendance/application/commands/assign-device-site.command.test.ts` (create), `apps/api/tests/attendance-clock-offset.test.ts` (create)
+   - Files: `apps/api/src/modules/attendance/domain/device.test.ts` (modify), `apps/api/src/modules/attendance/application/commands/register-device.command.test.ts` (modify), `apps/api/src/modules/attendance/application/commands/record-device-contact.command.test.ts` (modify), `apps/api/src/modules/attendance/application/commands/record-device-push.command.test.ts` (modify), `apps/api/src/modules/attendance/application/queries/list-punches.query.test.ts` (modify), `packages/contracts/src/attendance/device.contract.test.ts` (modify), `apps/api/tests/attendance.test.ts` (modify), `apps/api/tests/attendance-attribution.test.ts` (modify), `apps/api/tests/zkteco-adms.test.ts` (modify), `apps/api/tests/integration/attendance/prisma-attendance.int.test.ts` (modify), `docs/integraciones/zkteco-senseface-2a.md` (modify), `apps/api/src/modules/attendance/application/commands/assign-device-site.command.test.ts` (create), `apps/api/tests/attendance-clock-offset.test.ts` (create), `docs/adr/0013-registro-de-equipos-en-base-de-datos.md` (modify)
    - Do: tests that register devices pass `siteId` (HTTP: create a site first through
      `POST /api/v1/sites` or the container's `createSite`; unit: stub `SiteDirectory` returning
      `America/Cancun`); `Device.register` callers pass `siteId` and `timeZone`. Assertions that
@@ -219,5 +219,92 @@ Baseline (before writing tests): `pnpm check` green (api 727 passed / 5 skipped)
 Observations (no GAP): `measureClockOffset` counts valid lines before de-duplication, so a single-line push that only re-sends an already stored punch is also measured (and looks late). It matches the plan text ("exactly one ATTLOG line") and is the stated limitation class; not tested as intended behavior. In-memory and Prisma `listDevices` apply the same `clockSuspect` rule; the inactive-site path has no HTTP test because organization exposes no deactivate operation (covered at application layer with a stub).
 
 ## Review findings
+
+Reviewed 2026-10-02 against base `92978cd` (diff = commits `a398e8b`, `e4d863c` + working tree).
+
+### Checklist (11/13)
+
+- [ ] `pnpm plans:scope … --base 92978cd`: **fails** only on `apps/api/tests/zz-scratch.test.ts`
+      (untracked leftover, Deviation 4; the user will delete it — not an implementer fix). Hot file
+      `schema.prisma`: the three new fields are added inside `AttendanceDevice` (the `punches` line
+      moves below them); no other model touched. Acceptable.
+- [x] `pnpm check` passes (api 66 files passed / 1 skipped; contracts, domain, web, mobile green).
+- [x] `pnpm test:integration` passes (14 files, 172 tests).
+- [x] Business rules in `domain/` (`clockSuspect`, tolerance constant); the read side repeats the
+      same comparison importing the domain constant, as the plan asks.
+- [x] CQRS-lite: `RegisterDevice` / `AssignDeviceSite` go aggregate → repository → `Result`;
+      `listDevices` stays in `AttendanceQueries`.
+- [x] Types from `@rrhh/contracts`; router binds `assignDeviceSite` via `bindRoute`.
+- [x] Expected errors: `SITE_NOT_FOUND`, `SITE_INACTIVE`, `DEVICE_NOT_FOUND` with stable codes.
+- [x] Time via `Clock`; offset stored as integer seconds; timestamptz columns.
+- [x] New migration `20261002220840_add_device_site_and_offset`: only `ADD COLUMN` x3, no FK.
+- [x] DI: `deviceSiteDirectory`, `assignDeviceSite` registered once; container test green.
+      Deviation 1 confirmed (`employees.module.ts:38` already owns `siteDirectory`).
+- [x] No secrets or real personal data.
+- [x] `## Deviations` honest (spot-checked 1 and 3 against code).
+- [ ] Stale docs: `docs/adr/0013-registro-de-equipos-en-base-de-datos.md:23` still says devices are
+      registered "con serial, nombre y zona horaria IANA" (see Low-2).
+
+### Findings
+
+**Medium-1 — single-line resend of an already stored punch produces a false `clockSuspect`.**
+`apps/api/src/modules/attendance/application/commands/record-device-push.command.ts:108,119-131`.
+`measureClockOffset` keys on `valid.length === 1`, counted before de-duplication; `saveNew`'s
+`inserted` is ignored. The handshake answers `ATTLOGStamp=None`
+(`http/zkteco-adms.parser.ts:90-96`), so the device re-sends its whole history on every
+handshake (runbook line 15). Whenever that history is exactly one line, the resend is measured as
+if it were real time. Concrete scenario: a newly set up SenseFace has one punch at 08:00 (Cancún);
+it reboots or loses Wi-Fi and reconnects at 14:00; the handshake triggers a POST ATTLOG carrying
+only the 08:00 line → `inserted = 0`, `offset = +21600`, `clockSuspect: true`, warn
+`zkteco: desfase de reloj`, and the previous good measurement is overwritten. It stays wrong until
+the next real punch. This is likely during installation and on the real-device check (acceptance
+6), exactly when the signal is being trusted. Uncertain extra case: if the firmware splits a long
+history resend into several POSTs, a final batch of one already stored line hits the same path. It
+is not the documented "network outage" limitation: the plan explicitly says history resends are
+not measured. Suggested repair (in plan intent, no design change): also require `inserted === 1`.
+A single line that is a duplicate is never a new real-time event. Add an application test where
+the single line is a duplicate and the offset stays unchanged.
+
+**Low-1 (uncertain likelihood) — `AssignDeviceSite` can be silently reverted by a concurrent push
+or contact.** `infrastructure/prisma-device.repository.ts:27-34` upserts the full row;
+`record-device-push.command.ts:52,112` and `record-device-contact.command.ts:44-49` load the
+device, then save the whole aggregate. Before this plan those writers only changed `lastSeenAt`.
+Now an admin write (`siteId`, `timeZone`) shares the row. Scenario: the admin assigns the site while
+the device is uploading a long history resend (`saveNew` takes seconds). The push loaded the old
+`siteId/timeZone` and saves after the PUT, so the PUT returns 204 but the list shows the old site
+and zone, and later punches are converted with the old zone. The window is narrow but falls in setup
+time, when both happen. The repair (targeted `update` of only the changed columns per use case,
+or optimistic version) is a design choice. If the main session does not want it in this plan,
+move it to `plans/hallazgos/`.
+
+**Low-2 — ADR 0013 describes the old registration input.**
+`docs/adr/0013-registro-de-equipos-en-base-de-datos.md:23`. The ADR says registration takes an
+IANA zone, but it now takes `siteId` and copies the zone. Add a dated note pointing to this plan or
+`organization-sedes` decision 8, without rewriting the decision.
+
+**Info-1 —** `apps/api/prisma/schema.prisma:225-229` new fields use a different column alignment
+from the rest of the model (Prettier does not format `.prisma`). Cosmetic.
+
+**Info-2 —** `Device.assignSite` (`domain/device.ts:143`) does not validate the zone while
+`Device.register` does. Safe today, because zones come from the closed `SITE_TIME_ZONES` list
+through organization. Noted for consistency only.
+
+Result: Medium-1 needs a product code change → status stays `review` (main session moves it back
+to `implementing` for the repair). Low-1 needs a decision (fix here or hallazgo). Low-2 is a doc
+edit outside the plan's file list (`docs/adr/0013…` not declared): add it to the plan or record as
+hallazgo.
+
+### Resolution (main session, 2026-10-02)
+
+- **Medium-1 — fixed:** `RecordDevicePush` measures only when `inserted === 1`: a single line that
+  was already stored is a history resend, not real time. Regression test in
+  `record-device-push.command.test.ts` ("una sola línea ya guardada (reenvío del historial) no
+  mide ni cambia el desfase previo": six hours later the same punch arrives again; offset stays 0,
+  no warn).
+- **Low-1 — hallazgo:** `plans/hallazgos/attendance-escritura-completa-del-equipo.md` (targeted
+  updates or optimistic version, for the next plan touching the device repository; installation
+  workaround documented there).
+- **Low-2 — fixed:** dated note in ADR 0013 (declared in step 6).
+- **Info-1, Info-2:** no change.
 
 ## Verification

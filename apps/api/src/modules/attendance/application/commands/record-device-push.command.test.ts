@@ -436,6 +436,22 @@ describe('RecordDevicePush', () => {
         expect(device?.clockOffsetSeconds).toBe(-3600);
       });
 
+      it('una sola línea ya guardada (reenvío del historial) no mide ni cambia el desfase previo', async () => {
+        const { command, deviceRepository, logger, clock } = await setUp(['TESTSN001']);
+        await command.execute(push([line(SYNCED)]));
+
+        // Seis horas después el equipo reenvía la misma marcación tras un handshake.
+        clock.set(new Date(clock.now().getTime() + 6 * 3600_000));
+        await command.execute(push([line(SYNCED)]));
+
+        const device = await deviceRepository.findBySerialNumber('TESTSN001');
+        expect(device?.clockOffsetSeconds).toBe(0);
+        expect(device?.clockSuspect).toBe(false);
+        expect(logger.entries.some((entry) => entry.msg === 'zkteco: desfase de reloj')).toBe(
+          false,
+        );
+      });
+
       it('un historial en un equipo sin mediciones lo deja sin desfase', async () => {
         const { command, deviceRepository } = await setUp(['TESTSN001']);
 

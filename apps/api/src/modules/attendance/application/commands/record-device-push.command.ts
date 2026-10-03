@@ -105,7 +105,8 @@ export class RecordDevicePush implements Command<
         'zkteco: marcaciones guardadas',
       );
 
-      offsetRecorded = this.measureClockOffset(device, valid, receivedAt);
+      // Una línea ya guardada es un reenvío del historial (handshake con Stamp=None), no tiempo real.
+      offsetRecorded = inserted === 1 && this.measureClockOffset(device, valid, receivedAt);
     }
 
     const seen = device.markSeen(clock.now());
@@ -115,7 +116,7 @@ export class RecordDevicePush implements Command<
     return ok({ accepted: records.length });
   }
 
-  /** Solo un envío en tiempo real (una línea válida) es comparable con la hora de recepción. */
+  /** Solo un envío en tiempo real (una línea válida y nueva) es comparable con la hora de recepción. */
   private measureClockOffset(device: Device, valid: readonly Punch[], receivedAt: Date): boolean {
     const [only] = valid;
     if (valid.length !== 1 || !only) return false;
