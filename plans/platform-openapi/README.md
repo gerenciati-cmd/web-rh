@@ -9,9 +9,10 @@ review API changes in pull requests. The OpenAPI document is derived from the Zo
 
 ## Plans
 
-| Plan                                        | Title                                           | Depends on | Purpose                                                                                                             |
-| ------------------------------------------- | ----------------------------------------------- | ---------- | ------------------------------------------------------------------------------------------------------------------- |
-| [001](001-documento-y-referencia-scalar.md) | OpenAPI from contracts + Scalar reference (dev) | —          | Pure generator in contracts, committed `openapi.json` checked by `pnpm check`, Scalar UI served outside production. |
+| Plan                                               | Title                                            | Depends on | Purpose                                                                                                                                        |
+| -------------------------------------------------- | ------------------------------------------------ | ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| [001](001-documento-y-referencia-scalar.md)        | OpenAPI from contracts + Scalar reference (dev)  | —          | Pure generator in contracts, committed `openapi.json` checked by `pnpm check`, Scalar UI served outside production.                            |
+| [002](002-documentacion-por-endpoint-y-errores.md) | Documentation per endpoint and documented errors | —          | Route `description` + `errors`, error catalogue in contracts, derived 400/401/403, examples once in `components.examples`, field descriptions. |
 
 ## Dependency notes
 
@@ -25,6 +26,9 @@ None.
 4. (2026-09-29) The reference must allow testing the login flows ("la idea es también probar los logins"). Plan 001 serves it only outside production (architect's call, pending the user's approval of the plan).
 5. (2026-09-29) Both login flows are testable from the reference. The cookie flow is enabled by adding the API's own development origin (`http://localhost:3001`) to `CORS_ORIGINS`. The user confirmed this is a configuration value, not an auth change needing its own plan.
 6. (2026-09-30) After verification (1119 lines for 8 routes), the user asked whether per-module JSON files would be cleaner. Decision: keep ONE document (tools expect one; generated, not hand-edited) but deduplicate. Errors go to one `components.responses` entry. Named models (`.meta({ id })` in each contract) go to `components.schemas` via `$ref`. Pin the Scalar CDN bundle and fix the review findings in the same plan 001 (repair round 1).
+7. (2026-10-03) The user finds the reference too vague: each endpoint must say what it does, what it needs, which fields are optional, and what every response code returns. Plan 002.
+8. (2026-10-03) Errors 404/409/422 are documented per endpoint (declared by hand, with an example each), "mientras quede bien documentado".
+9. (2026-10-03) Constraint: `openapi.json` must not become a giant file. Examples and error responses are emitted once in `components` and referenced with `$ref` (extends decision 6).
 
 ## Delivered
 
