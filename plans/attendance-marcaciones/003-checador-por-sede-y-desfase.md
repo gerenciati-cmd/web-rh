@@ -1,5 +1,5 @@
 ---
-status: verify
+status: done
 module: attendance
 min_implementer: mid
 depends_on: [organization-sedes/001]
