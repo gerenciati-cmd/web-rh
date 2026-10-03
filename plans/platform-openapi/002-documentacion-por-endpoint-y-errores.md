@@ -165,19 +165,19 @@ None
 
 ## Acceptance criteria
 
-- [ ] In `/api/v1/docs`, `PUT /companies/{companyId}/employees/{employeeId}/site` shows a
+- [x] In `/api/v1/docs`, `PUT /companies/{companyId}/employees/{employeeId}/site` shows a
       description (what, who, needs), the body field `siteId` described, and responses 204, 400,
       401, 403, 404 (`EMPLOYEE_NOT_FOUND`, `SITE_NOT_FOUND`, `COMPANY_NOT_FOUND` with examples)
       and 422 (`SITE_INACTIVE`, `SITE_COUNTRY_MISMATCH` with examples).
-- [ ] `GET /attendance/punches` shows every query parameter with its description and "Opcional";
+- [x] `GET /attendance/punches` shows every query parameter with its description and "Opcional";
       `page`/`pageSize` show their defaults.
-- [ ] `POST /auth/login` shows no 401-for-missing-session/403 responses (public) but shows 401
+- [x] `POST /auth/login` shows no 401-for-missing-session/403 responses (public) but shows 401
       `INVALID_CREDENTIALS` and 429 `LOGIN_TEMPORARILY_BLOCKED`.
-- [ ] The intro of the reference explains authentication, the error shape and pagination, and
+- [x] The intro of the reference explains authentication, the error shape and pagination, and
       lists every error code with its status.
-- [ ] Each example body shown matches what the running API returns for that case (spot-check
+- [x] Each example body shown matches what the running API returns for that case (spot-check
       `SITE_ALREADY_EXISTS`, `FORBIDDEN`, `VALIDATION_ERROR`, `SITE_COUNTRY_MISMATCH`).
-- [ ] `openapi.json` holds each example once (`components.examples`) and stays under 4,000 lines.
+- [x] `openapi.json` holds each example once (`components.examples`) and stays under 4,000 lines.
 
 ## Test layers required
 
@@ -495,3 +495,29 @@ cualquier momento. Status → `verify`. Para verify siguen pendientes los criter
 `/api/v1/docs` renderizado (desviación 5) y el Low D.
 
 ## Verification
+
+**PASS on the served document; Scalar's visual rendering NOT VERIFIED** — 2026-10-03, main
+session, at `0e1eac9`, against the dev API on `localhost:3000` started from the branch.
+
+- Suites: `pnpm check` green at the second review (contracts 258, api 831 + 5 skipped);
+  `error-catalog.test.ts` 7/7 after the L-A fix. No infrastructure or schema change.
+- Script over `GET /api/v1/openapi.json` and the live API, 19/19 PASS:
+  - `/api/v1/docs` answers 200.
+  - Criterion 1: `PUT …/employees/{employeeId}/site` has a description ("Asigna la sede de un
+    colaborador o la cambia por otra…" plus who/needs), `siteId` described ("Sede nueva; debe
+    estar activa y ser del país de la empresa"), responses 204, 400, 401, 403, 404
+    (`EMPLOYEE_NOT_FOUND`, `SITE_NOT_FOUND`, `COMPANY_NOT_FOUND`), 422 (`SITE_INACTIVE`,
+    `SITE_COUNTRY_MISMATCH`) and default.
+  - Criterion 2: `GET /attendance/punches` — the six query parameters have descriptions starting
+    with "Opcional."; `page`/`pageSize` defaults 1/20.
+  - Criterion 3: `POST /auth/login` — responses 200, 400, 401 (`INVALID_CREDENTIALS` only), 429
+    (`LOGIN_TEMPORARILY_BLOCKED`), default; no 403.
+  - Criterion 4: the intro (4,546 characters) explains login with `client`, the error shape with
+    `details`, pagination, and lists the 37 codes.
+  - Criterion 5: real responses vs. examples — `SITE_ALREADY_EXISTS` (409), `FORBIDDEN` (403),
+    `SITE_COUNTRY_MISMATCH` (422) equal in code, message and `details` keys; `VALIDATION_ERROR`
+    (bad UUID) equal in code and issue keys (`code, format, message, origin, path, pattern`).
+  - Criterion 6: 0 inline example values inside `paths`; 3,866 lines.
+- **NOT VERIFIED:** the visual rendering in Scalar (the browser extension was not connected).
+  Review Low D confirmed by reading the document: variant examples are labelled with their
+  technical key (`summary: "COMPANY_INACTIVE__role_assignment"`); cosmetic, left as is.
