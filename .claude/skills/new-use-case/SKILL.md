@@ -13,7 +13,12 @@ Primero decide: **¿cambia estado?**
 ## Command (ejemplo: `employees/application/commands/register-employee.command.ts`)
 
 1. **Contrato**: schema Zod de entrada + `defineRoute` en `packages/contracts/src/<modulo>/`.
-   Respuesta típica: `CreatedSchema` (201) o sin cuerpo (204).
+   Respuesta típica: `CreatedSchema` (201) o sin cuerpo (204). La ruta lleva `description`
+   (obligatoria: qué hace, quién puede, qué necesita, efectos) y `errors` con los códigos de
+   dominio que devuelve el caso de uso (404/409/422/429; 400/401/403 se derivan solos). Cada campo
+   de entrada con `.describe()`; los opcionales empiezan con "Opcional." y dicen qué pasa si se
+   omiten. Un código nuevo va a `API_ERRORS` (`packages/contracts/src/errors.ts`) con status,
+   descripción y ejemplo real; `apps/api/tests/error-catalog.test.ts` falla si falta o difiere.
 2. **Dominio**: si la operación introduce una regla, va como método del agregado que devuelve
    `Result` y registra un evento. Test de la regla en `domain/*.test.ts`.
 3. **Caso de uso** `<accion>.command.ts`:
@@ -45,7 +50,9 @@ Primero decide: **¿cambia estado?**
 
 ## Query (ejemplo: `organization/application/queries/list-companies.query.ts`)
 
-1. **Contrato**: DTO de respuesta + `defineRoute` (con `query: PageQuerySchema.extend({...})` si filtra).
+1. **Contrato**: DTO de respuesta + `defineRoute` (con `query: PageQuerySchema.extend({...})` si filtra),
+   con `description`, `errors` si el caso de uso devuelve alguno, y `.describe()` en cada filtro
+   ("Opcional. … si se omite, …").
 2. **Puerto**: agrega el método a `XxxQueries` devolviendo el DTO del contrato.
 3. **Adaptador Prisma** `prisma-<entidad>.queries.ts`: `select` SOLO de las columnas necesarias,
    paginación con `skip/take` + `count` en `Promise.all`. Fechas → ISO string.

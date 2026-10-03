@@ -21,6 +21,10 @@ command, query, puerto hacia otro módulo). Ábrelo y replica su forma. No inven
 - Cada ruta declara `access` (`publicAccess` / `authenticated` / `requires(permission, { companyParam })`);
   permisos nuevos en `PERMISSIONS` (`packages/domain/src/identity/access.ts`) y en `ROLE_DEFINITIONS`
   (`identity/domain/role-catalog.ts`); filtrado de filas en el caso de uso con `companiesWith` (ADR 0012).
+- Cada ruta declara `description` (obligatoria: qué hace, quién puede, qué necesita) y `errors`
+  (códigos de dominio 404/409/422/429 que devuelve; 400/401/403 se derivan solos). Cada campo de
+  entrada con `.describe()` ("Opcional. …" en los opcionales). Así se lee en Scalar
+  (`/api/v1/docs`); ver `platform-openapi/002`.
 - Reusar `PageQuerySchema`, `pageOf`, `CreatedSchema`, `CountrySchema` de `common.ts` (DRY).
 - Validaciones que también existen en el dominio: reusar la función del dominio (`NationalId.isValid`).
 - Exportar en `packages/contracts/src/index.ts` y agregar el grupo a `apiRoutes`.
@@ -33,6 +37,9 @@ command, query, puerto hacia otro módulo). Ábrelo y replica su forma. No inven
 - `<agregado>.repository.ts`: puerto de ESCRITURA (`findById`, `save`, chequeos de unicidad).
 - `errors.ts`: errores concretos que extienden `NotFoundError`, `ConflictError`,
   `BusinessRuleViolationError` o `InvalidValueError`, con `code` estable en SCREAMING_SNAKE_CASE.
+  Cada código nuevo se documenta en `API_ERRORS` (`packages/contracts/src/errors.ts`): status,
+  descripción y ejemplo con el `message` y las claves de `details` reales. El módulo nuevo se
+  agrega a `apps/api/tests/error-catalog.test.ts`, que pasa cada error por el `errorHandler` real.
 - Eventos: constantes `'<modulo>.<agregado>.<verbo-en-pasado>'`.
 - Sin imports de fuera de `domain/` y `@rrhh/domain`. Sin IO.
 
