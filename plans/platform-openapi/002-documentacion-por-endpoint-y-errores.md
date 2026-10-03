@@ -1,5 +1,5 @@
 ---
-status: review
+status: implementing
 module: platform
 min_implementer: mid
 depends_on: []
@@ -243,5 +243,143 @@ Los dos GAP son de documentación (ejemplos en `packages/contracts/src/errors.ts
 comportamiento del API; al corregir el ejemplo, el `it.fails` se pondrá rojo y debe promoverse.
 
 ## Review findings
+
+Fecha: 2026-10-03. Reviewer (subagente). Base del diff: `5567936`..`HEAD` (`0af2d93`), árbol limpio.
+
+### Pass 1 — Checklist: 12/13
+
+- [x] `pnpm plans:scope … --base 5567936`: todo dentro del alcance (22 cambiados / 21 declarados + el
+      plan); `packages/contracts/src/index.ts` es append-only (una línea `export * from './errors'`).
+- [x] `pnpm check` verde: contracts 257, api 827 + 2 expected fail (los `it.fails` del tester) + 5
+      skipped, domain 98, web 2, mobile 5, api-client 3; format, lint, arch, plans, harness OK.
+- [x] Integración: N/A (no cambió `infrastructure/` ni el esquema).
+- [x] Reglas de negocio: ninguna nueva; solo documentación en contracts.
+- [x] CQRS: N/A.
+- [x] Tipos de `@rrhh/contracts`: `ApiErrorCode`/`ApiErrorStatus` derivados del catálogo, sin duplicados.
+- [x] Errores esperados: no se cambió ningún código, status ni mensaje del API.
+- [x] Money/fechas/Clock: N/A.
+- [x] Migración: N/A.
+- [x] DI: N/A.
+- [x] Sin secretos ni datos reales (ids UUID sintéticos, CURP/RFC de prueba ya usados en el repo).
+- [ ] **`## Deviations` honesto**: falla. La desviación 4 afirma que `BUSINESS_RULE_VIOLATION` no
+      está en el catálogo porque "ninguna clase concreta lo emite"; el código sí lo devuelve por HTTP
+      (ver Major 1). La desviación 1 está desactualizada: dice que `plans:scope` lista dos tests
+      fuera de alcance, pero la lista de archivos del paso 5 se amplió después (diff del plan) y
+      ahora `plans:scope` pasa; la ampliación no quedó registrada (Low 7).
+- [x] Docs: nada queda falso (ver Low 8 sobre recetas incompletas).
+
+### Pass 2 — Hallazgos
+
+**Major**
+
+1. `BUSINESS_RULE_VIOLATION` es alcanzable y no está documentado. `apps/api/src/modules/employees/domain/employee.ts:73-79`
+   devuelve `new BusinessRuleViolationError('No se puede registrar una contratación con más de 90 días de anticipación')`
+   (código por defecto `BUSINESS_RULE_VIOLATION`, `packages/domain/src/errors.ts:24-26`); el
+   contrato no lo puede atajar (`hireDate: z.iso.date()`, `employee.contract.ts:44`; depende del
+   reloj). Escenario: `POST /companies/{id}/employees` con `hireDate` a 120 días → 422
+   `BUSINESS_RULE_VIOLATION`, pero Scalar no lo lista en `registerEmployee` (`employee.contract.ts:146-154`)
+   y el código no existe en `API_ERRORS` (`packages/contracts/src/errors.ts`). El test de deriva no
+   lo detecta porque solo busca literales `code = '…'` y este error es una instancia directa de la
+   clase base. Falla la meta "exactamente qué errores puede devolver". Arreglo esperado: entrada
+   `BUSINESS_RULE_VIOLATION` (422) en el catálogo, declararla en `registerEmployee`, y que el test
+   de deriva cubra los códigos por defecto de las clases base (como ya hace a mano con `INVALID_VALUE`).
+   (Las demás instancias directas, `employee.ts:113,117` de `terminate`, no tienen ruta hoy.)
+2. El ejemplo `VALIDATION_ERROR` no coincide con lo que devuelve el API (`packages/contracts/src/errors.ts:36-44`):
+   el issue real de un uuid inválido trae además la clave `pattern`. Es uno de los cuatro ejemplos
+   que el criterio de aceptación pide comprobar explícitamente. Confirmado por el `it.fails` del
+   tester (`apps/api/tests/error-examples.test.ts:83-104`, en verde como expected fail). Al
+   corregirlo, ese `it.fails` debe pasar a `it`.
+
+**Minor**
+
+3. Ejemplo de `ROUTE_NOT_FOUND` incorrecto (`errors.ts:62`): `notFoundHandler` usa `req.path` a nivel
+   de app (`apps/api/src/http/error-handler.ts:84-90`), así que el mensaje real es
+   `No existe GET /api/v1/nada`, no `No existe GET /nada`. Confirmado por `error-examples.test.ts:74-81`.
+   La desviación 4 lo reconoce como diferencia pero la acepta; es un ejemplo que no coincide con el API.
+4. `COMPANY_INACTIVE` tiene dos mensajes reales y el catálogo muestra solo uno. El ejemplo
+   (`errors.ts:99-101`) usa el de employees ("No se puede contratar en una empresa inactiva"), pero
+   `assignRole` declara el código (`access.contract.ts:105-112`) y devuelve "No se puede asignar un
+   rol en una empresa inactiva" (`identity/domain/errors.ts:103-108`). Escenario: en Scalar,
+   `POST /users/{userId}/role-assignments` → 422 muestra un mensaje que esa ruta nunca devuelve.
+5. `EMPLOYEE_NOT_FOUND` tiene dos cuerpos reales. El ejemplo (`errors.ts:128-132`) incluye
+   `details.employeeId`, pero el `EmployeeNotFoundError` de identity (`identity/domain/errors.ts:140-146`)
+   no tiene `details`. Escenario: en `inviteEmployee` y `forceEmployeePasswordReset` el 404 muestra
+   un `details` que el API nunca manda. (Los puntos 4 y 5 vienen del mismo problema: un ejemplo por
+   código mientras varias clases comparten código. Opciones: un ejemplo neutral (sin `details` / mensaje
+   común) o una nota en la `description`; lo decide quien implemente, sin cambiar el API.)
+6. `apps/api/tests/error-catalog.test.ts` busca texto en el código fuente, y eso es el antipatrón 1
+   de `docs/harness/conventions/testing.md:58`. El paso 5 del plan lo pedía así, pero **hay una
+   alternativa razonable y más fuerte**, así que no lo veo justificado:
+   - Descubrir las clases con `import.meta.glob('../src/modules/*/domain/errors.ts', { eager: true })`
+     (sigue detectando módulos nuevos sin lista a mano; los tests de `apps/api/tests` ya importan
+     `@/modules/*/domain`), quedarse con los exports que son subclase de `DomainError` e instanciarlos
+     con `Reflect.construct(Cls, ['x', 'x', 'x'])`. Todos los constructores aceptan strings o números
+     que solo van al mensaje o a `details`.
+   - Pasar cada instancia por el `errorHandler` real (o una mini app de express con supertest) y
+     comparar status, `code` y claves de `details` contra `API_ERRORS`. Así desaparece la copia
+     `STATUS_BY_CATEGORY` del test (`error-catalog.test.ts:35-42`), que hoy puede divergir de
+     `error-handler.ts:22-32` sin que nada falle, y además saldrían a la luz los puntos 4 y 5.
+   - La capa HTTP exporta `AuthenticationRequiredError`, `PermissionDeniedError` y
+     `RequestValidationError`, así que se pueden tratar igual. `INTERNAL_ERROR` sale de un `Error`
+     cualquiera pasado al handler y `ROUTE_NOT_FOUND` ya lo ejercita `error-examples.test.ts`.
+     Las clases base `InvalidValueError`/`BusinessRuleViolationError` se instancian directamente y
+     así queda cubierto el Major 1.
+   - Límite (aplica a ambos enfoques): ninguno prueba qué ruta declara qué código. Eso sigue
+     dependiendo de los tests HTTP por ruta.
+     Es un cambio solo de tests (tester). Cambia la forma que pedía el paso 5, así que la sesión
+     principal debe registrarlo como desviación.
+
+**Low**
+
+7. Historial del plan: la lista de archivos del paso 5 se amplió después de la aprobación con
+   `access.contract.test.ts`, `authorization.test.ts` y `error-examples.test.ts` (diff del plan contra
+   `5567936`), pero ninguna desviación dice quién lo hizo ni por qué, y la desviación 1 sigue
+   diciendo "fuera de la lista de archivos". Hay que corregir el texto; el código no cambia.
+8. `INVALID_VALUE`: el mensaje del ejemplo, `Valor inválido` (`errors.ts:73`), no existe en el
+   código (`InvalidValueError` no tiene mensaje por defecto; cada uso pasa el suyo). Ninguna ruta lo
+   declara. **Incierto** si es alcanzable por HTTP: los contratos repiten las validaciones del
+   dominio (`TaxId.isValid`, `NationalId.isValid`, `PersonalRfc.isValid`, `isSiteTimeZone`), así que
+   en las rutas revisadas Zod responde 400 antes. Bastaría con usar un mensaje real como ejemplo.
+9. Las recetas `.claude/skills/new-use-case/SKILL.md:15` y `new-module/SKILL.md:20` no mencionan
+   que `defineRoute` ahora exige `description` ni que un código nuevo va a `API_ERRORS` y a las
+   `errors` de su ruta. No dicen nada falso: el typecheck exige `description` y el test de deriva
+   exige el catálogo, pero nada obliga a declarar `errors` por ruta. Conviene una línea en cada una
+   (archivos fuera de la lista del plan).
+
+Sin hallazgos en el generador (`openapi.ts`): los 400/401/403 derivados, la agrupación por status
+ordenada, el `throw` ante un status ya derivado, los ejemplos solo por `$ref`, el `default` → 500 y
+las descripciones de parámetros son correctos, y los cubre `openapi.test.ts`.
+
+Resultado: hay hallazgos que piden cambios en el código (1, 2, 3, 4, 5, 6 y opcionalmente 8, 9).
+El status sigue en `review`. Los 1–5 y 8 son de producto (contracts) y van al implementer; el 6 es
+solo de tests y va al tester.
+
+### Repair round 1 (main session, 2026-10-03)
+
+Status → `implementing`. Instructions for the implementer (product, contracts):
+
+- **1:** add `BUSINESS_RULE_VIOLATION` (422) to `API_ERRORS` with the real hire-date message of
+  `employee.ts:73-79` as example; declare it in `registerEmployee`. Correct Deviation 4.
+- **2, 3, 8:** fix the `VALIDATION_ERROR` example (include `pattern` as the API returns it for a
+  bad UUID), the `ROUTE_NOT_FOUND` example (`No existe GET /api/v1/…`) and the `INVALID_VALUE`
+  example (a message that exists in the code; if none can reach HTTP, say so in its description).
+- **4, 5 — same code, different body by module:** a catalogue entry may carry more than one
+  example: `examples: { default: ApiErrorBody, [variant: string]: ApiErrorBody }`. A route
+  declares a plain code (uses `default`) or `{ code, variant }`. The generator emits
+  `components.examples.<CODE>` and `components.examples.<CODE>__<variant>` once each and the
+  route references the one it declared. Use variants for `COMPANY_INACTIVE` (identity
+  `assignRole`, `identity/domain/errors.ts:103-108`) and `EMPLOYEE_NOT_FOUND` (identity, no
+  `details`, `:140-146`); check the other shared codes (`COMPANY_NOT_FOUND`, `SITE_NOT_FOUND`,
+  `SITE_INACTIVE`) the same way.
+- **7:** record in Deviations that step 5's file list was widened after approval
+  (`access.contract.test.ts`, `authorization.test.ts`, `error-examples.test.ts`) and update
+  Deviation 1.
+- **9:** out of this plan's file list → recipes updated in a follow-up (noted for the user).
+
+Then the tester: **6** — replace the source-as-text `error-catalog.test.ts` by the reviewer's
+alternative (import the `errors.ts` modules, instantiate every exported `DomainError` subclass and
+the base `InvalidValueError`/`BusinessRuleViolationError`, run them through the real
+`errorHandler`, compare status/code/`details` keys with the catalogue, including variants), record
+it as a deviation of step 5; promote the two `it.fails` of `error-examples.test.ts` to `it`.
 
 ## Verification
