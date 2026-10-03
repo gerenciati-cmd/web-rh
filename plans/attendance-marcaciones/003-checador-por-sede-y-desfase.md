@@ -146,17 +146,17 @@ asClass(OrganizationSiteDirectory)` and `assignDeviceSite` in cradle and registr
 
 ## Acceptance criteria
 
-- [ ] `POST /api/v1/attendance/devices` `{ serialNumber, name, siteId }` with an active
+- [x] `POST /api/v1/attendance/devices` `{ serialNumber, name, siteId }` with an active
       `America/Cancun` site → 201, and `GET …/devices` shows `siteId` and `timeZone:
 'America/Cancun'`; unknown site → 404 `SITE_NOT_FOUND`; a body with `timeZone` and no
       `siteId` → 400.
-- [ ] `PUT …/devices/:id/site` on a device registered before (null site) → 204; `siteId` and the
+- [x] `PUT …/devices/:id/site` on a device registered before (null site) → 204; `siteId` and the
       site's zone appear in the list; unknown device → 404 `DEVICE_NOT_FOUND`; HR → 403.
-- [ ] A single-line ATTLOG push stamped with the current local time of the site → `clockOffsetSeconds`
+- [x] A single-line ATTLOG push stamped with the current local time of the site → `clockOffsetSeconds`
       within ±5 s and `clockSuspect: false`.
-- [ ] A single-line push stamped 1 hour ahead → `clockOffsetSeconds ≈ −3600`, `clockSuspect: true`,
+- [x] A single-line push stamped 1 hour ahead → `clockOffsetSeconds ≈ −3600`, `clockSuspect: true`,
       warn log `zkteco: desfase de reloj`.
-- [ ] A multi-line push (history) leaves `clockOffsetSeconds` unchanged.
+- [x] A multi-line push (history) leaves `clockOffsetSeconds` unchanged.
 - [ ] Real device: after assigning its sede, a real marcación shows a small offset
       (user with the SenseFace 2A; NOT VERIFIED if unavailable).
 
@@ -308,3 +308,28 @@ hallazgo.
 - **Info-1, Info-2:** no change.
 
 ## Verification
+
+**PASS with one NOT VERIFIED (real device)** — 2026-10-02, main session, at `6147680`, against
+the dev API on `localhost:3000` started from the branch (migration
+`20261002220840_add_device_site_and_offset` applied to the dev DB).
+
+- Suites at `6147680`: `pnpm check` green (api 763 passed / 6 skipped); `pnpm test:integration`
+  172 green. `plans:scope --base 92978cd` flags only the untracked `apps/api/tests/zz-scratch.test.ts`
+  (implementer's leftover, the user deletes it; never committed).
+- Script over HTTP and `/iclock` (synthetic device `VERIF<suffix>`, sedes `Verificación checador
+Cancún/Tijuana <suffix>`), 12/12 PASS:
+  - Register with the Cancún site → 201; the list shows `siteId` and `America/Cancun`; unknown
+    site → 404 `SITE_NOT_FOUND`; body with `timeZone` and no `siteId` → 400 at `siteId`.
+  - `PUT …/site` to Tijuana → 204 and the list shows `America/Tijuana`; unknown device → 404
+    `DEVICE_NOT_FOUND`; HR → 403.
+  - Single ATTLOG line stamped with Cancún's current local time → `OK: 1`, offset 0,
+    `clockSuspect: false`. One hour ahead → offset −3600, `clockSuspect: true`, and the API log
+    shows `WARN zkteco: desfase de reloj` once. A two-line history push → offset stays −3600.
+    Review M1: resending one already-stored line → offset stays −3600.
+- Criterion 2 on a device registered before this plan: synthetic device `VERIFAT576061` (from
+  earlier verifications, `siteId: null`) → `PUT …/site` 204, lists the site and `America/Cancun`.
+  Other existing devices were not touched (one could be the real checador).
+- **NOT VERIFIED:** criterion 6 (real SenseFace 2A offset). Needs the user to register the device
+  with a sede and mark; the HTTP test has it as `it.skip('NOT CONFIRMED: …')`.
+- Data left in the dev DB: sedes `Verificación checador …`, device `VERIF<suffix>` with punches
+  for PINs 9001–9004.
