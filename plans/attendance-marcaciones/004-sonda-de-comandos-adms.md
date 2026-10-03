@@ -1,5 +1,5 @@
 ---
-status: verify
+status: done
 module: attendance
 min_implementer: mid
 depends_on: ['003']
@@ -294,7 +294,7 @@ hallazgo High que requiere cambio de código.
 
 ## Verification
 
-**Partial: criteria 1–3 PASS; criterion 4 (real device) NOT VERIFIED** — 2026-10-02, main
+**PASS (criteria 1–3 on 2026-10-02; criterion 4 and the real reply on 2026-10-03, see below)** — 2026-10-02, main
 session, at `d820386`, against the dev API on `localhost:3000` started from the branch (migration
 `20261003031633_create_device_commands` applied). The plan stays in `verify` until the user runs
 the real-device probe: it is the point of this plan.
@@ -325,8 +325,14 @@ the real-device probe: it is the point of this plan.
     (Cancún) and `GET /attendance/punches` attributes it to **Ana Rojas** (plan 002,
     colaborador of APS Holding with that RFC). This also closes the real-device item left
     NOT VERIFIED in plan 002.
-- **Still NOT VERIFIED — review L4 / the `devicecmd` reply:** the values of `ID`, `Return` and
-  `CMD` in the `zkteco: resultado de comando` log line are in the user's terminal; to be recorded
-  here when the user reads them.
+- **`devicecmd` reply and review L4 — PASS on 2026-10-03.** The reply to the first command was lost
+  from the user's console (flooded by `request completed` lines of the 10 s polling). The main
+  session ran the API with its output captured and queued the harmless
+  `C:4:DATA QUERY USERINFO PIN=GOMA850101AB1`: delivered at 19:30:42 and answered at 19:30:44 →
+  `zkteco: resultado de comando` with `ID: "4"`, `Return: "0"`, `CMD: "DATA"`. So `ID` echoes the
+  `C:<n>:` number, `Return=0` is success and **`CMD` is only the verb** (no name: L4 does not
+  happen on this firmware).
+- Side effect observed: the `QUERY` made the device push `OPERLOG` entries `USERPIC` and `BIOPHOTO`
+  for that PIN; their `Content` and `FileName` came out `[redactado:…]` (decision 6 holds).
 - Data left in the dev DB: sede `Verificación sonda <suffix>`, device `SONDA<suffix>` with one
   `SENT` command.
