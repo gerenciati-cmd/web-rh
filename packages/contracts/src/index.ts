@@ -1,3 +1,4 @@
+export * from './attendance/device-command.contract';
 export * from './attendance/device.contract';
 export * from './attendance/punch.contract';
 export * from './common';
@@ -11,6 +12,7 @@ export * from './organization/company.contract';
 export * from './organization/site.contract';
 export * from './openapi';
 
+import { attendanceDeviceCommandRoutes } from './attendance/device-command.contract';
 import { attendanceDeviceRoutes } from './attendance/device.contract';
 import { attendancePunchRoutes } from './attendance/punch.contract';
 import { employeeRoutes } from './employees/employee.contract';
@@ -31,5 +33,6 @@ export const apiRoutes = {
   invitations: invitationRoutes,
   passwordResets: passwordResetRoutes,
   attendanceDevices: attendanceDeviceRoutes,
+  attendanceDeviceCommands: attendanceDeviceCommandRoutes,
   attendancePunches: attendancePunchRoutes,
 } as const;

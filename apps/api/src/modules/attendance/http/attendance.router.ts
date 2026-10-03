@@ -1,11 +1,17 @@
-import { attendanceDeviceRoutes, attendancePunchRoutes } from '@rrhh/contracts';
+import {
+  attendanceDeviceCommandRoutes,
+  attendanceDeviceRoutes,
+  attendancePunchRoutes,
+} from '@rrhh/contracts';
 import { Router } from 'express';
 
 import { bindRoute, unwrap } from '@/http/bind-route';
 import { requireActor } from '@/http/request-context';
 
 import type { AssignDeviceSite } from '../application/commands/assign-device-site.command';
+import type { QueueDeviceCommand } from '../application/commands/queue-device-command.command';
 import type { RegisterDevice } from '../application/commands/register-device.command';
+import type { ListDeviceCommands } from '../application/queries/list-device-commands.query';
 import type { ListDevices } from '../application/queries/list-devices.query';
 import type { ListPunches } from '../application/queries/list-punches.query';
 
@@ -15,6 +21,8 @@ export function createAttendanceRouter(deps: {
   registerDevice: RegisterDevice;
   assignDeviceSite: AssignDeviceSite;
   listPunches: ListPunches;
+  queueDeviceCommand: QueueDeviceCommand;
+  listDeviceCommands: ListDeviceCommands;
 }): Router {
   const router = Router();
 
@@ -30,6 +38,23 @@ export function createAttendanceRouter(deps: {
     unwrap(await deps.assignDeviceSite.execute({ deviceId: params.deviceId, siteId: body.siteId }));
     return undefined;
   });
+
+  bindRoute(
+    router,
+    attendanceDeviceCommandRoutes.queueDeviceCommand,
+    async ({ params, body }, ctx) =>
+      unwrap(
+        await deps.queueDeviceCommand.execute({
+          deviceId: params.deviceId,
+          command: body.command,
+          queuedBy: requireActor(ctx).userId,
+        }),
+      ),
+  );
+
+  bindRoute(router, attendanceDeviceCommandRoutes.listDeviceCommands, async ({ params, query }) =>
+    unwrap(await deps.listDeviceCommands.execute({ ...query, deviceId: params.deviceId })),
+  );
 
   bindRoute(router, attendancePunchRoutes.listPunches, ({ query }, ctx) =>
     deps.listPunches.execute({ ...query, actor: requireActor(ctx) }),

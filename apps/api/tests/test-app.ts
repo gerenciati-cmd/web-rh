@@ -8,6 +8,7 @@ import { createLogger } from '@/infrastructure/logging/pino-logger';
 import {
   InMemoryAttendanceQueries,
   InMemoryAttendanceStore,
+  InMemoryDeviceCommandRepository,
   InMemoryDeviceRepository,
   InMemoryPunchRepository,
 } from '@/modules/attendance/infrastructure/in-memory/in-memory-attendance.store';
@@ -155,6 +156,7 @@ export function buildTestContainer(env: Env = testEnv) {
     employeeQueries: asValue(employeeQueries),
     deviceRepository: asValue(new InMemoryDeviceRepository(attendance)),
     punchRepository: asValue(new InMemoryPunchRepository(attendance)),
+    deviceCommandRepository: asValue(new InMemoryDeviceCommandRepository(attendance)),
     attendanceQueries: asValue(new InMemoryAttendanceQueries(attendance)),
     userRepository: asValue(users),
     sessionRepository: asValue(new InMemorySessionRepository()),

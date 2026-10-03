@@ -6,6 +6,7 @@ import type {
   RecordDeviceContact,
 } from '../application/commands/record-device-contact.command';
 import type { RecordDevicePush } from '../application/commands/record-device-push.command';
+import type { TakeDeviceCommand } from '../application/commands/take-device-command.command';
 
 import { admsOptionsResponse, parseAdmsBody } from './zkteco-adms.parser';
 
@@ -24,6 +25,7 @@ const AdmsQuerySchema = z.looseObject({
 export function createZktecoAdmsRouter(deps: {
   recordDeviceContact: RecordDeviceContact;
   recordDevicePush: RecordDevicePush;
+  takeDeviceCommand: TakeDeviceCommand;
 }): Router {
   const router = Router();
 
@@ -31,7 +33,10 @@ export function createZktecoAdmsRouter(deps: {
   router.use('/iclock', express.text({ type: () => true, limit: '5mb' }));
 
   const contact =
-    (kind: DeviceContactKind, onOk: (serialNumber: string) => string) =>
+    (
+      kind: DeviceContactKind,
+      onOk: (device: { serialNumber: string; deviceId: string }) => string | Promise<string>,
+    ) =>
     async (req: Request, res: Response) => {
       const query = parseQuery(req, res);
       if (!query) return;
@@ -43,15 +48,19 @@ export function createZktecoAdmsRouter(deps: {
         path: req.path,
         query: stringValues(query),
         bodyLength: body.length,
+        body,
       });
       if (!result.ok) {
         sendNotAllowed(res);
         return;
       }
-      sendText(res, onOk(query.SN));
+      sendText(res, await onOk({ serialNumber: query.SN, deviceId: result.value.deviceId }));
     };
 
-  router.get('/iclock/cdata', contact('handshake', admsOptionsResponse));
+  router.get(
+    '/iclock/cdata',
+    contact('handshake', ({ serialNumber }) => admsOptionsResponse(serialNumber)),
+  );
 
   router.post('/iclock/cdata', async (req, res) => {
     const query = parseQuery(req, res);
@@ -74,9 +83,13 @@ export function createZktecoAdmsRouter(deps: {
     sendText(res, `OK: ${result.value.accepted}`);
   });
 
+  // Entrega (una vez) el comando que un operador encoló; sin comandos, `OK`.
   router.get(
     '/iclock/getrequest',
-    contact('poll', () => 'OK'),
+    contact(
+      'poll',
+      async ({ deviceId }) => (await deps.takeDeviceCommand.execute({ deviceId })) ?? 'OK',
+    ),
   );
   router.post(
     '/iclock/devicecmd',

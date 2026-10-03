@@ -47,6 +47,7 @@ describe('RecordDeviceContact', () => {
     path: '/iclock/cdata',
     query: { SN: 'TESTSN001' },
     bodyLength: 0,
+    body: '',
   };
 
   it('rechaza un número de serie no registrado y no autoriza', async () => {
@@ -81,7 +82,12 @@ describe('RecordDeviceContact', () => {
 
     expect(result.ok).toBe(true);
     expect(logger.entries).toEqual([
-      { level: 'info', obj: baseInput, msg: 'zkteco: contacto del dispositivo' },
+      // El cuerpo nunca se registra tal cual (toEqual trata `undefined` como ausente).
+      {
+        level: 'info',
+        obj: { ...baseInput, body: undefined },
+        msg: 'zkteco: contacto del dispositivo',
+      },
     ]);
   });
 
@@ -97,7 +103,11 @@ describe('RecordDeviceContact', () => {
 
     expect(result.ok).toBe(true);
     expect(logger.entries).toEqual([
-      { level: 'debug', obj: pollInput, msg: 'zkteco: contacto del dispositivo' },
+      {
+        level: 'debug',
+        obj: { ...pollInput, body: undefined },
+        msg: 'zkteco: contacto del dispositivo',
+      },
     ]);
   });
 

@@ -1,11 +1,17 @@
-import type { DeviceDto, ListPunchesQuery, Page, PageQuery } from '@rrhh/contracts';
+import type {
+  DeviceCommandDto,
+  DeviceDto,
+  ListPunchesQuery,
+  Page,
+  PageQuery,
+} from '@rrhh/contracts';
 
 import type { PrismaDatabase } from '@/infrastructure/database/prisma-database';
 
 import type { AttendanceQueries, RawPunch } from '../application/queries/attendance.queries';
 import { CLOCK_OFFSET_TOLERANCE_SECONDS } from '../domain/device';
 
-import { PunchMapper } from './attendance.mapper';
+import { DeviceCommandMapper, PunchMapper } from './attendance.mapper';
 
 export class PrismaAttendanceQueries implements AttendanceQueries {
   constructor(private readonly deps: { database: PrismaDatabase }) {}
@@ -48,6 +54,23 @@ export class PrismaAttendanceQueries implements AttendanceQueries {
         Math.abs(row.clockOffsetSeconds) > CLOCK_OFFSET_TOLERANCE_SECONDS,
     }));
     return { items, total, page, pageSize };
+  }
+
+  async listDeviceCommands(
+    deviceId: string,
+    { page, pageSize }: PageQuery,
+  ): Promise<Page<DeviceCommandDto>> {
+    const db = this.deps.database.client;
+    const [rows, total] = await Promise.all([
+      db.attendanceDeviceCommand.findMany({
+        where: { deviceId },
+        orderBy: [{ queuedAt: 'desc' }, { id: 'desc' }],
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+      db.attendanceDeviceCommand.count({ where: { deviceId } }),
+    ]);
+    return { items: rows.map((row) => DeviceCommandMapper.toDto(row)), total, page, pageSize };
   }
 
   async listPunches({

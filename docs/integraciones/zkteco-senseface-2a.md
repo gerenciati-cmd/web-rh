@@ -93,6 +93,23 @@ curl -X POST -H 'Content-Type: text/plain' \
 curl 'http://localhost:3001/iclock/getrequest?SN=TESTSN001'
 ```
 
+## Sonda de comandos
+
+Sirve para descubrir, contra el equipo real, qué comando crea un usuario con PIN alfanumérico y
+cómo responde. **El formato no está confirmado**: la familia `DATA UPDATE|QUERY|DELETE USERINFO`
+es una hipótesis tomada de la literatura del protocolo PUSH de ZKTeco.
+
+- Encolar (HOLDING_ADMIN): `POST /api/v1/attendance/devices/:deviceId/commands` con
+  `{ "command": "DATA UPDATE USERINFO …" }`. Solo se aceptan comandos `USERINFO` (con prefijo
+  opcional `C:<n>:`); cualquier otro texto responde 400.
+- Entrega: el siguiente `GET /iclock/getrequest` de ese equipo responde exactamente el texto
+  encolado, una sola vez; los siguientes vuelven a `OK`.
+- Resultado: el equipo responde en `POST /iclock/devicecmd`; el log lo muestra como
+  `zkteco: resultado de comando` con los campos `ID`, `Return` y `CMD` (el resto, redactado).
+- Bitácora: `GET /api/v1/attendance/devices/:deviceId/commands` lista cada comando con su estado
+  (`QUEUED`/`SENT`) y cuándo se envió. El texto del comando no se escribe en el log (puede traer
+  un PIN o un nombre).
+
 ## Qué buscar en el log
 
 | Mensaje                             | Nivel | Cuándo                                            |
@@ -104,6 +121,9 @@ curl 'http://localhost:3001/iclock/getrequest?SN=TESTSN001'
 | `zkteco: marcaciones guardadas`     | info  | tras un `ATTLOG`: recibidas, nuevas y duplicadas  |
 | `zkteco: marcación rechazada`       | warn  | línea `ATTLOG` con PIN o fecha inválidos          |
 | `zkteco: dispositivo no autorizado` | warn  | SN no registrado o equipo inactivo                |
+| `zkteco: comando encolado`          | info  | un administrador encoló un comando                |
+| `zkteco: comando entregado`         | info  | el equipo recibió el comando en su consulta       |
+| `zkteco: resultado de comando`      | info  | respuesta del equipo en `devicecmd` (redactada)   |
 
 Si aparece un contacto `kind: 'unknown'`, el firmware usó una ruta que la sonda no conoce:
 anótala para el siguiente plan.

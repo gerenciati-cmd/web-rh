@@ -1,5 +1,5 @@
 ---
-status: approved
+status: testing
 module: attendance
 min_implementer: mid
 depends_on: ['003']
@@ -71,7 +71,7 @@ z.string().min(1).max(500).regex(DEVICE_COMMAND_PATTERN, 'Solo comandos USERINFO
    - Observable result: contracts tests pass.
 
 2. **Domain and persistence of the bitácora**
-   - Files: `apps/api/src/modules/attendance/domain/device-command.ts` (create), `apps/api/src/modules/attendance/domain/device-command.repository.ts` (create), `apps/api/prisma/schema.prisma` (modify), `apps/api/prisma/migrations/YYYYMMDDHHMMSS_create_device_commands/migration.sql` (create), `apps/api/src/modules/attendance/infrastructure/prisma-device-command.repository.ts` (create), `apps/api/src/modules/attendance/infrastructure/in-memory/in-memory-attendance.store.ts` (modify)
+   - Files: `apps/api/src/modules/attendance/domain/device-command.ts` (create), `apps/api/src/modules/attendance/domain/device-command.repository.ts` (create), `apps/api/prisma/schema.prisma` (modify), `apps/api/prisma/migrations/20261003031633_create_device_commands/migration.sql` (create), `apps/api/src/modules/attendance/infrastructure/prisma-device-command.repository.ts` (create), `apps/api/src/modules/attendance/infrastructure/in-memory/in-memory-attendance.store.ts` (modify), `apps/api/src/modules/attendance/infrastructure/attendance.mapper.ts` (modify)
    - Do: `DeviceCommand` entity (`id`, `deviceId`, `command`, `status: 'QUEUED' | 'SENT'`,
      `queuedAt`, `sentAt`, `queuedBy`) with `static queue(...)` (validates the pattern, re-using
      the contract constant through `@rrhh/contracts` is NOT allowed in domain — duplicate the
@@ -85,7 +85,7 @@ z.string().min(1).max(500).regex(DEVICE_COMMAND_PATTERN, 'Solo comandos USERINFO
    - Observable result: migration applied; typecheck passes.
 
 3. **Application**
-   - Files: `apps/api/src/modules/attendance/application/commands/queue-device-command.command.ts` (create), `apps/api/src/modules/attendance/application/commands/take-device-command.command.ts` (create), `apps/api/src/modules/attendance/application/commands/record-device-contact.command.ts` (modify), `apps/api/src/modules/attendance/application/queries/attendance.queries.ts` (modify), `apps/api/src/modules/attendance/infrastructure/prisma-attendance.queries.ts` (modify), `apps/api/src/modules/attendance/domain/device-record.ts` (modify)
+   - Files: `apps/api/src/modules/attendance/application/commands/queue-device-command.command.ts` (create), `apps/api/src/modules/attendance/application/commands/take-device-command.command.ts` (create), `apps/api/src/modules/attendance/application/commands/record-device-contact.command.ts` (modify), `apps/api/src/modules/attendance/application/queries/attendance.queries.ts` (modify), `apps/api/src/modules/attendance/infrastructure/prisma-attendance.queries.ts` (modify), `apps/api/src/modules/attendance/domain/device-record.ts` (modify), `apps/api/src/modules/attendance/application/queries/list-device-commands.query.ts` (create), `apps/api/src/modules/attendance/application/commands/record-device-contact.command.test.ts` (modify)
    - Do: `QueueDeviceCommand` (deps `deviceRepository, deviceCommandRepository, idGenerator,
 clock, logger`): device must exist (`DeviceNotFoundError`, created by plan 003); queue; log
      info `'zkteco: comando encolado'` `{ serialNumber, commandId }` (never the command text at
@@ -141,6 +141,22 @@ deps.takeDeviceCommand.execute({ deviceId })` — the contact use case must retu
 | e2e         | no      | (no e2e infrastructure yet)                                                            |
 
 ## Deviations
+
+Todas cosméticas (fix forward):
+
+1. Migración `20261003031633_create_device_commands` generada con `pnpm db:migrate` (nombre real
+   en lugar del placeholder `YYYYMMDDHHMMSS_`); solo crea la tabla, su índice y la FK.
+2. Archivo adicional no listado: `application/queries/list-device-commands.query.ts`
+   (`ListDeviceCommands`). El router solo puede usar casos de uso por DI, y así `GET …/commands`
+   de un equipo inexistente responde 404 (`DeviceNotFoundError`).
+3. `infrastructure/attendance.mapper.ts` modificado (no listado) para `DeviceCommandMapper`
+   (convención: el mapper es el único lugar donde conviven filas Prisma y dominio).
+4. `record-device-contact.command.test.ts` (no listado) ajustado mínimamente para compilar con
+   el nuevo campo `body` y para esperar que el cuerpo no aparezca en el log de contacto.
+5. `RecordDeviceContact` conserva `bodyLength` además de `body`; el cuerpo se excluye del log de
+   contacto y el resultado de comando se registra como `{ serialNumber, fields }` redactado.
+6. `parseCommandResult` vive en `domain/device-record.ts` (archivo del plan) y `openapi.test.ts`
+   sube el conteo de operaciones de 27 a 29.
 
 ## Test coverage
 

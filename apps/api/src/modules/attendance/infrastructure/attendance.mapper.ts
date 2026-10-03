@@ -1,10 +1,14 @@
+import type { DeviceCommandDto } from '@rrhh/contracts';
+
 import type {
   AttendanceDevice as DeviceRow,
+  AttendanceDeviceCommand as DeviceCommandRow,
   AttendancePunch as PunchRow,
 } from '@/infrastructure/database/generated/client';
 
 import type { RawPunch } from '../application/queries/attendance.queries';
 import { Device, type DeviceId } from '../domain/device';
+import { DeviceCommand, type DeviceCommandId } from '../domain/device-command';
 import type { Punch } from '../domain/punch';
 
 /**
@@ -38,6 +42,43 @@ export const DeviceMapper = {
       siteId: device.siteId,
       clockOffsetSeconds: device.clockOffsetSeconds,
       clockOffsetMeasuredAt: device.clockOffsetMeasuredAt,
+    };
+  },
+};
+
+export const DeviceCommandMapper = {
+  toDomain(row: DeviceCommandRow): DeviceCommand {
+    return DeviceCommand.restore(row.id as DeviceCommandId, {
+      deviceId: row.deviceId as DeviceId,
+      command: row.command,
+      // La columna es texto libre: solo existen estos dos valores y los escribe esta app.
+      status: row.status === 'SENT' ? 'SENT' : 'QUEUED',
+      queuedAt: row.queuedAt,
+      sentAt: row.sentAt,
+      queuedBy: row.queuedBy,
+    });
+  },
+
+  toPersistence(command: DeviceCommand) {
+    return {
+      id: command.id,
+      deviceId: command.deviceId,
+      command: command.command,
+      status: command.status,
+      queuedAt: command.queuedAt,
+      sentAt: command.sentAt,
+      queuedBy: command.queuedBy,
+    };
+  },
+
+  toDto(row: DeviceCommandRow): DeviceCommandDto {
+    return {
+      id: row.id,
+      command: row.command,
+      status: row.status === 'SENT' ? 'SENT' : 'QUEUED',
+      queuedAt: row.queuedAt.toISOString(),
+      sentAt: row.sentAt?.toISOString() ?? null,
+      queuedBy: row.queuedBy,
     };
   },
 };

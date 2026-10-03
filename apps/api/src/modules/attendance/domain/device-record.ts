@@ -46,6 +46,10 @@ export const LOGGABLE_DEVICE_FIELDS: ReadonlySet<string> = new Set([
   'DeviceName',
   'FWVersion',
   'PushVersion',
+  // Resultado de comando (`devicecmd`): identifican el comando y su código de retorno.
+  'ID',
+  'Return',
+  'CMD',
 ]);
 
 // Claves y prefijos se registran tal cual: solo se aceptan con forma de identificador corto, para
@@ -59,6 +63,21 @@ export function isDeviceIdentifier(text: string): boolean {
 
 /** Un valor largo en un campo permitido sigue siendo sospechoso (p. ej. un blob mal etiquetado). */
 const MAX_LOGGABLE_VALUE_LENGTH = 64;
+
+/**
+ * Interpreta el cuerpo de `devicecmd` como pares `clave=valor` separados por `&` o salto de línea.
+ * Lo que no tiene forma de par con clave identificadora se ignora: el formato no está confirmado.
+ */
+export function parseCommandResult(body: string): Record<string, string> {
+  const fields: Record<string, string> = {};
+  for (const part of body.split(/[&\r\n]+/)) {
+    const eq = part.indexOf('=');
+    if (eq <= 0) continue;
+    const key = part.slice(0, eq);
+    if (isDeviceIdentifier(key)) fields[key] = part.slice(eq + 1);
+  }
+  return fields;
+}
 
 /** Conserva todas las claves y reemplaza por `[redactado:<largo>]` los valores no permitidos. */
 export function redactDeviceFields(

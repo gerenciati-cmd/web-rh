@@ -46,7 +46,7 @@ describe('buildOpenApiDocument', () => {
     const expected = Object.values(apiRoutes).flatMap((group) => Object.keys(group));
 
     expect(operationIds.sort()).toEqual(expected.sort());
-    expect(operationIds).toHaveLength(27);
+    expect(operationIds).toHaveLength(29);
   });
 
   it('convierte los segmentos :param de Express a {param} de OpenAPI', () => {
