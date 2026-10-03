@@ -357,8 +357,9 @@ describe('buildOpenApiDocument — documentación por endpoint y errores', () =>
   it('todo código declarado por una ruta existe en components.examples', () => {
     for (const group of Object.values(apiRoutes)) {
       for (const route of Object.values(group) as RouteDefinition[]) {
-        for (const code of route.errors ?? []) {
-          expect(document.components.examples).toHaveProperty([code]);
+        for (const ref of route.errors ?? []) {
+          const name = typeof ref === 'string' ? ref : `${ref.code}__${ref.variant}`;
+          expect(document.components.examples).toHaveProperty([name]);
         }
       }
     }
@@ -402,6 +403,17 @@ describe('buildOpenApiDocument — documentación por endpoint y errores', () =>
     expect(responses?.['422']?.description).toBe('SITE_INACTIVE, SITE_COUNTRY_MISMATCH');
   });
 
+  it('una ruta con variante referencia el ejemplo de esa variante y el catálogo lo emite una vez', () => {
+    const assign = document.paths['/users/{userId}/role-assignments']?.post?.responses;
+    expect(
+      assign?.['422']?.content?.['application/json'].examples?.COMPANY_INACTIVE__role_assignment,
+    ).toEqual({
+      $ref: '#/components/examples/COMPANY_INACTIVE__role_assignment',
+    });
+    expect(document.components.examples).toHaveProperty('COMPANY_INACTIVE');
+    expect(document.components.examples).toHaveProperty('COMPANY_INACTIVE__role_assignment');
+  });
+
   it('copia la descripción del esquema al parámetro', () => {
     const parameters = document.paths['/attendance/punches']?.get?.parameters ?? [];
     expect(parameters.find((p) => p.name === 'page')?.description).toMatch(/por defecto 1/);
@@ -411,8 +423,9 @@ describe('buildOpenApiDocument — documentación por endpoint y errores', () =>
   it('la portada explica autenticación, forma del error, paginación y lista cada código', () => {
     expect(document.info.description).toMatch(/Autenticación/);
     expect(document.info.description).toMatch(/Paginación/);
-    for (const code of Object.keys(document.components.examples)) {
-      expect(document.info.description).toContain(`\`${code}\``);
+    // Las variantes (`CODE__variante`) comparten fila con su código.
+    for (const name of Object.keys(document.components.examples)) {
+      expect(document.info.description).toContain(`\`${name.split('__')[0]}\``);
     }
   });
 

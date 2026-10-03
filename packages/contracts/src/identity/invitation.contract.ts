@@ -58,7 +58,7 @@ export const invitationRoutes = {
       '**Necesita:** que el colaborador esté activo y sin cuenta. Opcionalmente un correo distinto al registrado.',
     ].join('\n'),
     errors: [
-      'EMPLOYEE_NOT_FOUND',
+      { code: 'EMPLOYEE_NOT_FOUND', variant: 'identity' },
       'EMPLOYEE_ALREADY_HAS_ACCESS',
       'EMAIL_ALREADY_REGISTERED',
       'EMPLOYEE_INACTIVE',

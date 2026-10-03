@@ -1,7 +1,7 @@
 import type { Permission } from '@rrhh/domain';
 import type { z } from 'zod';
 
-import type { ApiErrorCode } from './errors';
+import type { ApiErrorRef } from './errors';
 
 export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 
@@ -43,7 +43,7 @@ export interface RouteDefinition {
    * Códigos de error de dominio que la ruta puede devolver (404, 409, 422, 429). Los genéricos
    * 400, 401 y 403 se derivan de lo que la ruta ya declara (entrada y acceso).
    */
-  readonly errors?: readonly ApiErrorCode[];
+  readonly errors?: readonly ApiErrorRef[];
   /**
    * Negado por defecto: toda ruta declara quién la puede llamar. `companyParam` nombra el
    * parámetro de path cuya empresa debe estar en el alcance del actor.

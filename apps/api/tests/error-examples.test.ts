@@ -30,7 +30,7 @@ describe('Los ejemplos de API_ERRORS coinciden con las respuestas reales', () =>
     code: ApiErrorCode,
   ): void => {
     const documented = API_ERRORS[code];
-    const example: Record<string, unknown> = documented.example;
+    const example: Record<string, unknown> = documented.examples.default;
     expect(response.status).toBe(documented.status);
     expect(response.body.code).toBe(code);
     expect(response.body.message).toBe(example.message);
@@ -71,37 +71,31 @@ describe('Los ejemplos de API_ERRORS coinciden con las respuestas reales', () =>
     expectMatchesExample(response, 'AUTHENTICATION_REQUIRED');
   });
 
-  it.fails(
-    'GAP: plan 002 ejemplo ROUTE_NOT_FOUND dice "No existe GET /nada" y el API devuelve "No existe GET /api/v1/nada"',
-    async () => {
-      const response = await call('get', '/nada', adminToken);
+  it('ROUTE_NOT_FOUND', async () => {
+    const response = await call('get', '/nada', adminToken);
 
-      expectMatchesExample(response, 'ROUTE_NOT_FOUND');
-    },
-  );
+    expectMatchesExample(response, 'ROUTE_NOT_FOUND');
+  });
 
-  it.fails(
-    'GAP: plan 002 ejemplo VALIDATION_ERROR omite la clave "pattern" que Zod incluye en el issue de uuid',
-    async () => {
-      const employeeId = '00000000-0000-4000-8000-00000000dead';
-      const response = await call(
-        'put',
-        `/companies/${companyId}/employees/${employeeId}/site`,
-        adminToken,
-      ).send({ siteId: 'no-es-uuid' });
+  it('VALIDATION_ERROR', async () => {
+    const employeeId = '00000000-0000-4000-8000-00000000dead';
+    const response = await call(
+      'put',
+      `/companies/${companyId}/employees/${employeeId}/site`,
+      adminToken,
+    ).send({ siteId: 'no-es-uuid' });
 
-      expectMatchesExample(response, 'VALIDATION_ERROR');
-      const example = API_ERRORS.VALIDATION_ERROR.example.details as {
-        location: string;
-        issues: readonly object[];
-      };
-      const details = response.body.details as { location: string; issues: object[] };
-      expect(details.location).toBe(example.location);
-      expect(Object.keys(details.issues[0] ?? {}).sort()).toEqual(
-        Object.keys(example.issues[0] ?? {}).sort(),
-      );
-    },
-  );
+    expectMatchesExample(response, 'VALIDATION_ERROR');
+    const example = API_ERRORS.VALIDATION_ERROR.examples.default.details as {
+      location: string;
+      issues: readonly object[];
+    };
+    const details = response.body.details as { location: string; issues: object[] };
+    expect(details.location).toBe(example.location);
+    expect(Object.keys(details.issues[0] ?? {}).sort()).toEqual(
+      Object.keys(example.issues[0] ?? {}).sort(),
+    );
+  });
 
   it('SITE_COUNTRY_MISMATCH', async () => {
     const created = await container.cradle.createSite.execute({

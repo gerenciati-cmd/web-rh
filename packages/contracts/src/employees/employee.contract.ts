@@ -151,6 +151,7 @@ export const employeeRoutes = {
       'COMPANY_INACTIVE',
       'SITE_INACTIVE',
       'SITE_COUNTRY_MISMATCH',
+      'BUSINESS_RULE_VIOLATION',
     ],
     access: requires('employees:register', { companyParam: 'companyId' }),
     params: CompanyScopedParams,

@@ -1,5 +1,5 @@
 ---
-status: implementing
+status: testing
 module: platform
 min_implementer: mid
 depends_on: []
@@ -199,19 +199,42 @@ Fecha: 2026-10-03. Pasos 1–5 hechos (5/5).
    es solo el 500 y el 403 vive en `components.responses.Forbidden`). Se actualizaron con el mínimo
    cambio: `packages/contracts/src/identity/access.contract.test.ts` (test "la respuesta Forbidden
    documenta el 403") y `apps/api/tests/authorization.test.ts` (afirma `responses['403']` →
-   `$ref` a `Forbidden`). `pnpm plans:scope --base 5567936` los lista como fuera de alcance por esto.
+   `$ref` a `Forbidden`). Estos dos tests, más `apps/api/tests/error-examples.test.ts` (creado por
+   el tester), se añadieron DESPUÉS de la aprobación a la lista de archivos del paso 5 (ver 6);
+   por eso hoy `plans:scope` los acepta. Corregido en la ronda de reparación 1.
 2. **Cosmético**: en `openapi.test.ts` también se ajustó el test de ronda 1 "cada operación
    referencia components.responses.Error como respuesta default": ya no exige que falten 400/401
    (ahora se derivan como `$ref`); sí sigue exigiendo el `default`. Ese archivo sí está en la lista.
 3. Líneas finales de `packages/contracts/openapi.json`: **3,838** (el plan estimaba ~3,400; el
    criterio de aceptación pide < 4,000: se cumple).
 4. `ROUTE_NOT_FOUND` lleva el mensaje `No existe GET /nada` en el ejemplo (el handler real arma
-   `No existe ${method} ${path}`). `BUSINESS_RULE_VIOLATION` (código base) no está en el catálogo:
-   ninguna clase concreta lo emite y el test de deriva solo lee los archivos listados en el plan.
+   `No existe ${method} ${path}`). **Corregido en la ronda 1**: el ejemplo ahora dice
+   `No existe GET /api/v1/nada`. Además, esta desviación afirmaba que `BUSINESS_RULE_VIOLATION`
+   no estaba en el catálogo porque "ninguna clase concreta lo emite": era falso;
+   `employee.ts:73-79` lo devuelve por HTTP (422, contratación con más de 90 días de anticipación).
+   Ronda 1: añadido a `API_ERRORS` y declarado en `registerEmployee`.
 5. Los criterios de aceptación que exigen ver `/api/v1/docs` y comparar ejemplos con el API en
    marcha (`SITE_ALREADY_EXISTS`, `FORBIDDEN`, `VALIDATION_ERROR`, `SITE_COUNTRY_MISMATCH`) NO se
    ejercieron en esta fase: quedan para `verify`. Los mensajes de `details` del ejemplo
    `VALIDATION_ERROR` (issue de Zod con `origin`/`format`) están por confirmar contra el API real.
+6. **Ronda de reparación 1 (implementer, 2026-10-03)**, contratos: (a) `API_ERRORS[code].example`
+   pasó a `examples: { default, [variante] }` y `RouteDefinition.errors` acepta
+   `ApiErrorCode | { code, variant }` (`ApiErrorRef`, helpers `errorRefCode/errorRefVariant`); el
+   generador emite `components.examples.<CODE>` y `<CODE>__<variante>` una vez cada uno. Variantes:
+   `COMPANY_INACTIVE__role_assignment` (`assignRole`) y `EMPLOYEE_NOT_FOUND__identity` (sin
+   `details`; `inviteEmployee`, `forceEmployeePasswordReset`). `COMPANY_NOT_FOUND`, `SITE_NOT_FOUND`,
+   `SITE_INACTIVE` revisados: mismo cuerpo en todos los módulos, sin variante. (b) `VALIDATION_ERROR`
+   ejemplo con `pattern` (patrón de uuid de Zod 4; solo se compara por claves); `ROUTE_NOT_FOUND`
+   con `/api/v1/nada`; `INVALID_VALUE` con un mensaje real (`Nombre y apellido son obligatorios`) y
+   descripción que dice que Zod responde antes (400) y que ninguna ruta lo declara.
+   (c) Para mantener `pnpm check` en verde se tocaron mínimamente archivos de tests: `openapi.test.ts`
+   (dos aserciones aceptan variantes + un test nuevo de variante), `error-catalog.test.ts` y
+   `error-examples.test.ts` (`.example` → `.examples.default`; los dos `it.fails` promovidos a `it`
+   porque los ejemplos ya coinciden). El tester sigue con el punto 6 del review (reemplazar
+   `error-catalog.test.ts`) y debe cubrir también `BUSINESS_RULE_VIOLATION` e `INVALID_VALUE`.
+7. **Historial**: la lista de archivos del paso 5 se amplió después de la aprobación con
+   `access.contract.test.ts`, `authorization.test.ts` y `error-examples.test.ts`; registrado aquí y
+   en la desviación 1.
 
 ## Test coverage
 

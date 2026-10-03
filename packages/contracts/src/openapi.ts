@@ -1,7 +1,8 @@
 import { z } from 'zod';
 
 import { ApiErrorSchema } from './common';
-import { API_ERRORS } from './errors';
+import type { ApiErrorBody } from './common';
+import { API_ERRORS, errorRefCode, errorRefVariant } from './errors';
 import type { ApiErrorStatus } from './errors';
 import type { RouteDefinition } from './http';
 
@@ -163,17 +164,26 @@ function errorResponsesFor(
     responses['403'] = { $ref: '#/components/responses/Forbidden' };
   }
 
+  // Por status: cada entrada es el nombre del ejemplo (`CODE` o `CODE__variante`).
   const codesByStatus = new Map<ApiErrorStatus, string[]>();
-  for (const code of route.errors ?? []) {
+  for (const ref of route.errors ?? []) {
+    const code = errorRefCode(ref);
     const { status } = API_ERRORS[code];
-    codesByStatus.set(status, [...(codesByStatus.get(status) ?? []), code]);
+    codesByStatus.set(status, [
+      ...(codesByStatus.get(status) ?? []),
+      exampleName(code, errorRefVariant(ref)),
+    ]);
   }
   const apiError = toSchema(ApiErrorSchema, 'output', schemas);
   for (const [status, codes] of [...codesByStatus].sort(([a], [b]) => a - b)) {
     if (responses[String(status)]) {
       throw new Error(`OpenAPI: ${operationId} declara errores ${status} que ya se derivan solos`);
     }
-    responses[String(status)] = errorResponse(codes.join(', '), apiError, codes);
+    responses[String(status)] = errorResponse(
+      codes.map((name) => name.split('__')[0]).join(', '),
+      apiError,
+      codes,
+    );
   }
   return responses;
 }
@@ -197,10 +207,20 @@ function errorResponse(
   };
 }
 
-/** Un ejemplo por código del catálogo, emitido una sola vez. */
+/** Nombre del ejemplo en `components.examples`: el código, o `CODE__variante` si no es el habitual. */
+function exampleName(code: string, variant: string): string {
+  return variant === 'default' ? code : `${code}__${variant}`;
+}
+
+/** Un ejemplo por código y variante del catálogo, emitido una sola vez. */
 function errorExamples(): Record<string, JsonSchema> {
   return Object.fromEntries(
-    Object.entries(API_ERRORS).map(([code, doc]) => [code, { summary: code, value: doc.example }]),
+    Object.entries(API_ERRORS).flatMap(([code, doc]) =>
+      Object.entries<ApiErrorBody>(doc.examples).map(([variant, value]) => {
+        const name = exampleName(code, variant);
+        return [name, { summary: name, value }];
+      }),
+    ),
   );
 }
 

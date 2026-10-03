@@ -106,7 +106,7 @@ export const accessRoutes = {
       'USER_NOT_FOUND',
       'COMPANY_NOT_FOUND',
       'ROLE_ALREADY_ASSIGNED',
-      'COMPANY_INACTIVE',
+      { code: 'COMPANY_INACTIVE', variant: 'role_assignment' },
       'ROLE_NOT_ASSIGNABLE',
       'INVALID_ROLE_SCOPE',
     ],

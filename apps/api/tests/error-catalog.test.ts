@@ -63,9 +63,11 @@ describe('Catálogo de errores de la API (API_ERRORS)', () => {
 
   it('no documenta códigos que el código ya no devuelve', () => {
     const inSources = new Set(
-      [...moduleErrorFiles, ...httpFiles].flatMap(literalsOf).concat('INVALID_VALUE'),
+      [...moduleErrorFiles, ...httpFiles]
+        .flatMap(literalsOf)
+        .concat('INVALID_VALUE', 'BUSINESS_RULE_VIOLATION'),
     );
-    // INVALID_VALUE vive en packages/domain (código por defecto de InvalidValueError).
+    // INVALID_VALUE y BUSINESS_RULE_VIOLATION viven en packages/domain (códigos por defecto de las clases base).
     for (const code of Object.keys(API_ERRORS)) {
       expect(inSources.has(code), `${code} está en API_ERRORS pero ningún fuente lo emite`).toBe(
         true,
@@ -93,7 +95,7 @@ describe('Catálogo de errores de la API (API_ERRORS)', () => {
 
   it('los ejemplos usan el mismo code que su entrada', () => {
     for (const [code, doc] of Object.entries(API_ERRORS)) {
-      expect(doc.example.code).toBe(code);
+      expect(doc.examples.default.code).toBe(code);
     }
   });
 });

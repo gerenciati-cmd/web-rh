@@ -3,7 +3,7 @@
   "info": {
     "title": "API RRHH APS Holding",
     "version": "1",
-    "description": "API de RRHH del holding. Toda la entrada y salida es JSON.\n\n## Autenticación\n\nCasi todas las rutas exigen sesión. Para probar aquí: llama a `POST /auth/login` con `client: \"mobile\"`, copia el `token` de la respuesta y pégalo en **Authentication → bearerAuth**. El cliente web usa una cookie httpOnly en su lugar.\n\n## Forma de los errores\n\nTodo error responde `{ \"code\", \"message\", \"details\"? }`. `code` es estable y es lo que debe usar un cliente para decidir qué hacer; `message` está en español y puede cambiar.\n\n## Paginación\n\nLos listados aceptan `page` (por defecto 1) y `pageSize` (por defecto 20, máximo 100) y responden `{ items, total, page, pageSize }`.\n\n## Códigos de error\n\n| Código | Status | Cuándo ocurre |\n| --- | --- | --- |\n| `VALIDATION_ERROR` | 400 | La solicitud no cumple el contrato: `details.location` dice dónde (params, query o body) y `details.issues` qué campos fallan. |\n| `AUTHENTICATION_REQUIRED` | 401 | La ruta exige sesión y la solicitud no trae una sesión válida o ya expiró. |\n| `FORBIDDEN` | 403 | La sesión es válida, pero no tiene el permiso que exige la ruta (o no para esa empresa). |\n| `ROUTE_NOT_FOUND` | 404 | No existe una ruta con ese método y path. |\n| `INTERNAL_ERROR` | 500 | Error inesperado del servidor; el detalle solo queda en los logs. |\n| `INVALID_VALUE` | 422 | Un valor no cumple una regla del dominio (por ejemplo un identificador mal formado). |\n| `COMPANY_NOT_FOUND` | 404 | La empresa indicada no existe. |\n| `COMPANY_ALREADY_EXISTS` | 409 | Ya hay una empresa con ese identificador tributario. |\n| `COMPANY_INACTIVE` | 422 | La empresa está inactiva y no admite la operación. |\n| `SITE_ALREADY_EXISTS` | 409 | Ya hay una sede con ese nombre. |\n| `EMPLOYEE_ALREADY_EXISTS` | 409 | El colaborador ya está registrado en esa empresa (mismo documento de identidad). |\n| `EMPLOYEE_NOT_FOUND` | 404 | El colaborador no existe (también cuando pertenece a otra empresa: responde igual). |\n| `EMPLOYEE_RFC_ALREADY_REGISTERED` | 409 | Otro colaborador ya tiene ese RFC. |\n| `RFC_NOT_APPLICABLE` | 422 | El RFC solo aplica a colaboradores de México. |\n| `SITE_NOT_FOUND` | 404 | La sede indicada no existe. |\n| `SITE_INACTIVE` | 422 | La sede está inactiva y no se le puede asignar nada. |\n| `SITE_COUNTRY_MISMATCH` | 422 | La sede es de un país distinto al de la razón social. |\n| `DEVICE_NOT_FOUND` | 404 | El checador indicado no existe. |\n| `DEVICE_ALREADY_REGISTERED` | 409 | Ya hay un equipo con ese número de serie. |\n| `DEVICE_NOT_ALLOWED` | 422 | El equipo no está autorizado (no registrado) para enviar datos. |\n| `INVALID_CREDENTIALS` | 401 | Correo o contraseña incorrectos; es el mismo error si el correo no existe (no revela cuentas). |\n| `LOGIN_TEMPORARILY_BLOCKED` | 429 | Demasiados intentos fallidos; `details.retryAfterSeconds` (y el encabezado `Retry-After`) dicen cuánto esperar. |\n| `WEAK_PASSWORD` | 422 | La contraseña no cumple la política de longitud. |\n| `PASSWORD_RESET_NOT_VALID` | 422 | El enlace de restablecimiento no es válido: desconocido, expirado, usado, reemplazado o de un usuario deshabilitado (mismo cuerpo en todos los casos). |\n| `USER_ALREADY_EXISTS` | 409 | Ya existe un usuario con ese correo. |\n| `USER_NOT_FOUND` | 404 | El usuario indicado no existe. |\n| `USER_DISABLED` | 422 | El usuario está deshabilitado y no admite la operación. |\n| `EMAIL_ALREADY_REGISTERED` | 409 | Ya existe un usuario con ese correo. |\n| `EMPLOYEE_INACTIVE` | 422 | El colaborador está desvinculado y no se le puede invitar. |\n| `EMPLOYEE_ALREADY_HAS_ACCESS` | 409 | El colaborador ya tiene una cuenta vinculada. |\n| `INVITATION_NOT_VALID` | 422 | La invitación no es válida: token desconocido, expirado, usado o reemplazado (mismo cuerpo en todos los casos). |\n| `ROLE_NOT_ASSIGNABLE` | 422 | Ese rol existe pero todavía no se puede asignar por la API. |\n| `INVALID_ROLE_SCOPE` | 422 | El alcance no corresponde al rol: HOLDING_ADMIN no lleva empresa; HR requiere una. |\n| `ROLE_ALREADY_ASSIGNED` | 409 | El usuario ya tiene ese rol activo (en esa empresa). |\n| `ROLE_ASSIGNMENT_NOT_FOUND` | 404 | La asignación de rol no existe para ese usuario. |\n| `LAST_HOLDING_ADMIN` | 422 | Revocarla dejaría al holding sin ningún administrador. |"
+    "description": "API de RRHH del holding. Toda la entrada y salida es JSON.\n\n## Autenticación\n\nCasi todas las rutas exigen sesión. Para probar aquí: llama a `POST /auth/login` con `client: \"mobile\"`, copia el `token` de la respuesta y pégalo en **Authentication → bearerAuth**. El cliente web usa una cookie httpOnly en su lugar.\n\n## Forma de los errores\n\nTodo error responde `{ \"code\", \"message\", \"details\"? }`. `code` es estable y es lo que debe usar un cliente para decidir qué hacer; `message` está en español y puede cambiar.\n\n## Paginación\n\nLos listados aceptan `page` (por defecto 1) y `pageSize` (por defecto 20, máximo 100) y responden `{ items, total, page, pageSize }`.\n\n## Códigos de error\n\n| Código | Status | Cuándo ocurre |\n| --- | --- | --- |\n| `VALIDATION_ERROR` | 400 | La solicitud no cumple el contrato: `details.location` dice dónde (params, query o body) y `details.issues` qué campos fallan. |\n| `AUTHENTICATION_REQUIRED` | 401 | La ruta exige sesión y la solicitud no trae una sesión válida o ya expiró. |\n| `FORBIDDEN` | 403 | La sesión es válida, pero no tiene el permiso que exige la ruta (o no para esa empresa). |\n| `ROUTE_NOT_FOUND` | 404 | No existe una ruta con ese método y path. |\n| `INTERNAL_ERROR` | 500 | Error inesperado del servidor; el detalle solo queda en los logs. |\n| `INVALID_VALUE` | 422 | Un valor no cumple una regla del dominio. Hoy las rutas repiten esas reglas en el contrato, así que normalmente responde antes `VALIDATION_ERROR` (400); queda como red de seguridad y ninguna ruta lo declara. El `message` cambia según la regla. |\n| `BUSINESS_RULE_VIOLATION` | 422 | Se infringe una regla de negocio sin código propio; el `message` dice cuál. Hoy: registrar una contratación con demasiada anticipación. |\n| `COMPANY_NOT_FOUND` | 404 | La empresa indicada no existe. |\n| `COMPANY_ALREADY_EXISTS` | 409 | Ya hay una empresa con ese identificador tributario. |\n| `COMPANY_INACTIVE` | 422 | La empresa está inactiva y no admite la operación. |\n| `SITE_ALREADY_EXISTS` | 409 | Ya hay una sede con ese nombre. |\n| `EMPLOYEE_ALREADY_EXISTS` | 409 | El colaborador ya está registrado en esa empresa (mismo documento de identidad). |\n| `EMPLOYEE_NOT_FOUND` | 404 | El colaborador no existe (también cuando pertenece a otra empresa: responde igual). |\n| `EMPLOYEE_RFC_ALREADY_REGISTERED` | 409 | Otro colaborador ya tiene ese RFC. |\n| `RFC_NOT_APPLICABLE` | 422 | El RFC solo aplica a colaboradores de México. |\n| `SITE_NOT_FOUND` | 404 | La sede indicada no existe. |\n| `SITE_INACTIVE` | 422 | La sede está inactiva y no se le puede asignar nada. |\n| `SITE_COUNTRY_MISMATCH` | 422 | La sede es de un país distinto al de la razón social. |\n| `DEVICE_NOT_FOUND` | 404 | El checador indicado no existe. |\n| `DEVICE_ALREADY_REGISTERED` | 409 | Ya hay un equipo con ese número de serie. |\n| `DEVICE_NOT_ALLOWED` | 422 | El equipo no está autorizado (no registrado) para enviar datos. |\n| `INVALID_CREDENTIALS` | 401 | Correo o contraseña incorrectos; es el mismo error si el correo no existe (no revela cuentas). |\n| `LOGIN_TEMPORARILY_BLOCKED` | 429 | Demasiados intentos fallidos; `details.retryAfterSeconds` (y el encabezado `Retry-After`) dicen cuánto esperar. |\n| `WEAK_PASSWORD` | 422 | La contraseña no cumple la política de longitud. |\n| `PASSWORD_RESET_NOT_VALID` | 422 | El enlace de restablecimiento no es válido: desconocido, expirado, usado, reemplazado o de un usuario deshabilitado (mismo cuerpo en todos los casos). |\n| `USER_ALREADY_EXISTS` | 409 | Ya existe un usuario con ese correo. |\n| `USER_NOT_FOUND` | 404 | El usuario indicado no existe. |\n| `USER_DISABLED` | 422 | El usuario está deshabilitado y no admite la operación. |\n| `EMAIL_ALREADY_REGISTERED` | 409 | Ya existe un usuario con ese correo. |\n| `EMPLOYEE_INACTIVE` | 422 | El colaborador está desvinculado y no se le puede invitar. |\n| `EMPLOYEE_ALREADY_HAS_ACCESS` | 409 | El colaborador ya tiene una cuenta vinculada. |\n| `INVITATION_NOT_VALID` | 422 | La invitación no es válida: token desconocido, expirado, usado o reemplazado (mismo cuerpo en todos los casos). |\n| `ROLE_NOT_ASSIGNABLE` | 422 | Ese rol existe pero todavía no se puede asignar por la API. |\n| `INVALID_ROLE_SCOPE` | 422 | El alcance no corresponde al rol: HOLDING_ADMIN no lleva empresa; HR requiere una. |\n| `ROLE_ALREADY_ASSIGNED` | 409 | El usuario ya tiene ese rol activo (en esa empresa). |\n| `ROLE_ASSIGNMENT_NOT_FOUND` | 404 | La asignación de rol no existe para ese usuario. |\n| `LAST_HOLDING_ADMIN` | 422 | Revocarla dejaría al holding sin ningún administrador. |"
   },
   "servers": [
     {
@@ -606,7 +606,7 @@
             }
           },
           "422": {
-            "description": "COMPANY_INACTIVE, SITE_INACTIVE, SITE_COUNTRY_MISMATCH",
+            "description": "COMPANY_INACTIVE, SITE_INACTIVE, SITE_COUNTRY_MISMATCH, BUSINESS_RULE_VIOLATION",
             "content": {
               "application/json": {
                 "schema": {
@@ -621,6 +621,9 @@
                   },
                   "SITE_COUNTRY_MISMATCH": {
                     "$ref": "#/components/examples/SITE_COUNTRY_MISMATCH"
+                  },
+                  "BUSINESS_RULE_VIOLATION": {
+                    "$ref": "#/components/examples/BUSINESS_RULE_VIOLATION"
                   }
                 }
               }
@@ -1227,8 +1230,8 @@
                   "$ref": "#/components/schemas/ApiError"
                 },
                 "examples": {
-                  "COMPANY_INACTIVE": {
-                    "$ref": "#/components/examples/COMPANY_INACTIVE"
+                  "COMPANY_INACTIVE__role_assignment": {
+                    "$ref": "#/components/examples/COMPANY_INACTIVE__role_assignment"
                   },
                   "ROLE_NOT_ASSIGNABLE": {
                     "$ref": "#/components/examples/ROLE_NOT_ASSIGNABLE"
@@ -1404,8 +1407,8 @@
                   "$ref": "#/components/schemas/ApiError"
                 },
                 "examples": {
-                  "EMPLOYEE_NOT_FOUND": {
-                    "$ref": "#/components/examples/EMPLOYEE_NOT_FOUND"
+                  "EMPLOYEE_NOT_FOUND__identity": {
+                    "$ref": "#/components/examples/EMPLOYEE_NOT_FOUND__identity"
                   }
                 }
               }
@@ -1724,8 +1727,8 @@
                   "$ref": "#/components/schemas/ApiError"
                 },
                 "examples": {
-                  "EMPLOYEE_NOT_FOUND": {
-                    "$ref": "#/components/examples/EMPLOYEE_NOT_FOUND"
+                  "EMPLOYEE_NOT_FOUND__identity": {
+                    "$ref": "#/components/examples/EMPLOYEE_NOT_FOUND__identity"
                   },
                   "USER_NOT_FOUND": {
                     "$ref": "#/components/examples/USER_NOT_FOUND"
@@ -3460,6 +3463,7 @@
                 "origin": "string",
                 "code": "invalid_format",
                 "format": "uuid",
+                "pattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/",
                 "path": [
                   "siteId"
                 ],
@@ -3487,7 +3491,7 @@
         "summary": "ROUTE_NOT_FOUND",
         "value": {
           "code": "ROUTE_NOT_FOUND",
-          "message": "No existe GET /nada"
+          "message": "No existe GET /api/v1/nada"
         }
       },
       "INTERNAL_ERROR": {
@@ -3501,7 +3505,14 @@
         "summary": "INVALID_VALUE",
         "value": {
           "code": "INVALID_VALUE",
-          "message": "Valor inválido"
+          "message": "Nombre y apellido son obligatorios"
+        }
+      },
+      "BUSINESS_RULE_VIOLATION": {
+        "summary": "BUSINESS_RULE_VIOLATION",
+        "value": {
+          "code": "BUSINESS_RULE_VIOLATION",
+          "message": "No se puede registrar una contratación con más de 90 días de anticipación"
         }
       },
       "COMPANY_NOT_FOUND": {
@@ -3529,6 +3540,16 @@
         "value": {
           "code": "COMPANY_INACTIVE",
           "message": "No se puede contratar en una empresa inactiva",
+          "details": {
+            "companyId": "0191a2b3-0000-7000-8000-00000000c001"
+          }
+        }
+      },
+      "COMPANY_INACTIVE__role_assignment": {
+        "summary": "COMPANY_INACTIVE__role_assignment",
+        "value": {
+          "code": "COMPANY_INACTIVE",
+          "message": "No se puede asignar un rol en una empresa inactiva",
           "details": {
             "companyId": "0191a2b3-0000-7000-8000-00000000c001"
           }
@@ -3562,6 +3583,13 @@
           "details": {
             "employeeId": "0191a2b3-0000-7000-8000-00000000f001"
           }
+        }
+      },
+      "EMPLOYEE_NOT_FOUND__identity": {
+        "summary": "EMPLOYEE_NOT_FOUND__identity",
+        "value": {
+          "code": "EMPLOYEE_NOT_FOUND",
+          "message": "El colaborador no existe"
         }
       },
       "EMPLOYEE_RFC_ALREADY_REGISTERED": {

@@ -75,7 +75,11 @@ export const passwordResetRoutes = {
       '',
       '**Necesita:** que el colaborador tenga cuenta activa. Responde con los datos del enlace generado.',
     ].join('\n'),
-    errors: ['EMPLOYEE_NOT_FOUND', 'USER_NOT_FOUND', 'USER_DISABLED'],
+    errors: [
+      { code: 'EMPLOYEE_NOT_FOUND', variant: 'identity' },
+      'USER_NOT_FOUND',
+      'USER_DISABLED',
+    ],
     access: requires('identity.users:reset-password', { companyParam: 'companyId' }),
     params: z.object({
       companyId: z.uuid().describe('Id de la empresa del colaborador'),
