@@ -157,7 +157,7 @@ asClass(OrganizationSiteDirectory)` and `assignDeviceSite` in cradle and registr
 - [x] A single-line push stamped 1 hour ahead → `clockOffsetSeconds ≈ −3600`, `clockSuspect: true`,
       warn log `zkteco: desfase de reloj`.
 - [x] A multi-line push (history) leaves `clockOffsetSeconds` unchanged.
-- [ ] Real device: after assigning its sede, a real marcación shows a small offset
+- [x] Real device: after assigning its sede, a real marcación shows a small offset
       (user with the SenseFace 2A; NOT VERIFIED if unavailable).
 
 ## Test layers required
@@ -329,7 +329,11 @@ Cancún/Tijuana <suffix>`), 12/12 PASS:
 - Criterion 2 on a device registered before this plan: synthetic device `VERIFAT576061` (from
   earlier verifications, `siteId: null`) → `PUT …/site` 204, lists the site and `America/Cancun`.
   Other existing devices were not touched (one could be the real checador).
-- **NOT VERIFIED:** criterion 6 (real SenseFace 2A offset). Needs the user to register the device
-  with a sede and mark; the HTTP test has it as `it.skip('NOT CONFIRMED: …')`.
+- ~~NOT VERIFIED: criterion 6~~ **PASS on 2026-10-03 with the real device** (SenseFace 2A
+  `NYU7253300918`, sede assigned by the user): Ana Rojas' real-time marcación at `2026-10-03
+14:10:45` (Cancún) was received at `19:10:50Z` → `clockOffsetSeconds: 6`,
+  `clockSuspect: false`. The earlier history resends after the reconnection did not measure
+  (review M1 behaving as intended). The `it.skip('NOT CONFIRMED: …')` HTTP test stays as the
+  record that this cannot run in CI.
 - Data left in the dev DB: sedes `Verificación checador …`, device `VERIF<suffix>` with punches
   for PINs 9001–9004.

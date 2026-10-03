@@ -97,8 +97,15 @@ curl 'http://localhost:3001/iclock/getrequest?SN=TESTSN001'
 ## Sonda de comandos
 
 Sirve para descubrir, contra el equipo real, qué comando crea un usuario con PIN alfanumérico y
-cómo responde. **El formato no está confirmado**: la familia `DATA UPDATE|QUERY|DELETE USERINFO`
-es una hipótesis tomada de la literatura del protocolo PUSH de ZKTeco.
+cómo responde. La familia `DATA UPDATE|QUERY|DELETE USERINFO` sale de la literatura del protocolo
+PUSH de ZKTeco. **Confirmado el 2026-10-03** con el SenseFace 2A de la tabla de abajo: este texto
+creó al usuario con PIN alfanumérico (los `\t` son tabuladores reales; en JSON se escriben `\t`):
+
+```
+C:1:DATA UPDATE USERINFO PIN=GOMA850101AB1\tName=Ana Rojas\tPri=0\tPasswd=\tCard=\tGrp=1\tTZ=0000000100000000\tVerify=0
+```
+
+`QUERY` y `DELETE` siguen sin probarse en el equipo.
 
 - Encolar (HOLDING_ADMIN): `POST /api/v1/attendance/devices/:deviceId/commands` con
   `{ "command": "DATA UPDATE USERINFO …" }`. Solo se aceptan comandos `USERINFO` (con prefijo

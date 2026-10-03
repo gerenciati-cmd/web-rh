@@ -128,7 +128,7 @@ deps.takeDeviceCommand.execute({ deviceId })` — the contact use case must retu
       following one answers `OK`; `GET …/commands` shows it `SENT` with `sentAt`.
 - [x] A `POST /iclock/devicecmd` with `ID=1&Return=0&CMD=DATA` logs `zkteco: resultado de comando`
       with those three values; other fields come out redacted.
-- [ ] **Real device (the point of the probe):** a command creating user PIN `GOMA850101AB1`, name
+- [x] **Real device (the point of the probe):** a command creating user PIN `GOMA850101AB1`, name
       `Ana Rojas` is accepted by the SenseFace 2A — the user appears in the device's user list,
       can be enrolled (face/fingerprint) from the device menu, and a marcación by that user arrives
       as ATTLOG with that PIN and is attributed to Ana by plan 002. The exact command text and the
@@ -313,9 +313,20 @@ the real-device probe: it is the point of this plan.
     `Name: "[redactado:12]"`.
   - Logs: `comando encolado` and `comando entregado` carry only ids; the text `Prueba Sonda` appears
     0 times in the API output.
-- **NOT VERIFIED — criterion 4 and review L4** (needs the SenseFace 2A): register the device with a
-  sede, queue the user command for PIN `GOMA850101AB1` / `Ana Rojas`, check the device's user list,
-  enroll, mark, see the punch attributed to Ana; record here the exact accepted text, the
-  `devicecmd` reply and the real `CMD` value.
+- **Criterion 4 — PASS on 2026-10-03 with the real device** (SenseFace 2A `NYU7253300918`,
+  firmware `ZAM70-NF24HA-Ver3.3.12`, PushVersion `Ver 3.1.2S-20250616`):
+  - The user queued through Scalar, at 18:31Z, the exact text
+    `C:1:DATA UPDATE USERINFO PIN=GOMA850101AB1\tName=Ana Rojas\tPri=0\tPasswd=\tCard=\tGrp=1\tTZ=0000000100000000\tVerify=0`
+    (tabs as real `\t`). It stayed `QUEUED` while the device was offline (it had not polled since
+    the day before) and became `SENT` at `19:06:30Z` on the first poll after reconnection.
+  - **The device accepted it:** the user saw "ANA rojas" in the device's user list with the
+    alphanumeric PIN and enrolled face and fingerprint from the device menu.
+  - Ana's marcación arrived as ATTLOG with PIN `GOMA850101AB1` at `2026-10-03 14:10:45`
+    (Cancún) and `GET /attendance/punches` attributes it to **Ana Rojas** (plan 002,
+    colaborador of APS Holding with that RFC). This also closes the real-device item left
+    NOT VERIFIED in plan 002.
+- **Still NOT VERIFIED — review L4 / the `devicecmd` reply:** the values of `ID`, `Return` and
+  `CMD` in the `zkteco: resultado de comando` log line are in the user's terminal; to be recorded
+  here when the user reads them.
 - Data left in the dev DB: sede `Verificación sonda <suffix>`, device `SONDA<suffix>` with one
   `SENT` command.
