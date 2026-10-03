@@ -1,5 +1,5 @@
 ---
-status: testing
+status: review
 module: attendance
 min_implementer: mid
 depends_on: ['003']
@@ -115,6 +115,11 @@ deps.takeDeviceCommand.execute({ deviceId })` — the contact use case must retu
      `zkteco: resultado de comando`, `GET …/commands`), and that the format is being confirmed.
    - Observable result: `pnpm check` passes.
 
+6. **Test files of this plan** (declared by the main session after the tester phase)
+   - Files: `apps/api/src/modules/attendance/domain/device-command.test.ts` (create), `apps/api/src/modules/attendance/domain/device-record.test.ts` (modify), `apps/api/src/modules/attendance/application/commands/queue-device-command.command.test.ts` (create), `apps/api/src/modules/attendance/application/commands/take-device-command.command.test.ts` (create), `packages/contracts/src/attendance/device-command.contract.test.ts` (create), `apps/api/tests/attendance-device-commands.test.ts` (create), `apps/api/tests/integration/attendance/prisma-device-command.int.test.ts` (create)
+   - Do: the layers of "Test layers required".
+   - Observable result: `pnpm check` and `pnpm test:integration` pass.
+
 ## Acceptance criteria
 
 - [ ] `POST /api/v1/attendance/devices/:id/commands` as HOLDING_ADMIN with a `DATA UPDATE USERINFO …`
@@ -159,6 +164,42 @@ Todas cosméticas (fix forward):
    sube el conteo de operaciones de 27 a 29.
 
 ## Test coverage
+
+Baseline (antes de escribir tests): `pnpm check` verde; `pnpm test:integration` 14 archivos / 172
+tests verdes. Cierre: `pnpm check` verde (api 815+ tests, contracts 16 nuevos en
+`device-command`), `pnpm test:integration` 15 archivos / 178 tests. No hay GAP ni NOT CONFIRMED
+de código: lo no observable en el equipo real queda en Verification (criterio 4 del plan).
+
+| Comportamiento (plan / código)                                                                | Fuente                                      | Capa        | Test                                                                                    | Estado                        |
+| --------------------------------------------------------------------------------------------- | ------------------------------------------- | ----------- | --------------------------------------------------------------------------------------- | ----------------------------- |
+| `queue` acepta la familia USERINFO (UPDATE/QUERY/DELETE, prefijo `C:n:`)                      | `domain/device-command.ts:34-40`            | domain      | `device-command.test.ts › encola el comando de la familia USERINFO`                     | CONFIRMED                     |
+| `queue` rechaza otros comandos, minúsculas, espacio inicial, sin payload                      | `domain/device-command.ts:41-43`            | domain      | `device-command.test.ts › rechaza … con INVALID_VALUE`                                  | CONFIRMED                     |
+| Largo 1..500                                                                                  | `domain/device-command.ts:37-39`            | domain      | `device-command.test.ts › rechaza el texto vacío y el que pasa de 500`                  | CONFIRMED                     |
+| `markSent` pasa a SENT y es idempotente                                                       | `domain/device-command.ts:84-87`            | domain      | `device-command.test.ts › markSent`                                                     | CONFIRMED                     |
+| `parseCommandResult` separa por `&`, LF/CRLF, ignora lo no-par                                | `domain/device-record.ts:67-80`             | domain      | `device-record.test.ts › parseCommandResult`                                            | CONFIRMED                     |
+| ID/Return/CMD quedan visibles y el resto redactado                                            | `domain/device-record.ts:49-51`             | domain      | `device-record.test.ts › con redactDeviceFields…`                                       | CONFIRMED                     |
+| QueueDeviceCommand: encola, equipo inexistente, comando inválido                              | `queue-device-command.command.ts:35-52`     | application | `queue-device-command.command.test.ts`                                                  | CONFIRMED                     |
+| El log de encolado no lleva el texto del comando                                              | `queue-device-command.command.ts:48-52`     | application | `queue-device-command.command.test.ts › registra el encolado sin el texto`              | CONFIRMED                     |
+| TakeDeviceCommand: más antiguo primero, una vez, por equipo, log                              | `take-device-command.command.ts:21-30`      | application | `take-device-command.command.test.ts`                                                   | CONFIRMED                     |
+| RecordDeviceContact devuelve `{ deviceId }`; resultado de comando redactado, sin cuerpo crudo | `record-device-contact.command.ts:53-68`    | application | `record-device-contact.command.test.ts › resultado de comando (devicecmd)`              | CONFIRMED                     |
+| Esquema de entrada: patrón, sin trim, límites 500/vacío                                       | `device-command.contract.ts:12-35`          | contract    | `device-command.contract.test.ts › QueueDeviceCommandSchema`                            | CONFIRMED                     |
+| Esquema de lectura y acceso de las dos rutas (`attendance.devices:manage`)                    | `device-command.contract.ts:37-55`          | contract    | `device-command.contract.test.ts › DeviceCommandSchema / attendanceDeviceCommandRoutes` | CONFIRMED                     |
+| Criterio 1: 201 admin; CLEAR → 400; HR → 403; sin sesión 401; 404                             | `attendance.router.ts:42-57`                | http        | `attendance-device-commands.test.ts › POST …/commands`                                  | CONFIRMED                     |
+| Criterio 2: getrequest entrega el texto exacto una vez, luego OK; orden                       | `zkteco-adms.router.ts:86-93`               | http        | `attendance-device-commands.test.ts › entrega por GET /iclock/getrequest`               | CONFIRMED                     |
+| Criterio 2: `GET …/commands` QUEUED → SENT con sentAt; orden y paginación; 404/403            | `attendance.router.ts:55-57`                | http        | `attendance-device-commands.test.ts › GET …/commands`                                   | CONFIRMED                     |
+| Criterio 3: `devicecmd` responde OK y registra ID/Return/CMD redactado                        | `zkteco-adms.router.ts:93-97`               | http        | `attendance-device-commands.test.ts › POST /iclock/devicecmd`                           | CONFIRMED                     |
+| OpenAPI publica `GET`/`POST` de la bitácora                                                   | `openapi.json`                              | http        | `attendance-device-commands.test.ts › OpenAPI`                                          | CONFIRMED                     |
+| Persistencia: ida y vuelta (con tabulador), upsert a SENT                                     | `prisma-device-command.repository.ts:12-28` | integration | `prisma-device-command.int.test.ts › PrismaDeviceCommandRepository`                     | CONFIRMED                     |
+| `nextQueued`: más antiguo, desempate por id, por equipo                                       | `prisma-device-command.repository.ts:20-27` | integration | `prisma-device-command.int.test.ts › nextQueued …`                                      | CONFIRMED                     |
+| `listDeviceCommands`: más nuevo primero, paginación, filtro por equipo                        | `prisma-attendance.queries.ts:59-74`        | integration | `prisma-device-command.int.test.ts › PrismaAttendanceQueries.listDeviceCommands`        | CONFIRMED                     |
+| Criterio 4: el equipo real acepta el comando con PIN alfanumérico                             | plan                                        | —           | no hay equipo en este entorno; lo registra el verificador                               | NOT VERIFIED (fuera de tests) |
+
+Conteos añadidos: domain 20 (14 + 6), application 13 (4 + 4 + 5), contract 16, http 19,
+integration 6. Archivos de test nuevos no listados en el plan (esperado por `plans:scope`, solo
+tests): `device-command.test.ts`, `queue-device-command.command.test.ts`,
+`take-device-command.command.test.ts`, `device-command.contract.test.ts`,
+`attendance-device-commands.test.ts`, `prisma-device-command.int.test.ts`; se modificaron
+`device-record.test.ts` y `record-device-contact.command.test.ts`.
 
 ## Review findings
 

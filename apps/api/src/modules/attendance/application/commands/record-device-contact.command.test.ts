@@ -111,6 +111,74 @@ describe('RecordDeviceContact', () => {
     ]);
   });
 
+  it('devuelve el id del equipo para que el router le entregue su comando', async () => {
+    const { command, deviceRepository } = await setUp(['TESTSN001']);
+
+    const result = await command.execute(baseInput);
+
+    const device = await deviceRepository.findBySerialNumber('TESTSN001');
+    expect(result.ok && result.value).toEqual({ deviceId: device?.id });
+  });
+
+  describe('resultado de comando (devicecmd)', () => {
+    const resultInput: RecordDeviceContactInput = {
+      ...baseInput,
+      kind: 'command-result',
+      method: 'POST',
+      path: '/iclock/devicecmd',
+    };
+
+    it('registra ID, Return y CMD y redacta los demás campos', async () => {
+      const { logger, command } = await setUp(['TESTSN001']);
+      const body = 'ID=1&Return=0&CMD=DATA&Name=Ana Rojas';
+
+      const result = await command.execute({ ...resultInput, body, bodyLength: body.length });
+
+      expect(result.ok).toBe(true);
+      expect(logger.entries).toContainEqual({
+        level: 'info',
+        obj: {
+          serialNumber: 'TESTSN001',
+          fields: { ID: '1', Return: '0', CMD: 'DATA', Name: '[redactado:9]' },
+        },
+        msg: 'zkteco: resultado de comando',
+      });
+    });
+
+    it('nunca deja el cuerpo crudo en ninguna entrada del log', async () => {
+      const { logger, command } = await setUp(['TESTSN001']);
+      const body = 'ID=1&Return=0&CMD=DATA&Name=Ana Rojas&Passwd=1234';
+
+      await command.execute({ ...resultInput, body, bodyLength: body.length });
+
+      const logged = JSON.stringify(logger.entries);
+      expect(logged).not.toContain('Ana Rojas');
+      expect(logged).not.toContain('1234');
+    });
+
+    it('un cuerpo sin pares registra el resultado con campos vacíos', async () => {
+      const { logger, command } = await setUp(['TESTSN001']);
+
+      await command.execute({ ...resultInput, body: 'OK', bodyLength: 2 });
+
+      expect(logger.entries).toContainEqual({
+        level: 'info',
+        obj: { serialNumber: 'TESTSN001', fields: {} },
+        msg: 'zkteco: resultado de comando',
+      });
+    });
+
+    it('otros tipos de contacto no registran resultado de comando aunque traigan cuerpo', async () => {
+      const { logger, command } = await setUp(['TESTSN001']);
+
+      await command.execute({ ...baseInput, body: 'ID=1&Return=0', bodyLength: 13 });
+
+      expect(logger.entries.map((entry) => entry.msg)).toEqual([
+        'zkteco: contacto del dispositivo',
+      ]);
+    });
+  });
+
   it('rechaza un equipo registrado pero inactivo, con el mismo aviso', async () => {
     const { logger, command, deviceRepository } = await setUp([]);
     await deviceRepository.save(
