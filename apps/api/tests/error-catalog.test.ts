@@ -9,6 +9,10 @@ import { RequestValidationError } from '@/http/request-validation-error';
 import * as attendanceErrors from '@/modules/attendance/domain/errors';
 import * as employeesErrors from '@/modules/employees/domain/errors';
 import * as identityErrors from '@/modules/identity/domain/errors';
+import {
+  PASSWORD_MAX_LENGTH,
+  PASSWORD_MIN_LENGTH,
+} from '@/modules/identity/domain/password-policy';
 import * as organizationErrors from '@/modules/organization/domain/errors';
 import { RecordingLogger } from '@/shared/testing/fakes';
 
@@ -23,7 +27,7 @@ import { RecordingLogger } from '@/shared/testing/fakes';
 /** Argumentos por clase: la mayoría recibe ids/cadenas; estas dos reciben números. */
 const ARGS_BY_CLASS: Readonly<Record<string, readonly unknown[]>> = {
   LoginTemporarilyBlockedError: [300],
-  WeakPasswordError: [12, 128],
+  WeakPasswordError: [PASSWORD_MIN_LENGTH, PASSWORD_MAX_LENGTH],
 };
 
 /** Variante del catálogo que corresponde a una clase cuyo código lo comparten varios módulos. */

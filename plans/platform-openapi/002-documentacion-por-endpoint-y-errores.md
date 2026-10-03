@@ -1,5 +1,5 @@
 ---
-status: review
+status: verify
 module: platform
 min_implementer: mid
 depends_on: []
@@ -205,7 +205,7 @@ Fecha: 2026-10-03. Pasos 1–5 hechos (5/5).
 2. **Cosmético**: en `openapi.test.ts` también se ajustó el test de ronda 1 "cada operación
    referencia components.responses.Error como respuesta default": ya no exige que falten 400/401
    (ahora se derivan como `$ref`); sí sigue exigiendo el `default`. Ese archivo sí está en la lista.
-3. Líneas finales de `packages/contracts/openapi.json`: **3,838** (el plan estimaba ~3,400; el
+3. Líneas finales de `packages/contracts/openapi.json`: **3,838** (3,866 tras la ronda de reparación 1) (el plan estimaba ~3,400; el
    criterio de aceptación pide < 4,000: se cumple).
 4. `ROUTE_NOT_FOUND` lleva el mensaje `No existe GET /nada` en el ejemplo (el handler real arma
    `No existe ${method} ${path}`). **Corregido en la ronda 1**: el ejemplo ahora dice
@@ -417,5 +417,81 @@ alternative (import the `errors.ts` modules, instantiate every exported `DomainE
 the base `InvalidValueError`/`BusinessRuleViolationError`, run them through the real
 `errorHandler`, compare status/code/`details` keys with the catalogue, including variants), record
 it as a deviation of step 5; promote the two `it.fails` of `error-examples.test.ts` to `it`.
+
+### Segunda pasada (tras la ronda de reparación 1)
+
+Fecha: 2026-10-03. Reviewer (subagente). Diff de la reparación `e617de0..HEAD` (`feb9191`); base
+completa del plan `5567936`; árbol limpio. Sin API de desarrollo corriendo (no hacía falta: los
+ejemplos se contrastan en `error-examples.test.ts` y `error-catalog.test.ts`).
+
+**Pass 1 — Checklist: 13/13**
+
+- [x] `pnpm plans:scope … --base 5567936`: 23 cambiados / 21 declarados + plan; todo dentro del
+      alcance; `packages/contracts/src/index.ts` sigue append-only.
+- [x] `pnpm check` verde: contracts 258, api 831 + 5 skipped (ya sin `it.fails`), domain 98, web 2,
+      mobile 5, api-client 3; format, lint, typecheck, arch (sin violaciones), plans, harness OK.
+- [x] Integración: N/A (sin cambios en `infrastructure/` ni en el esquema).
+- [x] Reglas de negocio / CQRS / Money-fechas / migración / DI: N/A (solo contracts y tests).
+- [x] Tipos de `@rrhh/contracts`: `ApiErrorRef` se deriva del catálogo (`variant` limitado a las
+      claves reales de `examples`, sin `default`); un typo de variante no compila.
+- [x] Errores esperados: ningún código, status ni mensaje del API cambió.
+- [x] Sin secretos ni datos reales.
+- [x] `## Deviations` honesto. Comprobado: la desviación 6(a) dice que `COMPANY_NOT_FOUND`,
+      `SITE_NOT_FOUND` y `SITE_INACTIVE` tienen el mismo cuerpo en todos los módulos. Es cierto:
+      `error-catalog.test.ts` compara cada clase de los cuatro módulos con el ejemplo `default` y pasa.
+      Detalle menor en Low B.
+- [x] Docs: nada queda falso (las recetas, ver Low C).
+
+**Estado de los hallazgos de la primera ronda**
+
+1. `BUSINESS_RULE_VIOLATION`: resuelto. Ahora está en `API_ERRORS` (422) con el mensaje real
+   (`MAX_DAYS_HIRE_IN_ADVANCE = 90`, `employee.ts:42`), lo declara `registerEmployee`
+   (`employee.contract.ts:154`) y el test de deriva instancia la clase base.
+2. Ejemplo `VALIDATION_ERROR`: resuelto. Incluye `pattern` y el test promovido a `it` pasa.
+3. `ROUTE_NOT_FOUND`: resuelto (`No existe GET /api/v1/nada`, test promovido a `it`).
+4. `COMPANY_INACTIVE`: resuelto con la variante `role_assignment`. Solo `assign-role.command.ts:67`
+   usa `AssignmentCompanyInactiveError` y es la única ruta que declara esa variante.
+5. `EMPLOYEE_NOT_FOUND`: resuelto con la variante `identity`. Solo `invite-employee.command.ts:72` y
+   `force-employee-password-reset.command.ts:43` usan la clase de identity, y sus dos rutas
+   declaran la variante (`openapi.json:1410,1730`).
+6. Test de deriva: resuelto. Ya no busca texto en el código fuente; pasa las clases por el
+   `errorHandler` real; compara status, code, message y claves de `details`, incluidas las
+   variantes; también detecta códigos y variantes documentados que nadie emite. Ya no hay copia de
+   `STATUS_BY_CATEGORY`.
+7. Historial: resuelto (desviaciones 1 y 7).
+8. `INVALID_VALUE`: resuelto. El mensaje del ejemplo existe (`employee.ts:69`) y la descripción es
+   correcta: revisé las 15 instancias directas de `InvalidValueError` en `apps/api/src` y los
+   contratos las atajan antes con un 400 (por ejemplo `firstName: z.string().trim().min(1)`,
+   `employee.contract.ts:34`; RFC por país en `superRefine`, `:59-74`).
+9. Recetas: aplazado por decisión de la sesión principal (ver Low C).
+
+**Pass 2 — Hallazgos nuevos**
+
+Major: ninguno. Minor: ninguno.
+
+Low (no bloquean; no exigen cambios para pasar a verify):
+
+- A. `apps/api/tests/error-catalog.test.ts:24-27`: `ARGS_BY_CLASS` pasa los literales `[12, 128]` a
+  `WeakPasswordError` en vez de `PASSWORD_MIN_LENGTH`/`PASSWORD_MAX_LENGTH`
+  (`identity/domain/password-policy.ts:6-7`). Escenario: si la política sube a 14, el API responde
+  "entre 14 y 128" pero el test sigue construyendo la clase con 12 y no detecta que el ejemplo del
+  catálogo quedó viejo. Arreglo de tests (tester): importar las constantes.
+- B. La desviación 3 dice que `openapi.json` tiene 3,838 líneas; tras la reparación tiene **3,866**.
+  Sigue por debajo de 4,000. Hay que corregir el número en el texto del plan.
+- C. El Low 9 de la primera ronda (las recetas `new-use-case`/`new-module` no mencionan
+  `description`/`API_ERRORS`/`errors`) se aplazó, pero todavía no está en `plans/hallazgos/`. Hay que
+  registrarlo allí para que no se pierda (lo hace la sesión principal; yo solo escribo en este plan).
+- D. **Incierto, cosmético**: en Scalar, las variantes aparecen con su nombre técnico
+  (`COMPANY_INACTIVE__role_assignment`) como etiqueta del ejemplo (`summary`, `openapi.ts`
+  `errorExamples`). La descripción de la respuesta sí muestra solo el código. Conviene comprobarlo
+  en verify.
+
+Sin hallazgos en el generador tras la reparación: `exampleName`/`errorExamples` emiten cada ejemplo
+una sola vez; la agrupación por status usa el código sin variante en la descripción; el `throw`
+ante un status derivado sigue igual; `openapi.test.ts` cubre la referencia a la variante.
+
+Resultado: todo en verde. Los Low A–C son arreglos de texto o de tests que se pueden hacer en
+cualquier momento. Status → `verify`. Para verify siguen pendientes los criterios que exigen
+`/api/v1/docs` renderizado (desviación 5) y el Low D.
 
 ## Verification
