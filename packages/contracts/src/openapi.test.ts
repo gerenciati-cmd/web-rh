@@ -429,6 +429,21 @@ describe('buildOpenApiDocument — documentación por endpoint y errores', () =>
     }
   });
 
+  // Plan platform-observabilidad/001: errores del parser de cuerpo (no los declara ninguna ruta,
+  // viven solo en el catálogo; el handler los devuelve en `error-handler.ts`).
+  it('el catálogo emite MALFORMED_JSON (400) y PAYLOAD_TOO_LARGE (413) en ejemplos y portada', () => {
+    expect(document.components.examples.MALFORMED_JSON?.value).toEqual({
+      code: 'MALFORMED_JSON',
+      message: 'El cuerpo de la petición no es JSON válido',
+    });
+    expect(document.components.examples.PAYLOAD_TOO_LARGE?.value).toEqual({
+      code: 'PAYLOAD_TOO_LARGE',
+      message: 'El cuerpo de la petición supera 1 MB',
+    });
+    expect(document.info.description).toMatch(/\| `MALFORMED_JSON` \| 400 \|/);
+    expect(document.info.description).toMatch(/\| `PAYLOAD_TOO_LARGE` \| 413 \|/);
+  });
+
   it('lanza si una ruta declara un error con un status que ya se deriva solo', () => {
     const clash: RouteDefinition = defineRoute({
       method: 'GET',

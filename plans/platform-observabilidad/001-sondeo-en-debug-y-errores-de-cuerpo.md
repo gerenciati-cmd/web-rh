@@ -1,5 +1,5 @@
 ---
-status: testing
+status: review
 module: platform
 min_implementer: mid
 depends_on: [platform-openapi/002]
@@ -84,7 +84,7 @@ cuerpo de la petición supera 1 MB' }`). Narrow with a small type guard, no `any
    - Observable result: typecheck passes.
 
 4. **Docs and regeneration**
-   - Files: `packages/contracts/openapi.json` (modify), `docs/integraciones/zkteco-senseface-2a.md` (modify)
+   - Files: `packages/contracts/openapi.json` (modify), `docs/integraciones/zkteco-senseface-2a.md` (modify), `packages/contracts/src/openapi.test.ts` (modify), `apps/api/tests/request-logging-and-body-errors.test.ts` (create)
    - Do: regenerate the OpenAPI snapshot (new catalogue codes). Runbook: note that the polling
      `request completed` lines appear only with `LOG_LEVEL=debug`.
    - Observable result: `pnpm check` passes.
@@ -120,6 +120,23 @@ cuerpo de la petición supera 1 MB' }`). Narrow with a small type guard, no `any
   y el plan exige que pase. Los tests por capas siguen siendo trabajo de la fase de tests.
 
 ## Test coverage
+
+Línea base: `pnpm check` verde antes de escribir tests. Tests nuevos: 7 http en
+`apps/api/tests/request-logging-and-body-errors.test.ts` (pino real a un arreglo, nivel debug) y
+1 de contrato en `packages/contracts/src/openapi.test.ts`. Sin GAP ni NOT CONFIRMED.
+
+| Comportamiento                                                       | Fuente                              | Capa     | Test                                                                        | Estado    |
+| -------------------------------------------------------------------- | ----------------------------------- | -------- | --------------------------------------------------------------------------- | --------- |
+| Sondeo `/iclock/getrequest` exitoso (con query) se loguea en debug   | `app.ts:30-36`, `attendance.module` | http     | `request-logging… › un sondeo exitoso (query incluida) va a debug`          | CONFIRMED |
+| Otra ruta exitosa sigue en info                                      | `app.ts:35`                         | http     | `… › otras rutas exitosas siguen en info`                                   | CONFIRMED |
+| Sondeo que falla (serie desconocida, 403) se loguea en warn          | `app.ts:34`                         | http     | `… › un sondeo que falla … en warn`                                         | CONFIRMED |
+| JSON malformado → 400 `MALFORMED_JSON`, sin `unhandled error`        | `error-handler.ts:81-88`            | http     | `… › JSON malformado en POST /sites`                                        | CONFIRMED |
+| Cuerpo > 1 MB → 413 `PAYLOAD_TOO_LARGE`, sin `unhandled error`       | `error-handler.ts:72-80`            | http     | `… › un cuerpo de más de 1 MB`                                              | CONFIRMED |
+| Mensaje integrado de Zod en español                                  | `bind-route.ts:13`                  | http     | `… › name de una letra … en español`                                        | CONFIRMED |
+| Mensaje propio de `timeZone` sin cambios                             | `site.contract.ts:36-39`            | http     | `… › el mensaje propio de timeZone …`                                       | CONFIRMED |
+| Catálogo emite los dos códigos (ejemplos, portada con 400/413)       | `errors.ts`, `openapi.ts:218-229`   | contrato | `openapi.test.ts › el catálogo emite MALFORMED_JSON … y PAYLOAD_TOO_LARGE…` | CONFIRMED |
+| Deriva catálogo ↔ códigos reales con las dos entradas `generic(...)` | `error-catalog.test.ts`             | http     | existente (tocado por el implementer)                                       | CONFIRMED |
+| `LOG_LEVEL=info` en `.env.example`, nota en runbook (docs)           | `.env.example`, runbook             | —        | no testeable (config/documentación)                                         | n/a       |
 
 ## Review findings
 
