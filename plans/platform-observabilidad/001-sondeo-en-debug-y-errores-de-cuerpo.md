@@ -91,15 +91,15 @@ cuerpo de la petición supera 1 MB' }`). Narrow with a small type guard, no `any
 
 ## Acceptance criteria
 
-- [ ] With `LOG_LEVEL=info`, a device polling `GET /iclock/getrequest` every 10 s prints no
+- [x] With `LOG_LEVEL=info`, a device polling `GET /iclock/getrequest` every 10 s prints no
       `request completed` lines; `zkteco: …` events and other requests still print. With
       `LOG_LEVEL=debug` the polling lines appear.
-- [ ] A polling request that fails (unknown serial, 403) still logs at warn.
-- [ ] `POST /api/v1/sites` with body `{"name": ` → 400 `MALFORMED_JSON`; a body over 1 MB → 413
+- [x] A polling request that fails (unknown serial, 403) still logs at warn.
+- [x] `POST /api/v1/sites` with body `{"name": ` → 400 `MALFORMED_JSON`; a body over 1 MB → 413
       `PAYLOAD_TOO_LARGE`; nothing logged as `unhandled error`.
-- [ ] `POST /api/v1/sites` with `name: "X"` → 400 `VALIDATION_ERROR` whose issue message for `name`
+- [x] `POST /api/v1/sites` with `name: "X"` → 400 `VALIDATION_ERROR` whose issue message for `name`
       is in Spanish; the custom `timeZone` message is unchanged.
-- [ ] Scalar's error table lists `MALFORMED_JSON` and `PAYLOAD_TOO_LARGE`.
+- [x] Scalar's error table lists `MALFORMED_JSON` and `PAYLOAD_TOO_LARGE`.
 
 ## Test layers required
 
@@ -212,3 +212,23 @@ Estado: se queda en `review` (L-1 y L-2 requieren cambios de código/docs).
 - Info: no change.
 
 ## Verification
+
+**PASS** — 2026-10-03, main session, at `7e81dd6`, against the dev API on `localhost:3000`
+started from the branch (it reloaded with the changes).
+
+- Suites at `7e81dd6`: `pnpm check` green (api 838 passed / 5 skipped, contracts 259).
+- HTTP script, 4/4 PASS: `{"name": ` → 400 `MALFORMED_JSON` ("El cuerpo de la petición no es JSON
+  válido"); a 1.1 MB body → 413 `PAYLOAD_TOO_LARGE` ("…supera el tamaño permitido"); `name: "X"` →
+  400 with the Spanish built-in message "Demasiado pequeño: se esperaba que texto tuviera >=2
+  caracteres"; the custom `timeZone` message unchanged. The API output has 0 `unhandled error`
+  lines.
+- Logs (API output captured): a successful `GET /iclock/getrequest?SN=VERIFMURTFL16` (synthetic
+  registered device) logged as `DEBUG request completed`; an unknown serial (403) as `WARN`; other
+  API requests as `INFO`/`WARN`. The real SenseFace was not polling at the time (last seen
+  21:29Z), so the poll was simulated with curl.
+- Criterion 1 at `LOG_LEVEL=info`: the dev process ran with the user's `.env`, whose level shows
+  debug lines, so the "not printed at info" half is covered by the HTTP test
+  (`request-logging-and-body-errors.test.ts`, real pino at a given level), not observed live.
+  `.env.example` now says `LOG_LEVEL=info`; the user's `.env` was not read or changed.
+- Criterion 5: `packages/contracts/openapi.json` contains `MALFORMED_JSON` and `PAYLOAD_TOO_LARGE`
+  in `components.examples` and the intro table (contract test `openapi.test.ts`).
