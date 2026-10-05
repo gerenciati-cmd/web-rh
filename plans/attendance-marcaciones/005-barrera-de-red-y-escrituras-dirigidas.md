@@ -1,5 +1,5 @@
 ---
-status: testing
+status: review
 module: attendance
 min_implementer: mid
 depends_on: ['004']
@@ -187,6 +187,10 @@ allowedNetworks }`): `DeviceNotFoundError`, `setAllowedNetworks`, `saveAllowedNe
      in the command fixtures. No new behavior tested here (that is the tester's phase).
    - Observable result: the pre-existing suites stay green.
 
+8. **Test files of this plan** (declared by the main session after the tester phase)
+   - Files: `apps/api/src/modules/attendance/domain/ipv4-network.test.ts` (create), `apps/api/src/modules/attendance/domain/device-networks.test.ts` (create), `apps/api/src/modules/attendance/application/commands/device-network-barrier.test.ts` (create), `apps/api/src/modules/attendance/infrastructure/in-memory/in-memory-device.repository.test.ts` (create), `apps/api/src/config/env-trust-proxy.test.ts` (create), `apps/api/tests/attendance-device-network.test.ts` (create), `apps/api/tests/integration/attendance/prisma-device-networks.int.test.ts` (create), `packages/contracts/src/attendance/device-networks.contract.test.ts` (create)
+   - Observable result: `pnpm check` and `pnpm test:integration` green.
+
 ## Acceptance criteria
 
 - [ ] `GET /api/v1/attendance/devices` shows `allowedNetworks: []` and `lastSeenIp` (the IP of
@@ -253,6 +257,62 @@ Implemented inline by the main session on 2026-10-05 (the user approved the plan
    conflict, impossible when the serial does not change).
 
 ## Test coverage
+
+Tester, 2026-10-05. Baseline (`pnpm check` + `pnpm test:integration`): green, api 838 passed / 5
+skipped, integration 15 files / 178 tests. Closing: `pnpm check` green (api 971 passed / 1 expected
+fail / 5 skipped; contracts 283), `pnpm test:integration` 16 files / 189 tests. New files only (the
+step-7 files were not touched):
+
+- `apps/api/src/modules/attendance/domain/ipv4-network.test.ts`
+- `apps/api/src/modules/attendance/domain/device-networks.test.ts`
+- `apps/api/src/modules/attendance/application/commands/device-network-barrier.test.ts`
+- `apps/api/src/modules/attendance/infrastructure/in-memory/in-memory-device.repository.test.ts`
+- `packages/contracts/src/attendance/device-networks.contract.test.ts`
+- `apps/api/src/config/env-trust-proxy.test.ts`
+- `apps/api/tests/attendance-device-network.test.ts`
+- `apps/api/tests/integration/attendance/prisma-device-networks.int.test.ts`
+
+| Behavior (plan / code)                                                                                                                               | Source                                                                             | Layer                 | Test                                                                                | State                                                              |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- | --------------------- | ----------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| IPv4 parsing: octets, no leading zeros, `/n` 0-32, junk and IPv6 rejected, mapped form unwrapped                                                     | `ipv4-network.ts:19-40`                                                            | domain                | `ipv4-network.test.ts › parseIpv4Address / parseIpv4Network`                        | CONFIRMED                                                          |
+| Containment (`/0`, `/31`, `/32`, `/24` edges, high range) and canonical text                                                                         | `ipv4-network.ts:42-61`                                                            | domain                | `ipv4-network.test.ts › ipv4NetworkContains / formatIpv4Network`                    | CONFIRMED                                                          |
+| `setAllowedNetworks`: canonical, de-dup, empty, invalid keeps previous, max 10 distinct                                                              | `device.ts:setAllowedNetworks`                                                     | domain                | `device-networks.test.ts › Device.setAllowedNetworks`                               | CONFIRMED                                                          |
+| `acceptsAddress` (empty = any, null/junk/IPv6 rejected when restricted, mapped accepted); `receivesCommands`                                         | `device.ts:acceptsAddress`, `receivesCommands`                                     | domain                | `device-networks.test.ts › acceptsAddress / receivesCommands`                       | CONFIRMED                                                          |
+| `markSeen(now, ip)` persists on first contact, resolution elapsed or IP change                                                                       | `device.ts:markSeen`                                                               | domain                | `device-networks.test.ts › Device.markSeen con IP`                                  | CONFIRMED                                                          |
+| `DeviceNetworkUnrestrictedError` code/message/details                                                                                                | `errors.ts:DeviceNetworkUnrestrictedError`                                         | domain                | `device-networks.test.ts › DeviceNetworkUnrestrictedError`                          | CONFIRMED                                                          |
+| Contact rejected by IP: same outward error as unknown SN, warn `IP no permitida`, no `lastSeen` write; null IP rejected                              | `record-device-contact.command.ts:47-60`                                           | application           | `device-network-barrier.test.ts › RecordDeviceContact: barrera de red`              | CONFIRMED                                                          |
+| Push rejected by IP: no punches stored, `records` getter not read, warn with table+IP; unrestricted device still stores                              | `record-device-push.command.ts:52-60`                                              | application           | `device-network-barrier.test.ts › RecordDevicePush: barrera de red`                 | CONFIRMED                                                          |
+| Finding race: site change during an in-flight push survives `saveContact`                                                                            | `record-device-push.command.ts` + `saveContact`                                    | application           | `device-network-barrier.test.ts › un cambio de sede hecho mientras el envío…`       | CONFIRMED                                                          |
+| `SetDeviceNetworks`: canonical save, empty list, NOT_FOUND, INVALID_VALUE (bad/too many), log, only its column                                       | `set-device-networks.command.ts`                                                   | application           | `device-network-barrier.test.ts › SetDeviceNetworks`                                | CONFIRMED                                                          |
+| Queue refused when unrestricted (422 code + details, nothing queued/logged); NOT_FOUND first                                                         | `queue-device-command.command.ts:36-41`                                            | application           | `device-network-barrier.test.ts › QueueDeviceCommand: barrera de red`               | CONFIRMED                                                          |
+| Take returns null when unrestricted and the command stays `QUEUED`; delivered after networks return                                                  | `take-device-command.command.ts:26-27`                                             | application           | `device-network-barrier.test.ts › TakeDeviceCommand: barrera de red`                | CONFIRMED                                                          |
+| `AssignDeviceSite` writes only site+zone (contact and networks landing in between survive)                                                           | `assign-device-site.command.ts:+saveSite`                                          | application           | `device-network-barrier.test.ts › AssignDeviceSite: escritura dirigida`             | CONFIRMED                                                          |
+| In-memory repo mirrors Prisma: each `save*` only its columns, copies, `add` duplicate id/serial, missing id rejects                                  | `in-memory-attendance.store.ts:InMemoryDeviceRepository`                           | application (adapter) | `in-memory-device.repository.test.ts`                                               | CONFIRMED                                                          |
+| `SetDeviceNetworksSchema`: IP/CIDR accepted, `/33`, IPv6, junk, 11 items, wrong shape rejected                                                       | `device.contract.ts:65-73`                                                         | contract              | `device-networks.contract.test.ts › SetDeviceNetworksSchema`                        | CONFIRMED                                                          |
+| `DeviceSchema` requires `allowedNetworks` and nullable `lastSeenIp`                                                                                  | `device.contract.ts:DeviceSchema`                                                  | contract              | `device-networks.contract.test.ts › DeviceSchema: campos de red`                    | CONFIRMED                                                          |
+| Route `setDeviceNetworks` shape; error registry entry (422); `queueDeviceCommand.errors`                                                             | `device.contract.ts:127-146`, `errors.ts:303-312`, `device-command.contract.ts:59` | contract              | `device-networks.contract.test.ts › setDeviceNetworks y el registro de errores`     | CONFIRMED                                                          |
+| `PUT .../networks`: 204 admin + canonical read-back, empty list, 403 HR, 401, 404, 400 (bad prefix, IPv6, junk, >10, wrong shape, non-UUID id)       | `attendance.router.ts`, contract                                                   | http                  | `attendance-device-network.test.ts › PUT /attendance/devices/:deviceId/networks`    | CONFIRMED                                                          |
+| `GET /attendance/devices` shows `allowedNetworks` and `lastSeenIp` after a contact                                                                   | `prisma-attendance.queries.ts` / in-memory queries                                 | http                  | `attendance-device-network.test.ts › GET /attendance/devices…`                      | CONFIRMED                                                          |
+| `/iclock` cdata, getrequest, ATTLOG answer `403 ERROR: dispositivo no autorizado` when IP excluded; no punch stored; log line; allowed IP works      | `zkteco-adms.router.ts`                                                            | http                  | `attendance-device-network.test.ts › /iclock con redes que excluyen / incluyen…`    | CONFIRMED                                                          |
+| Unrestricted device: ATTLOG stored, `POST .../commands` 422 `DEVICE_NETWORK_UNRESTRICTED`, queued command not delivered after emptying               | router + use cases                                                                 | http                  | `attendance-device-network.test.ts › equipo sin redes permitidas`                   | CONFIRMED                                                          |
+| `TRUST_PROXY=1` evaluates `X-Forwarded-For`; unset or empty ignores it                                                                               | `app.ts`, `env.ts:TRUST_PROXY`                                                     | http                  | `attendance-device-network.test.ts › TRUST_PROXY`                                   | CONFIRMED                                                          |
+| `TRUST_PROXY` parsing: absent/blank -> false, integer -> hops, list -> trimmed array                                                                 | `env.ts:26-37`                                                                     | http (config)         | `env-trust-proxy.test.ts`                                                           | CONFIRMED                                                          |
+| Migration columns (`allowed_networks` ARRAY, `last_seen_ip` varchar(45)); legacy row -> `[]`/null                                                    | `migrations/20261005165911_add_device_networks/migration.sql`                      | integration           | `prisma-device-networks.int.test.ts › migración add_device_networks`                | CONFIRMED                                                          |
+| Each `save*` writes only its columns against Postgres (stale-instance races, all three pairs); `listDevices` exposes both fields; missing id rejects | `prisma-device.repository.ts:44-69`                                                | integration           | `prisma-device-networks.int.test.ts › escrituras dirigidas`                         | CONFIRMED                                                          |
+| Admin can paste the IP shown in `lastSeenIp` into `PUT .../networks` (plan Approach: "so the admin can learn which IP to allow")                     | `zkteco-adms.router.ts` (`req.ip`), `device.contract.ts` (`z.ipv4()`)              | http                  | `attendance-device-network.test.ts › GAP: plan 005 — la IP mostrada en lastSeenIp…` | **GAP**                                                            |
+| Real device keeps sending and receives a queued `USERINFO` after setting its IP                                                                      | acceptance criterion 7 (needs the physical checador)                               | e2e/manual            | not testable locally; belongs to verify                                             | NOT CONFIRMED (not written; no `.skip` added, covered by verifier) |
+
+**GAP (1):** on a dual-stack socket Node reports `req.ip` as `::ffff:127.0.0.1`; that exact string is
+stored in `lastSeenIp` and shown by `GET /attendance/devices` (confirmed by test), but
+`PUT .../networks` validates with `z.ipv4()` and answers 400 for it. The admin cannot copy the shown
+IP straight into the list, which is the flow the plan's Approach promises. The in-domain matching
+already unwraps the mapped form (so the barrier itself works); the fix belongs to the product code
+(normalize the mapped form before storing/showing `lastSeenIp`, or accept it in the contract). The
+`it.fails` turns red when it is fixed, to be promoted to a normal `it`.
+
+Minor: the baseline run and the closing run were the two full runs; after the closing run a single
+lint warning (complexity 14 in my new `in-memory-device.repository.test.ts`) was fixed and only
+that file was re-linted and re-run.
 
 ## Review findings
 
