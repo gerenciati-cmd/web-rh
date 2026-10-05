@@ -1,5 +1,5 @@
 ---
-status: testing
+status: review
 module: attendance
 min_implementer: mid
 depends_on: ['004']
@@ -410,5 +410,15 @@ deviations. `pnpm check` is RED by design, only on three tests that asserted the
 - `apps/api/src/modules/attendance/application/commands/device-network-barrier.test.ts:170` expects
   `::ffff:10.9.9.5`, now `10.9.9.5`.
 - L1 (overlong or garbage IP becomes `null`) has no test yet. Status set to `testing`.
+
+Tester re-run (2026-10-05, after the repair), all four items resolved. The two stale expectations
+now assert `127.0.0.1` / `10.9.9.5`; the GAP `it.fails` was promoted to a normal `it` (CONFIRMED,
+M1 closed, no GAP remains). L1 is covered in `device-networks.test.ts` (`it.each`: mapped, plain,
+IPv6 and trimmed IPv6 normalize; garbage, 3 octets, X-Forwarded-For list, over 45 chars, non-hex
+and empty become `null`; change-to-null and mapped-equals-plain resolution cases) and
+`ipv4-network.test.ts › formatIpv4Address` (round trip). Closing runs: `pnpm check` green (api 988
+passed / 5 skipped, 0 expected fails; contracts 283; arch: no violations), `pnpm test:integration`
+16 files / 189 tests. The criterion-7 NOT CONFIRMED (physical checador) stays for verify. This
+supersedes the earlier GAP row and counts in "Test coverage" above.
 
 ## Verification

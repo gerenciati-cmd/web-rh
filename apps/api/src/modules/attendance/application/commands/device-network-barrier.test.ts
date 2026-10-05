@@ -160,14 +160,14 @@ describe('RecordDeviceContact: barrera de red', () => {
     expect(!result.ok && result.error.code).toBe('DEVICE_NOT_ALLOWED');
   });
 
-  it('IP dentro de las redes (también en forma IPv4 mapeada): acepta y guarda la IP de origen', async () => {
+  it('IP dentro de las redes (también en forma IPv4 mapeada): acepta y guarda la IP normalizada', async () => {
     const { contact, deviceRepository, device, clock } = await setUp(['10.9.9.0/24']);
 
     const result = await contact.execute(contactInput('::ffff:10.9.9.5'));
 
     expect(result.ok).toBe(true);
     const stored = await deviceRepository.findById(device.id);
-    expect(stored?.lastSeenIp).toBe('::ffff:10.9.9.5');
+    expect(stored?.lastSeenIp).toBe('10.9.9.5');
     expect(stored?.lastSeenAt).toEqual(clock.now());
   });
 

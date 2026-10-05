@@ -158,23 +158,19 @@ describe('barrera de red de los checadores (HTTP)', () => {
     it('tras un contacto por /iclock muestra la IP de origen del último contacto', async () => {
       await request(app).get(`/iclock/cdata?SN=${SERIAL}`).expect(200);
 
-      expect((await listedDevice())?.lastSeenIp).toBe('::ffff:127.0.0.1');
+      expect((await listedDevice())?.lastSeenIp).toBe('127.0.0.1');
     });
   });
 
   describe('flujo del administrador: aprender la IP desde lastSeenIp', () => {
-    // El plan 005 (Enfoque) guarda `lastSeenIp` "para que el admin sepa qué IP permitir", pero en un
-    // socket de doble pila `req.ip` llega como `::ffff:a.b.c.d` y `PUT .../networks` (`z.ipv4()`)
-    // rechaza esa forma: copiar el valor mostrado da 400 y el comando no se puede encolar.
-    it.fails(
-      'GAP: plan 005 — la IP mostrada en lastSeenIp se puede enviar tal cual a PUT .../networks',
-      async () => {
-        await request(app).get(`/iclock/cdata?SN=${SERIAL}`).expect(200);
-        const shown = (await listedDevice())?.lastSeenIp;
+    // `req.ip` llega como `::ffff:a.b.c.d` en sockets de doble pila; se guarda normalizada para que
+    // la IP mostrada se pueda pegar tal cual en `PUT .../networks` (`z.ipv4()`).
+    it('la IP mostrada en lastSeenIp se puede enviar tal cual a PUT .../networks', async () => {
+      await request(app).get(`/iclock/cdata?SN=${SERIAL}`).expect(200);
+      const shown = (await listedDevice())?.lastSeenIp;
 
-        await setNetworks([shown]).expect(204);
-      },
-    );
+      await setNetworks([shown]).expect(204);
+    });
   });
 
   describe('/iclock con redes que excluyen al llamador', () => {

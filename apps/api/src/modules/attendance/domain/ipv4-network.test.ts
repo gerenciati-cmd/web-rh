@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  formatIpv4Address,
   formatIpv4Network,
   ipv4NetworkContains,
   parseIpv4Address,
@@ -130,6 +131,12 @@ describe('ipv4NetworkContains', () => {
 
     expect(ipv4NetworkContains(high, address('192.168.200.1'))).toBe(true);
     expect(ipv4NetworkContains(high, address('192.169.0.1'))).toBe(false);
+  });
+});
+
+describe('formatIpv4Address', () => {
+  it.each(['0.0.0.0', '10.0.0.1', '192.168.77.9', '255.255.255.255'])('%s ida y vuelta', (text) => {
+    expect(formatIpv4Address(address(text))).toBe(text);
   });
 });
 

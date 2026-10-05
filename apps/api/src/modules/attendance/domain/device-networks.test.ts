@@ -199,6 +199,48 @@ describe('Device.markSeen con IP', () => {
     expect(device.markSeen(new Date(FIRST.getTime() + 1000), null)).toBe(true);
     expect(device.lastSeenIp).toBeNull();
   });
+
+  it.each([
+    ['::ffff:10.0.0.5', '10.0.0.5'],
+    ['10.0.0.5', '10.0.0.5'],
+    ['2001:db8::1', '2001:db8::1'],
+    ['  2001:db8::1 ', '2001:db8::1'],
+  ])('normaliza %s a %s', (raw, stored) => {
+    const device = registered();
+
+    device.markSeen(FIRST, raw);
+
+    expect(device.lastSeenIp).toBe(stored);
+  });
+
+  it.each([
+    ['basura', 'garbage'],
+    ['sin dos puntos', '10.0.0'],
+    ['lista de X-Forwarded-For', '1.2.3.4, 5.6.7.8'],
+    ['más de 45 caracteres', `2001:${'a'.repeat(45)}`],
+    ['caracteres no hex', 'fe80::zz'],
+    ['vacía', ''],
+  ])('IP de origen inválida (%s) queda en null', (_label, raw) => {
+    const device = registered();
+
+    expect(device.markSeen(FIRST, raw)).toBe(true);
+    expect(device.lastSeenIp).toBeNull();
+  });
+
+  it('una IP inválida tras una válida dentro de la resolución cuenta como cambio a null', () => {
+    const device = registered();
+    device.markSeen(FIRST, '10.0.0.5');
+
+    expect(device.markSeen(new Date(FIRST.getTime() + 1000), 'garbage')).toBe(true);
+    expect(device.lastSeenIp).toBeNull();
+  });
+
+  it('la forma mapeada y la plana son la misma IP: dentro de la resolución no pide persistir', () => {
+    const device = registered();
+    device.markSeen(FIRST, '10.0.0.5');
+
+    expect(device.markSeen(new Date(FIRST.getTime() + 1000), '::ffff:10.0.0.5')).toBe(false);
+  });
 });
 
 describe('DeviceNetworkUnrestrictedError', () => {
