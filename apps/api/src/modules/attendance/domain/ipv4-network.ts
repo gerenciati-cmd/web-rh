@@ -46,6 +46,11 @@ export function formatIpv4Network(network: Ipv4Network): string {
   return `${octets.join('.')}/${network.prefix}`;
 }
 
+/** Texto `a.b.c.d` de un entero sin signo. */
+export function formatIpv4Address(address: number): string {
+  return [address >>> 24, (address >>> 16) & 255, (address >>> 8) & 255, address & 255].join('.');
+}
+
 function applyMask(address: number, prefix: number): number {
   // `<< 32` no existe en JS (desplaza 0): el prefijo 0 se trata aparte.
   if (prefix === 0) return 0;

@@ -10,6 +10,7 @@ import {
 } from '@rrhh/domain';
 
 import {
+  formatIpv4Address,
   formatIpv4Network,
   ipv4NetworkContains,
   parseIpv4Address,
@@ -211,12 +212,30 @@ export class Device extends AggregateRoot<DeviceId> {
    * Anota el contacto del equipo y su IP de origen. Devuelve `true` si hay algo que persistir
    * (primera vez, ya pasó `DEVICE_SEEN_RESOLUTION_MS` o cambió la IP); si no, no cambia nada.
    */
-  markSeen(now: Date, ip: string | null): boolean {
+  markSeen(now: Date, rawIp: string | null): boolean {
     const { lastSeenAt, lastSeenIp } = this.props;
+    const ip = normalizeSourceIp(rawIp);
     const recent =
       lastSeenAt !== null && now.getTime() - lastSeenAt.getTime() < DEVICE_SEEN_RESOLUTION_MS;
     if (recent && ip === lastSeenIp) return false;
     this.props = { ...this.props, lastSeenAt: now, lastSeenIp: ip };
     return true;
   }
+}
+
+const MAX_IP_LENGTH = 45;
+const IPV6_CHARS = /^[0-9a-f:.]+$/i;
+
+/**
+ * Normaliza la IP de origen antes de guardarla: una IPv4 (o su forma mapeada `::ffff:a.b.c.d`, la
+ * que Node reporta en sockets de doble pila) queda como `a.b.c.d`, para que la IP mostrada se pueda
+ * pegar tal cual en `PUT …/networks`. Lo demás solo se conserva si parece una IPv6 (la columna es
+ * `VarChar(45)` y el valor puede venir de `X-Forwarded-For`); si no, `null`.
+ */
+function normalizeSourceIp(ip: string | null): string | null {
+  if (ip === null) return null;
+  const v4 = parseIpv4Address(ip);
+  if (v4 !== null) return formatIpv4Address(v4);
+  const text = ip.trim();
+  return text.length <= MAX_IP_LENGTH && text.includes(':') && IPV6_CHARS.test(text) ? text : null;
 }

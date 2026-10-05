@@ -1,5 +1,5 @@
 ---
-status: review
+status: testing
 module: attendance
 min_implementer: mid
 depends_on: ['004']
@@ -315,5 +315,100 @@ lint warning (complexity 14 in my new `in-memory-device.repository.test.ts`) was
 that file was re-linted and re-run.
 
 ## Review findings
+
+Reviewer, 2026-10-05. Diff base `843e5e0` (commits `650cda0`, `ceb9134`, `e42de82`), clean worktree.
+
+**Checklist: 13/13 passed.**
+
+- [x] `pnpm plans:scope … --base 843e5e0`: all 55 changed files in scope. (Against the default
+      base `main` it lists ~140 files outside scope: they belong to the earlier unmerged plans of
+      this branch, not to 005.) Hot file `schema.prisma`: the new lines are appended; the existing
+      `AttendanceDevice` lines were only re-aligned by `prisma format` (whitespace, declared in
+      Deviation 1).
+- [x] `pnpm check` green (api 971 passed / 1 expected fail / 5 skipped, contracts 283, arch: no
+      violations, plans lint, harness).
+- [x] `pnpm test:integration` green (16 files / 189 tests).
+- [x] Business rules in `domain/` (`ipv4-network.ts`, `Device.setAllowedNetworks/acceptsAddress/receivesCommands/markSeen`);
+      router and repositories carry none.
+- [x] CQRS-lite: `SetDeviceNetworks` goes aggregate → `saveAllowedNetworks` → `Result`; the
+      targeted `save*` are column groups, not screen methods; `listDevices` through the queries port.
+- [x] Types from `@rrhh/contracts` (`setDeviceNetworks` route, `DeviceSchema` fields).
+- [x] Expected errors: `DeviceNetworkUnrestrictedError` (`DEVICE_NETWORK_UNRESTRICTED`, 422, in the
+      registry and in `queueDeviceCommand.errors`).
+- [x] Time via `Clock`; no money; dates unchanged.
+- [x] New migration `20261005165911_add_device_networks`: only two `ADD COLUMN`, no DROP, no FK.
+- [x] `setDeviceNetworks` registered once in `attendance.module.ts`; container test green.
+- [x] No secrets or real personal data (`TRUST_PROXY=` empty in `.env.example`; doc IPs are private/TEST-NET).
+- [x] Deviations honest. Spot-check of Deviation 5: `InMemoryDeviceRepository.add` rejects a
+      repeated id or serial and `findById`/`findBySerialNumber` return copies
+      (`in-memory-attendance.store.ts:58-72`) — matches.
+- [x] Docs updated: ADR 0014 + index row, runbook "Redes permitidas" + log table + in-flight
+      limitation, finding resolved, initiative README.
+
+### Findings
+
+**Medium**
+
+- **M1 — The IP shown in `lastSeenIp` is rejected by `PUT …/networks` on a default deployment
+  (confirmed; tester GAP).** `apps/api/src/modules/attendance/http/zkteco-adms.router.ts:52,79`
+  pass `req.ip` raw to the use cases, and `Device.markSeen` (`domain/device.ts:214-220`) stores it
+  as-is. The server listens without a host (`apps/api/src/main/http.ts:13`), so Node binds the
+  dual-stack `::` socket and an IPv4 device arrives as `::ffff:192.168.1.50`. That string is what
+  `GET /attendance/devices` shows, but `SetDeviceNetworksSchema`
+  (`packages/contracts/src/attendance/device.contract.ts:65-73`, `z.ipv4()`/`z.cidrv4()`) answers
+  400 for it. Scenario: the admin follows the runbook literally
+  (`docs/integraciones/zkteco-senseface-2a.md`, "Redes permitidas" steps 1-2: read `lastSeenIp`,
+  allow "esa IP") and gets 400; the acceptance criterion 7 flow (set the IP from `lastSeenIp`)
+  fails the same way on the real device. The barrier itself is correct (matching unwraps the
+  mapped form). Fix belongs to product code, e.g. normalize the mapped form to plain IPv4 before
+  storing/showing `lastSeenIp` (the domain already has the unwrap in `parseIpv4Address`); then
+  promote the `it.fails` in `apps/api/tests/attendance-device-network.test.ts:170-177` to `it`.
+
+**Low**
+
+- **L1 — `lastSeenIp` is not bounded before persisting into `VarChar(45)` (uncertain).**
+  `record-device-contact.command.ts:61` / `record-device-push.command.ts:121` →
+  `prisma-device.repository.ts:41-51` write `req.ip` unchecked. With `TRUST_PROXY` set to more
+  hops than real proxies (the misconfiguration the ADR warns about), the client entry of
+  `X-Forwarded-For` is caller-controlled; on a device without networks (which accepts any source)
+  an overlong value would make `saveContact` throw and every `/iclock` contact of that serial answer
+  500 instead of being served. Not exercised; depends on misconfiguration, and on whether Express
+  exposes unparsed XFF entries with numeric trust (believed so, not verified). Possible remedy:
+  store only a parsed IPv4/valid address (or null), which would also cover M1.
+
+No High findings. No out-of-scope discoveries requiring a new `plans/hallazgos/` entry.
+
+Status stays `review`: M1 needs a product-code change (back to implementing per the repair
+handoff; repaired code repeats testing → review → verify).
+
+### Repair (main session, 2026-10-05)
+
+Back to `implementing` to fix **M1 and L1** with one change (in scope: same files as steps 2
+and 4; no contract, schema or design change):
+
+- `apps/api/src/modules/attendance/domain/ipv4-network.ts`: add `formatIpv4Address(address:
+number): string` (dotted form) next to `formatIpv4Network`.
+- `apps/api/src/modules/attendance/domain/device.ts`: `markSeen(now, ip)` stores a **normalized**
+  source IP: an IPv4 or IPv4-mapped IPv6 (`::ffff:a.b.c.d`) becomes plain `a.b.c.d` (via
+  `parseIpv4Address` + `formatIpv4Address`); any other value is kept only if it is at most 45
+  characters and contains only hex digits, `:` and `.` (a real IPv6); otherwise `null`. The
+  "IP changed" comparison uses the normalized value. Docblock: why (the shown IP must be pasteable
+  into `PUT …/networks`; the column is `VarChar(45)` and the value may come from
+  `X-Forwarded-For`). `acceptsAddress` is unchanged.
+- No test changes by the implementer: promoting the `it.fails` GAP at
+  `apps/api/tests/attendance-device-network.test.ts:170-177` and covering L1 is the tester's
+  re-run. Previous Test coverage and Review findings stay as dated history.
+
+Implemented (implementer, 2026-10-05): `formatIpv4Address` added to `ipv4-network.ts`;
+`Device.markSeen` normalizes through a private `normalizeSourceIp` (IPv4/mapped -> `a.b.c.d`;
+other values kept only if at most 45 chars of hex/`:`/`.` containing `:`; else `null`). No
+deviations. `pnpm check` is RED by design, only on three tests that asserted the old behavior
+(previous Test coverage/Review results are superseded for this code; the tester must update them):
+
+- `apps/api/tests/attendance-device-network.test.ts:161` expects `::ffff:127.0.0.1`, now `127.0.0.1`.
+- `apps/api/tests/attendance-device-network.test.ts` GAP `it.fails` (M1) now passes, so promote it to `it`.
+- `apps/api/src/modules/attendance/application/commands/device-network-barrier.test.ts:170` expects
+  `::ffff:10.9.9.5`, now `10.9.9.5`.
+- L1 (overlong or garbage IP becomes `null`) has no test yet. Status set to `testing`.
 
 ## Verification
