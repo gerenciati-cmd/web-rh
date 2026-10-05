@@ -1,7 +1,8 @@
 ---
-status: open
+status: planned
 module: attendance
 found: 2026-10-02
+plan: attendance-marcaciones/005
 ---
 
 # Hallazgo: un push del checador puede deshacer en silencio el cambio de sede
