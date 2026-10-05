@@ -1,5 +1,5 @@
 ---
-status: review
+status: verify
 module: attendance
 min_implementer: mid
 depends_on: ['004']
@@ -421,4 +421,95 @@ passed / 5 skipped, 0 expected fails; contracts 283; arch: no violations), `pnpm
 16 files / 189 tests. The criterion-7 NOT CONFIRMED (physical checador) stays for verify. This
 supersedes the earlier GAP row and counts in "Test coverage" above.
 
+### Review round 2 (reviewer, 2026-10-05)
+
+Repair diff `e42de82..3c8301b` (fix `73af959`, tests `3c8301b`), clean worktree. The round-1
+checklist was re-run on the full plan base `843e5e0`.
+
+**Checklist: 13/13 passed.**
+
+- [x] `pnpm plans:scope … --base 843e5e0`: 55 changed, all in scope; `--base e42de82`: 7 changed
+      (`ipv4-network.ts`, `device.ts`, 4 test files, the plan), all declared.
+- [x] `pnpm check` green (api 79 files / 988 passed / 5 skipped, 0 expected fails; contracts 283;
+      arch: no violations; plans lint; harness).
+- [x] `pnpm test:integration` green (16 files / 189 tests). Re-run even though the repair touches
+      no `infrastructure/`.
+- [x] Business rule (normalize the source IP) is in `domain/` (`device.ts:normalizeSourceIp`,
+      `ipv4-network.ts:formatIpv4Address`); no `node:net` (arch green).
+- [x] CQRS-lite, contracts, errors, Clock, migration, DI: unchanged by the repair (no contract,
+      schema or registration change).
+- [x] No secrets or personal data (test IPs are private / documentation ranges).
+- [x] Repair note says "No deviations": matches the diff (only the two declared domain files in
+      product code).
+- [x] Docs: ADR 0014 and the runbook ("Redes permitidas" steps 1-2) describe exactly the flow
+      that now works; nothing stale.
+
+**Round-1 findings:**
+
+- **M1 — closed.** `Device.markSeen` (`domain/device.ts:215-223`) normalizes through
+  `normalizeSourceIp` (`device.ts:235-241`): `::ffff:a.b.c.d` / `a.b.c.d` are stored as `a.b.c.d`,
+  so the value shown by `GET /attendance/devices` passes `z.ipv4()`. Confirmed end to end by the
+  promoted test `apps/api/tests/attendance-device-network.test.ts:168-173` (read `lastSeenIp`,
+  `PUT …/networks` with it → 204). The "IP changed" comparison uses the normalized value
+  (`device-networks.test.ts`, mapped-equals-plain case), and rows persisted earlier with the
+  mapped form self-heal on the next contact (normalized value differs → `saveContact`).
+- **L1 — closed.** Anything that is neither IPv4 nor at most 45 chars of hex/`:`/`.` with a `:`
+  becomes `null` before `saveContact`, so `VarChar(45)` cannot overflow from an
+  `X-Forwarded-For` value. Covered by the `it.each` null cases in `device-networks.test.ts`.
+  The barrier (`acceptsAddress`) still evaluates the raw `sourceIp`
+  (`record-device-contact.command.ts:55`, `record-device-push.command.ts:60`), which is correct:
+  it already unwraps the mapped form and rejects anything else on a restricted device.
+
+**New findings: none** (no High, Medium or Low). Informational only, no action: the IPv6 shape
+check is permissive (e.g. `1.2.3.4:80` or `:::` would be stored as-is); harmless, since the
+value is display-only, bounded to 45 chars and never used for matching. No out-of-scope
+discoveries.
+
+Status → `verify`. Criterion 7 (physical checador receives a queued `USERINFO` after its IP is
+allowed) remains for the verifier.
+
 ## Verification
+
+**PASS on criteria 1–6; criterion 7 NOT VERIFIED (real device)** — 2026-10-05, main session
+(inline, as the user asked), at `3c8301b` (includes the M1/L1 repair). Plan stays in `verify`.
+
+- Suites at `3c8301b`: `pnpm check` green — `Tasks: 19 successful, 19 total`, api `988 passed |
+5 skipped`, contracts `283 passed`, `no dependency violations found`, plans lint OK.
+  `pnpm test:integration`: `Test Files 16 passed`, `Tests 189 passed`.
+- Migration: `pnpm --filter @rrhh/api db:deploy` → `12 migrations found … No pending migrations
+to apply` (`20261005165911_add_device_networks` already on the dev DB).
+- Two API instances from the branch on the dev DB: `:3091` without `TRUST_PROXY` and `:3092`
+  with `TRUST_PROXY=1` (`LOG_LEVEL=debug`). A script (scratchpad, not in the repo) created through
+  the use cases a synthetic HOLDING_ADMIN, an HR user, the sede `Verificación 005 MUVT4J9L` and
+  the device `VERIF005MUVT4J9L`, then drove HTTP and `/iclock` over `127.0.0.1`: **20/20 PASS**.
+  - [x] C1: new device lists `allowedNetworks: []`, `lastSeenIp: null`; after a handshake,
+        `lastSeenIp: "127.0.0.1"` (normalized; the socket reports `::ffff:127.0.0.1`).
+  - [x] C2: pasting `lastSeenIp` into `PUT …/networks` → 204 and reads back `["127.0.0.1/32"]`;
+        HR → 403; unknown id → 404 `DEVICE_NOT_FOUND`; `10.0.0.0/33` → 400; `::1` → 400.
+  - [x] C3: with `["10.9.9.0/24"]`, handshake, `getrequest` and ATTLOG → `403 ERROR: dispositivo
+no autorizado`, 0 punches stored, log `WARN zkteco: IP no permitida` with `serialNumber`
+        and `sourceIp`. With `["127.0.0.1"]` → `200`, `OK`, `OK: 1`.
+  - [x] C4: with networks a command is queued (201); with `[]` ATTLOG is still stored (`OK: 1`),
+        queuing → 422 `DEVICE_NETWORK_UNRESTRICTED`, `getrequest` → `OK` and the command stays
+        `QUEUED`; once networks are back it is delivered on the next poll.
+  - [x] C5: race of the finding — covered by `prisma-device-networks.int.test.ts` (stale
+        instance: each `save*` writes only its columns) in the green integration run; not timed
+        live (the window is too short to reproduce by hand).
+  - [x] C6: `:3092` + `X-Forwarded-For: 10.9.9.5` with `["10.9.9.0/24"]` → 200 and
+        `lastSeenIp: "10.9.9.5"`; `:3091` with the same header → 403 (header ignored).
+  - [x] Review L1: `:3092` with an 80-character junk `X-Forwarded-For` on a device without
+        networks → 200 and `lastSeenIp: null` (no 500).
+  - [ ] C7 **NOT VERIFIED**: needs the physical SenseFace 2A (set its IP from `lastSeenIp`, keep
+        marking, receive a queued `USERINFO`). For the user.
+- Logs: the queued command text (`PIN=VERIF005`) appears 0 times in either API log; 0 errors/500.
+- Observations (not defects of this plan's criteria):
+  - A client on IPv6 loopback (`fetch('http://localhost…')` resolved to `::1` in a first run) is
+    shown as `lastSeenIp: "::1"` and cannot be allowed (`::1` → 400), so a restricted device
+    rejects it. That is decision 13 (IPv4 only); ZKTeco devices connect over IPv4.
+  - The `zkteco: IP no permitida` / `dispositivo no autorizado` warns log the **raw** `sourceIp`
+    (`::ffff:127.0.0.1`), while `lastSeenIp` is normalized. Cosmetic: an admin copying the IP from
+    the log instead of `GET …/devices` would get a 400. Not fixed (verifier does not fix).
+- Synthetic rows left in the dev DB (as in earlier verifications): users
+  `verif005-*-muvt4a9u|muvt4j9l@example.com`, sedes `Verificación 005 MUVT4A9U|MUVT4J9L`, devices
+  `VERIF005MUVT4A9U|VERIF005MUVT4J9L` and their punches/commands. The first run (`…4A9U`) is the
+  IPv6 one from the observation.
