@@ -35,6 +35,21 @@ model Company {
   @@schema("organization")
 }
 
+model Site {
+  id        String   @id @db.Uuid
+  name      String   @db.VarChar(100)
+  /// nombre normalizado (trim + minúsculas): unicidad sin distinguir mayúsculas
+  nameKey   String   @unique @map("name_key") @db.VarChar(100)
+  country   String   @db.Char(2)
+  timeZone  String   @map("time_zone") @db.VarChar(64)
+  active    Boolean  @default(true)
+  createdAt DateTime @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@map("sites")
+  @@schema("organization")
+}
+
 // ── Módulo: employees ───────────────────────────────────────────────────────
 
 enum EmployeeStatus {
@@ -52,6 +67,8 @@ model Employee {
   nationalIdNumber  String         @map("national_id_number") @db.VarChar(20)
   /// RFC persona física (solo MX), único en el holding
   rfc               String?        @unique @db.VarChar(13)
+  /// referencia por id a organization.sites, sin FK (ADR 0010)
+  siteId            String?        @map("site_id") @db.Uuid
   firstName         String         @map("first_name") @db.VarChar(100)
   lastName          String         @map("last_name") @db.VarChar(100)
   email             String         @db.VarChar(254)
@@ -63,6 +80,7 @@ model Employee {
 
   @@unique([companyId, nationalIdCountry, nationalIdNumber])
   @@index([companyId, status])
+  @@index([siteId, status])
   @@map("employees")
   @@schema("employees")
 }
@@ -204,9 +222,30 @@ model AttendanceDevice {
   active       Boolean           @default(true)
   registeredAt DateTime          @map("registered_at") @db.Timestamptz(3)
   lastSeenAt   DateTime?         @map("last_seen_at") @db.Timestamptz(3)
-  punches      AttendancePunch[]
+  /// referencia por id a organization.sites, sin FK (ADR 0010)
+  siteId                String?  @map("site_id") @db.Uuid
+  clockOffsetSeconds    Int?     @map("clock_offset_seconds")
+  clockOffsetMeasuredAt DateTime? @map("clock_offset_measured_at") @db.Timestamptz(3)
+  punches     AttendancePunch[]
+  commands    AttendanceDeviceCommand[]
 
   @@map("devices")
+  @@schema("attendance")
+}
+
+model AttendanceDeviceCommand {
+  id       String           @id @db.Uuid
+  deviceId String           @map("device_id") @db.Uuid
+  /// Mismo módulo: la FK al equipo está permitida.
+  device   AttendanceDevice @relation(fields: [deviceId], references: [id])
+  command  String           @db.VarChar(500)
+  status   String           @db.VarChar(8)
+  queuedAt DateTime         @map("queued_at") @db.Timestamptz(3)
+  sentAt   DateTime?        @map("sent_at") @db.Timestamptz(3)
+  queuedBy String           @map("queued_by") @db.Uuid
+
+  @@index([deviceId, status, queuedAt])
+  @@map("device_commands")
   @@schema("attendance")
 }
 

@@ -15,6 +15,16 @@ function setUp() {
   const eventBus = new RecordingEventBus();
   const command = new RegisterDevice({
     deviceRepository,
+    deviceSiteDirectory: {
+      find: (id: string) =>
+        Promise.resolve(
+          id === SITE_ID
+            ? { id, timeZone: 'America/Cancun', active: true }
+            : id === INACTIVE_SITE_ID
+              ? { id, timeZone: 'America/Cancun', active: false }
+              : null,
+        ),
+    },
     idGenerator: new SequentialIdGenerator(),
     clock: new FixedClock(),
     eventBus,
@@ -22,7 +32,9 @@ function setUp() {
   return { command, deviceRepository, eventBus };
 }
 
-const input = { serialNumber: 'TESTSN001', name: 'Entrada principal', timeZone: 'America/Cancun' };
+const SITE_ID = '00000000-0000-4000-8000-0000000000a1';
+const INACTIVE_SITE_ID = '00000000-0000-4000-8000-0000000000a2';
+const input = { serialNumber: 'TESTSN001', name: 'Entrada principal', siteId: SITE_ID };
 
 describe('RegisterDevice', () => {
   it('registra el equipo, lo persiste activo y publica el evento de alta', async () => {
@@ -36,6 +48,7 @@ describe('RegisterDevice', () => {
     expect(saved?.id).toBe(id);
     expect(saved?.active).toBe(true);
     expect(saved?.timeZone).toBe('America/Cancun');
+    expect(saved?.siteId).toBe(SITE_ID);
     expect(eventBus.names()).toEqual([DEVICE_REGISTERED]);
   });
 
@@ -60,12 +73,25 @@ describe('RegisterDevice', () => {
     expect(eventBus.published).toHaveLength(1);
   });
 
-  it('propaga el error de dominio de una zona horaria inválida y no guarda nada', async () => {
+  it('rechaza una sede inexistente con SITE_NOT_FOUND y no guarda nada', async () => {
     const { command, deviceRepository, eventBus } = setUp();
 
-    const result = await command.execute({ ...input, timeZone: 'Mars/Olympus' });
+    const result = await command.execute({
+      ...input,
+      siteId: '00000000-0000-4000-8000-0000000000ff',
+    });
 
-    expect(!result.ok && result.error.message).toBe('Zona horaria inválida');
+    expect(!result.ok && result.error.code).toBe('SITE_NOT_FOUND');
+    expect(await deviceRepository.findBySerialNumber('TESTSN001')).toBeNull();
+    expect(eventBus.published).toHaveLength(0);
+  });
+
+  it('rechaza una sede inactiva con SITE_INACTIVE y no guarda nada', async () => {
+    const { command, deviceRepository, eventBus } = setUp();
+
+    const result = await command.execute({ ...input, siteId: INACTIVE_SITE_ID });
+
+    expect(!result.ok && result.error.code).toBe('SITE_INACTIVE');
     expect(await deviceRepository.findBySerialNumber('TESTSN001')).toBeNull();
     expect(eventBus.published).toHaveLength(0);
   });

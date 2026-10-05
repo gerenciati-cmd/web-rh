@@ -1,5 +1,6 @@
 import { err, ok, PersonalRfc, type DomainError } from '@rrhh/domain';
 
+import type { Clock, EventBus } from '@/shared/application/ports';
 import type { Command } from '@/shared/application/use-case';
 
 import type { EmployeeId } from '../../domain/employee';
@@ -14,6 +15,8 @@ export interface AssignEmployeeRfcInput {
 
 interface Deps {
   employeeRepository: EmployeeRepository;
+  clock: Clock;
+  eventBus: EventBus;
 }
 
 /** Captura o corrige el RFC de un colaborador. Idempotente si se repite el mismo RFC. */
@@ -21,7 +24,7 @@ export class AssignEmployeeRfc implements Command<AssignEmployeeRfcInput, undefi
   constructor(private readonly deps: Deps) {}
 
   async execute(input: AssignEmployeeRfcInput) {
-    const { employeeRepository } = this.deps;
+    const { employeeRepository, clock, eventBus } = this.deps;
 
     const rfc = PersonalRfc.create(input.rfc);
     if (!rfc.ok) return rfc;
@@ -36,11 +39,12 @@ export class AssignEmployeeRfc implements Command<AssignEmployeeRfcInput, undefi
       return err<DomainError>(new EmployeeRfcAlreadyRegisteredError(rfc.value.value));
     }
 
-    const assigned = employee.assignRfc(rfc.value);
+    const assigned = employee.assignRfc(rfc.value, clock.now());
     if (!assigned.ok) return assigned;
 
     const saved = await employeeRepository.save(employee);
     if (!saved.ok) return saved;
+    await eventBus.publish(employee.pullEvents());
 
     return ok(undefined);
   }

@@ -20,8 +20,12 @@ import {
   EmployeeRfcAlreadyRegisteredError,
   EmployerNotFoundError,
   InactiveEmployerError,
+  InactiveSiteError,
+  SiteCountryMismatchError,
+  SiteNotFoundError,
 } from '../../domain/errors';
 import type { EmployerDirectory } from '../ports/employer-directory';
+import type { SiteDirectory } from '../ports/site-directory';
 
 export interface RegisterEmployeeInput {
   companyId: string;
@@ -31,6 +35,8 @@ export interface RegisterEmployeeInput {
   email: string;
   /** Obligatorio para México; la regla vive en `Employee.hire`. */
   rfc?: string | undefined;
+  /** Sede de trabajo: debe existir, estar activa y ser del país de la empresa. */
+  siteId: string;
   positionTitle?: string | undefined;
   /** Fecha ISO (YYYY-MM-DD) */
   hireDate: string;
@@ -39,6 +45,7 @@ export interface RegisterEmployeeInput {
 interface Deps {
   employeeRepository: EmployeeRepository;
   employerDirectory: EmployerDirectory;
+  siteDirectory: SiteDirectory;
   idGenerator: IdGenerator;
   clock: Clock;
   eventBus: EventBus;
@@ -53,6 +60,8 @@ export class RegisterEmployee implements Command<RegisterEmployeeInput, { id: Em
     const employer = await employerDirectory.find(input.companyId);
     if (!employer) return err<DomainError>(new EmployerNotFoundError(input.companyId));
     if (!employer.active) return err<DomainError>(new InactiveEmployerError(input.companyId));
+    const siteError = await this.checkSite(input.siteId, employer.country);
+    if (siteError) return err<DomainError>(siteError);
 
     const nationalId = NationalId.create(input.nationalId.country, input.nationalId.number);
     if (!nationalId.ok) return nationalId;
@@ -72,6 +81,7 @@ export class RegisterEmployee implements Command<RegisterEmployeeInput, { id: Em
       lastName: input.lastName,
       email: email.value,
       rfc: rfc.value,
+      siteId: input.siteId,
       positionTitle: input.positionTitle,
       hireDate: new Date(`${input.hireDate}T00:00:00Z`),
       now: clock.now(),
@@ -83,6 +93,17 @@ export class RegisterEmployee implements Command<RegisterEmployeeInput, { id: Em
     await eventBus.publish(employee.value.pullEvents());
 
     return ok({ id: employee.value.id });
+  }
+
+  /** La sede debe existir, estar activa y ser del mismo país que la razón social. */
+  private async checkSite(siteId: string, companyCountry: CountryCode) {
+    const site = await this.deps.siteDirectory.find(siteId);
+    if (!site) return new SiteNotFoundError(siteId);
+    if (!site.active) return new InactiveSiteError(siteId);
+    if (site.country !== companyCountry) {
+      return new SiteCountryMismatchError(siteId, site.country, companyCountry);
+    }
+    return null;
   }
 
   /** El CURP repetido en la empresa se reporta antes que el RFC repetido en el holding. */

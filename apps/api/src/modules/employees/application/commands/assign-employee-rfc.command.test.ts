@@ -1,7 +1,9 @@
 import { Email, NationalId, PersonalRfc } from '@rrhh/domain';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { Employee, type EmployeeId } from '../../domain/employee';
+import { FixedClock, RecordingEventBus } from '@/shared/testing/fakes';
+
+import { Employee, EMPLOYEE_RFC_ASSIGNED, type EmployeeId } from '../../domain/employee';
 import { EmployeeRfcAlreadyRegisteredError } from '../../domain/errors';
 import { InMemoryEmployeeRepository } from '../../infrastructure/in-memory/in-memory-employee.repository';
 
@@ -30,6 +32,7 @@ function employee(input: {
     companyId: input.companyId ?? COMPANY,
     nationalId: nationalId.value,
     rfc: rfc?.ok ? rfc.value : null,
+    siteId: 'site-1',
     firstName: 'Ana',
     lastName: 'Rojas',
     email: email.value,
@@ -42,10 +45,16 @@ function employee(input: {
 describe('AssignEmployeeRfc', () => {
   let repository: InMemoryEmployeeRepository;
   let assignEmployeeRfc: AssignEmployeeRfc;
+  let eventBus: RecordingEventBus;
 
   beforeEach(() => {
     repository = new InMemoryEmployeeRepository();
-    assignEmployeeRfc = new AssignEmployeeRfc({ employeeRepository: repository });
+    eventBus = new RecordingEventBus();
+    assignEmployeeRfc = new AssignEmployeeRfc({
+      employeeRepository: repository,
+      clock: new FixedClock(),
+      eventBus,
+    });
   });
 
   const seed = async (e: Employee) => {
@@ -90,6 +99,50 @@ describe('AssignEmployeeRfc', () => {
 
     expect(result.ok).toBe(true);
     expect(rfcOf('emp-1')).toBe('GOMA850101AB1');
+  });
+
+  it('publica EMPLOYEE_RFC_ASSIGNED cuando el RFC cambia', async () => {
+    await seed(employee({ id: 'emp-1' }));
+
+    await assignEmployeeRfc.execute({
+      companyId: COMPANY,
+      employeeId: 'emp-1',
+      rfc: 'GOMA850101AB1',
+    });
+
+    expect(eventBus.names()).toEqual([EMPLOYEE_RFC_ASSIGNED]);
+  });
+
+  it('no publica evento al repetir el mismo RFC', async () => {
+    await seed(employee({ id: 'emp-1', rfc: 'GOMA850101AB1' }));
+
+    await assignEmployeeRfc.execute({
+      companyId: COMPANY,
+      employeeId: 'emp-1',
+      rfc: 'GOMA850101AB1',
+    });
+
+    expect(eventBus.names()).toEqual([]);
+  });
+
+  it('no publica evento si el RFC es inválido o el guardado falla', async () => {
+    await seed(employee({ id: 'emp-1' }));
+    await assignEmployeeRfc.execute({
+      companyId: COMPANY,
+      employeeId: 'emp-1',
+      rfc: 'GOMA851301AB1',
+    });
+    vi.spyOn(repository, 'save').mockResolvedValue({
+      ok: false,
+      error: new EmployeeRfcAlreadyRegisteredError('GOMA850101AB1'),
+    });
+    await assignEmployeeRfc.execute({
+      companyId: COMPANY,
+      employeeId: 'emp-1',
+      rfc: 'GOMA850101AB1',
+    });
+
+    expect(eventBus.names()).toEqual([]);
   });
 
   it('rechaza un RFC inválido sin tocar al colaborador', async () => {

@@ -17,6 +17,7 @@ export const ROLE_DEFINITIONS: Readonly<Record<Role, RoleDefinition>> = {
     scope: 'COMPANY',
     permissions: [
       'organization.companies:read',
+      'organization.sites:read',
       'employees:read',
       'employees:register',
       'employees:update',

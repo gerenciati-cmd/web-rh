@@ -8,6 +8,7 @@ import { createLogger } from '@/infrastructure/logging/pino-logger';
 import {
   InMemoryAttendanceQueries,
   InMemoryAttendanceStore,
+  InMemoryDeviceCommandRepository,
   InMemoryDeviceRepository,
   InMemoryPunchRepository,
 } from '@/modules/attendance/infrastructure/in-memory/in-memory-attendance.store';
@@ -28,6 +29,11 @@ import {
   InMemoryCompanyRepository,
   InMemoryCompanyStore,
 } from '@/modules/organization/infrastructure/in-memory/in-memory-company.store';
+import {
+  InMemorySiteQueries,
+  InMemorySiteRepository,
+  InMemorySiteStore,
+} from '@/modules/organization/infrastructure/in-memory/in-memory-site.store';
 import type { TransactionRunner } from '@/shared/application/ports';
 import { RecordingEmailSender, RecordingJobQueue } from '@/shared/testing/fakes';
 
@@ -52,6 +58,7 @@ export const testEnv = loadEnv({
 export function buildTestContainer(env: Env = testEnv) {
   const container = buildContainer(env, createLogger(env));
   const companies = new InMemoryCompanyStore();
+  const sites = new InMemorySiteStore();
   const attendance = new InMemoryAttendanceStore();
   const employees = new InMemoryEmployeeRepository();
   const users = new InMemoryUserRepository();
@@ -91,6 +98,7 @@ export function buildTestContainer(env: Env = testEnv) {
             fullName: `${s.firstName} ${s.lastName}`,
             nationalId: s.nationalId.format(),
             rfc: s.rfc?.value ?? null,
+            siteId: s.siteId,
             email: s.email.value,
             positionTitle: s.positionTitle,
             hireDate: s.hireDate.toISOString().slice(0, 10),
@@ -122,15 +130,33 @@ export function buildTestContainer(env: Env = testEnv) {
           return s.rfc && companyIds.includes(s.companyId) ? [s.rfc.value] : [];
         }),
       ),
+    listActiveOnSite: (siteId) =>
+      Promise.resolve(
+        [...employees.employees.values()].flatMap((employee) => {
+          const s = employee.snapshot;
+          if (s.siteId !== siteId || s.status !== 'ACTIVE') return [];
+          return [
+            {
+              id: employee.id,
+              companyId: s.companyId,
+              fullName: `${s.firstName} ${s.lastName}`,
+              rfc: s.rfc?.value ?? null,
+            },
+          ];
+        }),
+      ),
   };
 
   container.register({
     companyRepository: asValue(new InMemoryCompanyRepository(companies)),
     companyQueries: asValue(new InMemoryCompanyQueries(companies)),
+    siteRepository: asValue(new InMemorySiteRepository(sites)),
+    siteQueries: asValue(new InMemorySiteQueries(sites)),
     employeeRepository: asValue(employees),
     employeeQueries: asValue(employeeQueries),
     deviceRepository: asValue(new InMemoryDeviceRepository(attendance)),
     punchRepository: asValue(new InMemoryPunchRepository(attendance)),
+    deviceCommandRepository: asValue(new InMemoryDeviceCommandRepository(attendance)),
     attendanceQueries: asValue(new InMemoryAttendanceQueries(attendance)),
     userRepository: asValue(users),
     sessionRepository: asValue(new InMemorySessionRepository()),
@@ -155,6 +181,23 @@ export function buildTestContainer(env: Env = testEnv) {
 
 export function buildTestApp() {
   return createApp(buildTestContainer());
+}
+
+let siteCounter = 0;
+
+/** Crea una sede MX activa (`America/Cancun`) y devuelve su id; el nombre por defecto es único. */
+export async function createTestSite(
+  container: ReturnType<typeof buildTestContainer>,
+  name?: string,
+): Promise<string> {
+  siteCounter += 1;
+  const created = await container.cradle.createSite.execute({
+    name: name ?? `Sede de prueba ${siteCounter}`,
+    country: 'MX',
+    timeZone: 'America/Cancun',
+  });
+  if (!created.ok) throw created.error;
+  return created.value.id;
 }
 
 const SIGN_IN_PASSWORD = 'contraseña-larga-y-valida';

@@ -1,6 +1,50 @@
 import { describe, expect, it } from 'vitest';
 
-import { isDeviceIdentifier, LOGGABLE_DEVICE_FIELDS, redactDeviceFields } from './device-record';
+import {
+  isDeviceIdentifier,
+  LOGGABLE_DEVICE_FIELDS,
+  parseCommandResult,
+  redactDeviceFields,
+} from './device-record';
+
+describe('parseCommandResult', () => {
+  it('separa pares clave=valor por &', () => {
+    expect(parseCommandResult('ID=1&Return=0&CMD=DATA')).toEqual({
+      ID: '1',
+      Return: '0',
+      CMD: 'DATA',
+    });
+  });
+
+  it('también separa por salto de línea (LF y CRLF) y mezclado con &', () => {
+    expect(parseCommandResult('ID=7\r\nReturn=-1\nCMD=DATA&Extra=x')).toEqual({
+      ID: '7',
+      Return: '-1',
+      CMD: 'DATA',
+      Extra: 'x',
+    });
+  });
+
+  it('el valor conserva los signos = posteriores al primero', () => {
+    expect(parseCommandResult('CMD=a=b')).toEqual({ CMD: 'a=b' });
+  });
+
+  it('ignora lo que no es un par con clave identificadora', () => {
+    expect(parseCommandResult('=sinclave&sinigual&1mala=x&con espacio=y&ID=1')).toEqual({
+      ID: '1',
+    });
+  });
+
+  it('un cuerpo vacío no produce campos', () => {
+    expect(parseCommandResult('')).toEqual({});
+  });
+
+  it('con redactDeviceFields deja ID, Return y CMD y redacta el resto', () => {
+    const fields = redactDeviceFields(parseCommandResult('ID=1&Return=0&CMD=DATA&Name=Ana'));
+
+    expect(fields).toEqual({ ID: '1', Return: '0', CMD: 'DATA', Name: '[redactado:3]' });
+  });
+});
 
 // Regresión de la reparación de revisión (deviación 7, hallazgo L1): antes, cualquier clave o
 // prefijo se aceptaba y se registraba tal cual, sin límite de forma ni de largo.

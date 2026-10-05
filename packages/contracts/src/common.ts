@@ -6,16 +6,32 @@ import { z } from 'zod';
 // validación. Solo se nombran modelos de cuerpo; params/query se expanden como parámetros.
 export const ApiErrorSchema = z
   .object({
-    code: z.string(),
-    message: z.string(),
-    details: z.record(z.string(), z.unknown()).optional(),
+    code: z.string().describe('Código estable y legible por máquinas, p. ej. SITE_NOT_FOUND'),
+    message: z
+      .string()
+      .describe('Mensaje en español para mostrar; puede cambiar, no lo uses para decidir'),
+    details: z
+      .record(z.string(), z.unknown())
+      .optional()
+      .describe('Opcional. Datos del caso (ids, campos inválidos); su forma depende del código'),
   })
   .meta({ id: 'ApiError' });
 export type ApiErrorBody = z.infer<typeof ApiErrorSchema>;
 
 export const PageQuerySchema = z.object({
-  page: z.coerce.number().int().min(1).default(1),
-  pageSize: z.coerce.number().int().min(1).max(100).default(20),
+  page: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .default(1)
+    .describe('Opcional. Número de página, desde 1; por defecto 1'),
+  pageSize: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(100)
+    .default(20)
+    .describe('Opcional. Elementos por página, de 1 a 100; por defecto 20'),
 });
 export type PageQuery = z.output<typeof PageQuerySchema>;
 
@@ -34,7 +50,9 @@ export interface Page<T> {
   pageSize: number;
 }
 
-export const CreatedSchema = z.object({ id: z.uuid() }).meta({ id: 'Created' });
+export const CreatedSchema = z
+  .object({ id: z.uuid().describe('Id del recurso creado') })
+  .meta({ id: 'Created' });
 export type Created = z.infer<typeof CreatedSchema>;
 
 export const CountrySchema = z.enum(SUPPORTED_COUNTRIES);

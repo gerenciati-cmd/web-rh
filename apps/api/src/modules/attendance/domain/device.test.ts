@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
-import { Device, DEVICE_REGISTERED, DEVICE_SEEN_RESOLUTION_MS, type DeviceId } from './device';
+import {
+  CLOCK_OFFSET_TOLERANCE_SECONDS,
+  Device,
+  DEVICE_REGISTERED,
+  DEVICE_SEEN_RESOLUTION_MS,
+  type DeviceId,
+} from './device';
 
 const ID = '00000000-0000-4000-8000-000000000001' as DeviceId;
 const NOW = new Date('2026-09-28T17:00:00Z');
@@ -12,6 +18,7 @@ function register(
     id: ID,
     serialNumber: 'TESTSN001',
     name: 'Entrada principal',
+    siteId: '00000000-0000-4000-8000-0000000000a1',
     timeZone: 'America/Cancun',
     now: NOW,
     ...overrides,
@@ -76,6 +83,88 @@ describe('Device.register', () => {
   });
 });
 
+describe('Device.register (sede y desfase)', () => {
+  it('guarda la sede y la zona recibidas, y nace sin medición de desfase', () => {
+    const device = registered();
+
+    expect(device.siteId).toBe('00000000-0000-4000-8000-0000000000a1');
+    expect(device.clockOffsetSeconds).toBeNull();
+    expect(device.clockOffsetMeasuredAt).toBeNull();
+    expect(device.clockSuspect).toBe(false);
+  });
+});
+
+describe('Device.assignSite', () => {
+  it('cambia la sede y copia la zona horaria de la nueva sede', () => {
+    const device = registered();
+
+    device.assignSite('00000000-0000-4000-8000-0000000000b2', 'America/Mexico_City');
+
+    expect(device.siteId).toBe('00000000-0000-4000-8000-0000000000b2');
+    expect(device.timeZone).toBe('America/Mexico_City');
+  });
+
+  it('asigna la sede a un equipo rehidratado sin sede (registrado antes del plan)', () => {
+    const device = Device.restore(ID, {
+      serialNumber: 'TESTSN001',
+      name: 'Entrada',
+      timeZone: 'UTC',
+      active: true,
+      registeredAt: NOW,
+      lastSeenAt: null,
+      siteId: null,
+      clockOffsetSeconds: null,
+      clockOffsetMeasuredAt: null,
+    });
+
+    device.assignSite('00000000-0000-4000-8000-0000000000a1', 'America/Cancun');
+
+    expect(device.siteId).toBe('00000000-0000-4000-8000-0000000000a1');
+    expect(device.timeZone).toBe('America/Cancun');
+  });
+});
+
+describe('Device.recordClockOffset y clockSuspect', () => {
+  it('guarda el desfase y el instante de la medición', () => {
+    const device = registered();
+    const measuredAt = new Date(NOW.getTime() + 5000);
+
+    device.recordClockOffset(12, measuredAt);
+
+    expect(device.clockOffsetSeconds).toBe(12);
+    expect(device.clockOffsetMeasuredAt).toEqual(measuredAt);
+  });
+
+  it('una nueva medición reemplaza la anterior', () => {
+    const device = registered();
+    device.recordClockOffset(400, NOW);
+
+    device.recordClockOffset(3, new Date(NOW.getTime() + 1000));
+
+    expect(device.clockOffsetSeconds).toBe(3);
+    expect(device.clockSuspect).toBe(false);
+  });
+
+  it('la tolerancia es de 300 segundos', () => {
+    expect(CLOCK_OFFSET_TOLERANCE_SECONDS).toBe(300);
+  });
+
+  it.each([
+    [0, false],
+    [300, false],
+    [-300, false],
+    [301, true],
+    [-301, true],
+    [-3600, true],
+  ])('desfase de %i s: clockSuspect = %s', (seconds, suspect) => {
+    const device = registered();
+
+    device.recordClockOffset(seconds, NOW);
+
+    expect(device.clockSuspect).toBe(suspect);
+  });
+});
+
 describe('Device.markSeen', () => {
   it('la primera vez anota el contacto y pide persistir', () => {
     const device = registered();
@@ -115,6 +204,9 @@ describe('Device.restore', () => {
       active: false,
       registeredAt: NOW,
       lastSeenAt: NOW,
+      siteId: null,
+      clockOffsetSeconds: null,
+      clockOffsetMeasuredAt: null,
     });
 
     expect(device.active).toBe(false);

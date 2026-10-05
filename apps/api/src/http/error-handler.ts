@@ -35,6 +35,13 @@ function statusFor(error: DomainError): number {
   return STATUS_BY_CATEGORY.find(([category]) => error instanceof category)?.[1] ?? 400;
 }
 
+/** body-parser marca sus errores con `type` (`entity.parse.failed`, `entity.too.large`, …). */
+function isBodyParserError(error: unknown): error is { type: string } {
+  return (
+    typeof error === 'object' && error !== null && 'type' in error && typeof error.type === 'string'
+  );
+}
+
 export function errorHandler(logger: Logger): ErrorRequestHandler {
   return (error: unknown, _req, res, _next) => {
     if (error instanceof RequestValidationError) {
@@ -73,6 +80,26 @@ export function errorHandler(logger: Logger): ErrorRequestHandler {
       }
       res.status(statusFor(error)).json(body);
       return;
+    }
+
+    // Errores del parser JSON: son del cliente, no del servidor.
+    if (isBodyParserError(error)) {
+      if (error.type === 'entity.too.large') {
+        const body: ApiErrorBody = {
+          code: 'PAYLOAD_TOO_LARGE',
+          message: 'El cuerpo de la petición supera el tamaño permitido',
+        };
+        res.status(413).json(body);
+        return;
+      }
+      if (error.type === 'entity.parse.failed') {
+        const body: ApiErrorBody = {
+          code: 'MALFORMED_JSON',
+          message: 'El cuerpo de la petición no es JSON válido',
+        };
+        res.status(400).json(body);
+        return;
+      }
     }
 
     // Inesperado: se loguea completo pero NUNCA se filtra el detalle al cliente.

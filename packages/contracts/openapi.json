@@ -2,7 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "API RRHH APS Holding",
-    "version": "1"
+    "version": "1",
+    "description": "API de RRHH del holding. Toda la entrada y salida es JSON.\n\n## Autenticación\n\nCasi todas las rutas exigen sesión. Para probar aquí: llama a `POST /auth/login` con `client: \"mobile\"`, copia el `token` de la respuesta y pégalo en **Authentication → bearerAuth**. El cliente web usa una cookie httpOnly en su lugar.\n\n## Forma de los errores\n\nTodo error responde `{ \"code\", \"message\", \"details\"? }`. `code` es estable y es lo que debe usar un cliente para decidir qué hacer; `message` está en español y puede cambiar.\n\n## Paginación\n\nLos listados aceptan `page` (por defecto 1) y `pageSize` (por defecto 20, máximo 100) y responden `{ items, total, page, pageSize }`.\n\n## Códigos de error\n\n| Código | Status | Cuándo ocurre |\n| --- | --- | --- |\n| `VALIDATION_ERROR` | 400 | La solicitud no cumple el contrato: `details.location` dice dónde (params, query o body) y `details.issues` qué campos fallan. |\n| `MALFORMED_JSON` | 400 | El cuerpo de la petición no es JSON válido. |\n| `PAYLOAD_TOO_LARGE` | 413 | El cuerpo de la petición supera el límite: 1 MB en `/api/v1` (5 MB en las rutas `/iclock` de los checadores). |\n| `AUTHENTICATION_REQUIRED` | 401 | La ruta exige sesión y la solicitud no trae una sesión válida o ya expiró. |\n| `FORBIDDEN` | 403 | La sesión es válida, pero no tiene el permiso que exige la ruta (o no para esa empresa). |\n| `ROUTE_NOT_FOUND` | 404 | No existe una ruta con ese método y path. |\n| `INTERNAL_ERROR` | 500 | Error inesperado del servidor; el detalle solo queda en los logs. |\n| `INVALID_VALUE` | 422 | Un valor no cumple una regla del dominio. Hoy las rutas repiten esas reglas en el contrato, así que normalmente responde antes `VALIDATION_ERROR` (400); queda como red de seguridad y ninguna ruta lo declara. El `message` cambia según la regla. |\n| `BUSINESS_RULE_VIOLATION` | 422 | Se infringe una regla de negocio sin código propio; el `message` dice cuál. Hoy: registrar una contratación con demasiada anticipación. |\n| `COMPANY_NOT_FOUND` | 404 | La empresa indicada no existe. |\n| `COMPANY_ALREADY_EXISTS` | 409 | Ya hay una empresa con ese identificador tributario. |\n| `COMPANY_INACTIVE` | 422 | La empresa está inactiva y no admite la operación. |\n| `SITE_ALREADY_EXISTS` | 409 | Ya hay una sede con ese nombre. |\n| `EMPLOYEE_ALREADY_EXISTS` | 409 | El colaborador ya está registrado en esa empresa (mismo documento de identidad). |\n| `EMPLOYEE_NOT_FOUND` | 404 | El colaborador no existe (también cuando pertenece a otra empresa: responde igual). |\n| `EMPLOYEE_RFC_ALREADY_REGISTERED` | 409 | Otro colaborador ya tiene ese RFC. |\n| `RFC_NOT_APPLICABLE` | 422 | El RFC solo aplica a colaboradores de México. |\n| `SITE_NOT_FOUND` | 404 | La sede indicada no existe. |\n| `SITE_INACTIVE` | 422 | La sede está inactiva y no se le puede asignar nada. |\n| `SITE_COUNTRY_MISMATCH` | 422 | La sede es de un país distinto al de la razón social. |\n| `DEVICE_NOT_FOUND` | 404 | El checador indicado no existe. |\n| `DEVICE_ALREADY_REGISTERED` | 409 | Ya hay un equipo con ese número de serie. |\n| `DEVICE_NOT_ALLOWED` | 422 | El equipo no está autorizado (no registrado) para enviar datos. |\n| `INVALID_CREDENTIALS` | 401 | Correo o contraseña incorrectos; es el mismo error si el correo no existe (no revela cuentas). |\n| `LOGIN_TEMPORARILY_BLOCKED` | 429 | Demasiados intentos fallidos; `details.retryAfterSeconds` (y el encabezado `Retry-After`) dicen cuánto esperar. |\n| `WEAK_PASSWORD` | 422 | La contraseña no cumple la política de longitud. |\n| `PASSWORD_RESET_NOT_VALID` | 422 | El enlace de restablecimiento no es válido: desconocido, expirado, usado, reemplazado o de un usuario deshabilitado (mismo cuerpo en todos los casos). |\n| `USER_ALREADY_EXISTS` | 409 | Ya existe un usuario con ese correo. |\n| `USER_NOT_FOUND` | 404 | El usuario indicado no existe. |\n| `USER_DISABLED` | 422 | El usuario está deshabilitado y no admite la operación. |\n| `EMAIL_ALREADY_REGISTERED` | 409 | Ya existe un usuario con ese correo. |\n| `EMPLOYEE_INACTIVE` | 422 | El colaborador está desvinculado y no se le puede invitar. |\n| `EMPLOYEE_ALREADY_HAS_ACCESS` | 409 | El colaborador ya tiene una cuenta vinculada. |\n| `INVITATION_NOT_VALID` | 422 | La invitación no es válida: token desconocido, expirado, usado o reemplazado (mismo cuerpo en todos los casos). |\n| `ROLE_NOT_ASSIGNABLE` | 422 | Ese rol existe pero todavía no se puede asignar por la API. |\n| `INVALID_ROLE_SCOPE` | 422 | El alcance no corresponde al rol: HOLDING_ADMIN no lleva empresa; HR requiere una. |\n| `ROLE_ALREADY_ASSIGNED` | 409 | El usuario ya tiene ese rol activo (en esa empresa). |\n| `ROLE_ASSIGNMENT_NOT_FOUND` | 404 | La asignación de rol no existe para ese usuario. |\n| `LAST_HOLDING_ADMIN` | 422 | Revocarla dejaría al holding sin ningún administrador. |"
   },
   "servers": [
     {
@@ -22,6 +23,7 @@
       "get": {
         "operationId": "listCompanies",
         "summary": "Lista paginada de empresas del holding",
+        "description": "Devuelve las empresas del holding, paginadas.\n\n**Quién puede:** administrador del holding (todas las empresas) y RH (solo las de su alcance).\n\n**Necesita:** opcionalmente `page` y `pageSize`. No modifica datos.",
         "tags": [
           "organization"
         ],
@@ -31,8 +33,10 @@
             "name": "page",
             "in": "query",
             "required": false,
+            "description": "Opcional. Número de página, desde 1; por defecto 1",
             "schema": {
               "default": 1,
+              "description": "Opcional. Número de página, desde 1; por defecto 1",
               "type": "integer",
               "minimum": 1,
               "maximum": 9007199254740991
@@ -42,8 +46,10 @@
             "name": "pageSize",
             "in": "query",
             "required": false,
+            "description": "Opcional. Elementos por página, de 1 a 100; por defecto 20",
             "schema": {
               "default": 20,
+              "description": "Opcional. Elementos por página, de 1 a 100; por defecto 20",
               "type": "integer",
               "minimum": 1,
               "maximum": 100
@@ -91,6 +97,15 @@
               }
             }
           },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
           "default": {
             "$ref": "#/components/responses/Error"
           }
@@ -99,6 +114,7 @@
       "post": {
         "operationId": "createCompany",
         "summary": "Crea una empresa en el holding",
+        "description": "Da de alta una empresa (razón social) en el holding. Queda activa.\n\n**Quién puede:** solo el administrador del holding.\n\n**Necesita:** razón social, país e identificador tributario válido para ese país. Responde con el `id` de la empresa creada.",
         "tags": [
           "organization"
         ],
@@ -124,6 +140,30 @@
               }
             }
           },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "description": "COMPANY_ALREADY_EXISTS",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "COMPANY_ALREADY_EXISTS": {
+                    "$ref": "#/components/examples/COMPANY_ALREADY_EXISTS"
+                  }
+                }
+              }
+            }
+          },
           "default": {
             "$ref": "#/components/responses/Error"
           }
@@ -134,6 +174,7 @@
       "get": {
         "operationId": "getCompany",
         "summary": "Detalle de una empresa",
+        "description": "Devuelve los datos de una empresa.\n\n**Quién puede:** administrador del holding, o RH si la empresa está en su alcance.\n\n**Necesita:** el `companyId` en la ruta. No modifica datos.",
         "tags": [
           "organization"
         ],
@@ -144,10 +185,12 @@
             "name": "companyId",
             "in": "path",
             "required": true,
+            "description": "Id de la empresa",
             "schema": {
               "type": "string",
               "format": "uuid",
-              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "description": "Id de la empresa"
             }
           }
         ],
@@ -162,6 +205,181 @@
               }
             }
           },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "COMPANY_NOT_FOUND",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "COMPANY_NOT_FOUND": {
+                    "$ref": "#/components/examples/COMPANY_NOT_FOUND"
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/sites": {
+      "get": {
+        "operationId": "listSites",
+        "summary": "Sedes del holding",
+        "description": "Devuelve las sedes del holding (oficinas, plantas), paginadas.\n\n**Quién puede:** administrador del holding y RH. Las sedes son del holding, no de una empresa.\n\n**Necesita:** opcionalmente `page` y `pageSize`. No modifica datos.",
+        "tags": [
+          "sites"
+        ],
+        "x-permission": "organization.sites:read",
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "description": "Opcional. Número de página, desde 1; por defecto 1",
+            "schema": {
+              "default": 1,
+              "description": "Opcional. Número de página, desde 1; por defecto 1",
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            }
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "required": false,
+            "description": "Opcional. Elementos por página, de 1 a 100; por defecto 20",
+            "schema": {
+              "default": 20,
+              "description": "Opcional. Elementos por página, de 1 a 100; por defecto 20",
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Sedes del holding",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Site"
+                      }
+                    },
+                    "total": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "page": {
+                      "type": "integer",
+                      "exclusiveMinimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "pageSize": {
+                      "type": "integer",
+                      "exclusiveMinimum": 0,
+                      "maximum": 9007199254740991
+                    }
+                  },
+                  "required": [
+                    "items",
+                    "total",
+                    "page",
+                    "pageSize"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "createSite",
+        "summary": "Crea una sede del holding",
+        "description": "Da de alta una sede. Queda activa y se puede asignar a colaboradores y checadores.\n\n**Quién puede:** solo el administrador del holding.\n\n**Necesita:** nombre único, país y una zona horaria válida para ese país. Responde con el `id` de la sede.",
+        "tags": [
+          "sites"
+        ],
+        "x-permission": "organization.sites:manage",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateSiteInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Crea una sede del holding",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Created"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "description": "SITE_ALREADY_EXISTS",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "SITE_ALREADY_EXISTS": {
+                    "$ref": "#/components/examples/SITE_ALREADY_EXISTS"
+                  }
+                }
+              }
+            }
+          },
           "default": {
             "$ref": "#/components/responses/Error"
           }
@@ -172,6 +390,7 @@
       "get": {
         "operationId": "listEmployees",
         "summary": "Directorio de colaboradores de una empresa",
+        "description": "Devuelve el directorio de colaboradores de una empresa, paginado, con filtro opcional por estado y búsqueda por texto.\n\n**Quién puede:** administrador del holding, o RH si la empresa está en su alcance.\n\n**Necesita:** el `companyId` en la ruta. No modifica datos.",
         "tags": [
           "employees"
         ],
@@ -182,18 +401,22 @@
             "name": "companyId",
             "in": "path",
             "required": true,
+            "description": "Id de la empresa",
             "schema": {
               "type": "string",
               "format": "uuid",
-              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "description": "Id de la empresa"
             }
           },
           {
             "name": "page",
             "in": "query",
             "required": false,
+            "description": "Opcional. Número de página, desde 1; por defecto 1",
             "schema": {
               "default": 1,
+              "description": "Opcional. Número de página, desde 1; por defecto 1",
               "type": "integer",
               "minimum": 1,
               "maximum": 9007199254740991
@@ -203,8 +426,10 @@
             "name": "pageSize",
             "in": "query",
             "required": false,
+            "description": "Opcional. Elementos por página, de 1 a 100; por defecto 20",
             "schema": {
               "default": 20,
+              "description": "Opcional. Elementos por página, de 1 a 100; por defecto 20",
               "type": "integer",
               "minimum": 1,
               "maximum": 100
@@ -214,7 +439,9 @@
             "name": "status",
             "in": "query",
             "required": false,
+            "description": "Opcional. Filtra por estado; si se omite trae todos",
             "schema": {
+              "description": "Opcional. Filtra por estado; si se omite trae todos",
               "type": "string",
               "enum": [
                 "ACTIVE",
@@ -226,7 +453,9 @@
             "name": "search",
             "in": "query",
             "required": false,
+            "description": "Opcional. Texto a buscar en nombre, apellido, correo o documento de identidad; si se omite no filtra",
             "schema": {
+              "description": "Opcional. Texto a buscar en nombre, apellido, correo o documento de identidad; si se omite no filtra",
               "type": "string",
               "minLength": 1
             }
@@ -273,6 +502,15 @@
               }
             }
           },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
           "default": {
             "$ref": "#/components/responses/Error"
           }
@@ -281,6 +519,7 @@
       "post": {
         "operationId": "registerEmployee",
         "summary": "Registra (contrata) un colaborador",
+        "description": "Registra a un colaborador en una empresa. Queda activo y con la sede indicada.\n\n**Quién puede:** administrador del holding, o RH si la empresa está en su alcance.\n\n**Necesita:** documento de identidad válido, nombre, correo, fecha de contratación y sede activa del mismo país que la empresa. El RFC es obligatorio para México y no aplica en otros países. Responde con el `id` del colaborador.",
         "tags": [
           "employees"
         ],
@@ -291,10 +530,12 @@
             "name": "companyId",
             "in": "path",
             "required": true,
+            "description": "Id de la empresa",
             "schema": {
               "type": "string",
               "format": "uuid",
-              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "description": "Id de la empresa"
             }
           }
         ],
@@ -319,6 +560,75 @@
               }
             }
           },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "COMPANY_NOT_FOUND, SITE_NOT_FOUND",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "COMPANY_NOT_FOUND": {
+                    "$ref": "#/components/examples/COMPANY_NOT_FOUND"
+                  },
+                  "SITE_NOT_FOUND": {
+                    "$ref": "#/components/examples/SITE_NOT_FOUND"
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "EMPLOYEE_ALREADY_EXISTS, EMPLOYEE_RFC_ALREADY_REGISTERED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "EMPLOYEE_ALREADY_EXISTS": {
+                    "$ref": "#/components/examples/EMPLOYEE_ALREADY_EXISTS"
+                  },
+                  "EMPLOYEE_RFC_ALREADY_REGISTERED": {
+                    "$ref": "#/components/examples/EMPLOYEE_RFC_ALREADY_REGISTERED"
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "COMPANY_INACTIVE, SITE_INACTIVE, SITE_COUNTRY_MISMATCH, BUSINESS_RULE_VIOLATION",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "COMPANY_INACTIVE": {
+                    "$ref": "#/components/examples/COMPANY_INACTIVE"
+                  },
+                  "SITE_INACTIVE": {
+                    "$ref": "#/components/examples/SITE_INACTIVE"
+                  },
+                  "SITE_COUNTRY_MISMATCH": {
+                    "$ref": "#/components/examples/SITE_COUNTRY_MISMATCH"
+                  },
+                  "BUSINESS_RULE_VIOLATION": {
+                    "$ref": "#/components/examples/BUSINESS_RULE_VIOLATION"
+                  }
+                }
+              }
+            }
+          },
           "default": {
             "$ref": "#/components/responses/Error"
           }
@@ -329,6 +639,7 @@
       "put": {
         "operationId": "assignEmployeeRfc",
         "summary": "Captura o corrige el RFC de un colaborador",
+        "description": "Fija el RFC de un colaborador mexicano, o lo corrige si ya tenía uno. Reemplaza el valor anterior.\n\n**Quién puede:** administrador del holding, o RH si la empresa está en su alcance.\n\n**Necesita:** un RFC de persona física válido que ningún otro colaborador tenga.",
         "tags": [
           "employees"
         ],
@@ -339,20 +650,24 @@
             "name": "companyId",
             "in": "path",
             "required": true,
+            "description": "Id de la empresa del colaborador",
             "schema": {
               "type": "string",
               "format": "uuid",
-              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "description": "Id de la empresa del colaborador"
             }
           },
           {
             "name": "employeeId",
             "in": "path",
             "required": true,
+            "description": "Id del colaborador",
             "schema": {
               "type": "string",
               "format": "uuid",
-              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "description": "Id del colaborador"
             }
           }
         ],
@@ -370,6 +685,164 @@
           "204": {
             "description": "Captura o corrige el RFC de un colaborador"
           },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "EMPLOYEE_NOT_FOUND",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "EMPLOYEE_NOT_FOUND": {
+                    "$ref": "#/components/examples/EMPLOYEE_NOT_FOUND"
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "EMPLOYEE_RFC_ALREADY_REGISTERED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "EMPLOYEE_RFC_ALREADY_REGISTERED": {
+                    "$ref": "#/components/examples/EMPLOYEE_RFC_ALREADY_REGISTERED"
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "RFC_NOT_APPLICABLE",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "RFC_NOT_APPLICABLE": {
+                    "$ref": "#/components/examples/RFC_NOT_APPLICABLE"
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/companies/{companyId}/employees/{employeeId}/site": {
+      "put": {
+        "operationId": "assignEmployeeSite",
+        "summary": "Asigna o cambia la sede de un colaborador",
+        "description": "Asigna la sede de un colaborador o la cambia por otra. Reemplaza la sede anterior.\n\n**Quién puede:** administrador del holding, o RH si la empresa está en su alcance.\n\n**Necesita:** el `siteId` de una sede activa del mismo país que la empresa del colaborador.",
+        "tags": [
+          "employees"
+        ],
+        "x-permission": "employees:update",
+        "x-company-param": "companyId",
+        "parameters": [
+          {
+            "name": "companyId",
+            "in": "path",
+            "required": true,
+            "description": "Id de la empresa del colaborador",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "description": "Id de la empresa del colaborador"
+            }
+          },
+          {
+            "name": "employeeId",
+            "in": "path",
+            "required": true,
+            "description": "Id del colaborador",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "description": "Id del colaborador"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssignEmployeeSiteInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Asigna o cambia la sede de un colaborador"
+          },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "EMPLOYEE_NOT_FOUND, SITE_NOT_FOUND, COMPANY_NOT_FOUND",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "EMPLOYEE_NOT_FOUND": {
+                    "$ref": "#/components/examples/EMPLOYEE_NOT_FOUND"
+                  },
+                  "SITE_NOT_FOUND": {
+                    "$ref": "#/components/examples/SITE_NOT_FOUND"
+                  },
+                  "COMPANY_NOT_FOUND": {
+                    "$ref": "#/components/examples/COMPANY_NOT_FOUND"
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "SITE_INACTIVE, SITE_COUNTRY_MISMATCH",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "SITE_INACTIVE": {
+                    "$ref": "#/components/examples/SITE_INACTIVE"
+                  },
+                  "SITE_COUNTRY_MISMATCH": {
+                    "$ref": "#/components/examples/SITE_COUNTRY_MISMATCH"
+                  }
+                }
+              }
+            }
+          },
           "default": {
             "$ref": "#/components/responses/Error"
           }
@@ -380,6 +853,7 @@
       "post": {
         "operationId": "logIn",
         "summary": "Inicia sesión con correo y contraseña",
+        "description": "Abre una sesión. Es la puerta de entrada de la API.\n\n**Quién puede:** cualquiera (ruta pública).\n\n**Necesita:** correo, contraseña y `client`. Con `client: \"mobile\"` la respuesta trae un `token` para usar como bearer; con `web` se fija una cookie httpOnly.\n\n**Efectos:** crea la sesión. Tras varios intentos fallidos seguidos bloquea temporalmente el acceso (429).",
         "tags": [
           "identity"
         ],
@@ -405,6 +879,39 @@
               }
             }
           },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "401": {
+            "description": "INVALID_CREDENTIALS",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "INVALID_CREDENTIALS": {
+                    "$ref": "#/components/examples/INVALID_CREDENTIALS"
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "LOGIN_TEMPORARILY_BLOCKED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "LOGIN_TEMPORARILY_BLOCKED": {
+                    "$ref": "#/components/examples/LOGIN_TEMPORARILY_BLOCKED"
+                  }
+                }
+              }
+            }
+          },
           "default": {
             "$ref": "#/components/responses/Error"
           }
@@ -415,12 +922,16 @@
       "post": {
         "operationId": "logOut",
         "summary": "Cierra la sesión actual",
+        "description": "Cierra la sesión con la que se hace la llamada.\n\n**Quién puede:** cualquier usuario con sesión.\n\n**Efectos:** la sesión deja de ser válida y, en web, se borra la cookie.",
         "tags": [
           "identity"
         ],
         "responses": {
           "204": {
             "description": "Cierra la sesión actual"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
           },
           "default": {
             "$ref": "#/components/responses/Error"
@@ -432,6 +943,7 @@
       "get": {
         "operationId": "me",
         "summary": "Usuario de la sesión actual",
+        "description": "Devuelve el usuario dueño de la sesión actual.\n\n**Quién puede:** cualquier usuario con sesión. No modifica datos.",
         "tags": [
           "identity"
         ],
@@ -446,6 +958,9 @@
               }
             }
           },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
           "default": {
             "$ref": "#/components/responses/Error"
           }
@@ -456,6 +971,7 @@
       "get": {
         "operationId": "listUsers",
         "summary": "Lista paginada de usuarios",
+        "description": "Devuelve los usuarios con cuenta, paginados, con búsqueda opcional por correo.\n\n**Quién puede:** solo el administrador del holding.\n\n**Necesita:** opcionalmente `page`, `pageSize` y `search`. No modifica datos.",
         "tags": [
           "access"
         ],
@@ -465,8 +981,10 @@
             "name": "page",
             "in": "query",
             "required": false,
+            "description": "Opcional. Número de página, desde 1; por defecto 1",
             "schema": {
               "default": 1,
+              "description": "Opcional. Número de página, desde 1; por defecto 1",
               "type": "integer",
               "minimum": 1,
               "maximum": 9007199254740991
@@ -476,8 +994,10 @@
             "name": "pageSize",
             "in": "query",
             "required": false,
+            "description": "Opcional. Elementos por página, de 1 a 100; por defecto 20",
             "schema": {
               "default": 20,
+              "description": "Opcional. Elementos por página, de 1 a 100; por defecto 20",
               "type": "integer",
               "minimum": 1,
               "maximum": 100
@@ -487,7 +1007,9 @@
             "name": "search",
             "in": "query",
             "required": false,
+            "description": "Opcional. Texto a buscar en el correo; si se omite no filtra",
             "schema": {
+              "description": "Opcional. Texto a buscar en el correo; si se omite no filtra",
               "type": "string",
               "minLength": 1
             }
@@ -534,6 +1056,15 @@
               }
             }
           },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
           "default": {
             "$ref": "#/components/responses/Error"
           }
@@ -544,6 +1075,7 @@
       "get": {
         "operationId": "listRoleAssignments",
         "summary": "Roles activos de un usuario",
+        "description": "Devuelve las asignaciones de rol activas de un usuario.\n\n**Quién puede:** solo el administrador del holding.\n\n**Necesita:** el `userId` en la ruta. No modifica datos.",
         "tags": [
           "access"
         ],
@@ -553,10 +1085,12 @@
             "name": "userId",
             "in": "path",
             "required": true,
+            "description": "Id del usuario",
             "schema": {
               "type": "string",
               "format": "uuid",
-              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "description": "Id del usuario"
             }
           }
         ],
@@ -574,6 +1108,30 @@
               }
             }
           },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "USER_NOT_FOUND",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "USER_NOT_FOUND": {
+                    "$ref": "#/components/examples/USER_NOT_FOUND"
+                  }
+                }
+              }
+            }
+          },
           "default": {
             "$ref": "#/components/responses/Error"
           }
@@ -582,6 +1140,7 @@
       "post": {
         "operationId": "assignRole",
         "summary": "Asigna un rol a un usuario",
+        "description": "Concede un rol a un usuario. Los permisos del usuario cambian de inmediato.\n\n**Quién puede:** solo el administrador del holding.\n\n**Necesita:** el rol y, para HR, la empresa de su alcance (HOLDING_ADMIN no lleva empresa). Responde con el `id` de la asignación.",
         "tags": [
           "access"
         ],
@@ -591,10 +1150,12 @@
             "name": "userId",
             "in": "path",
             "required": true,
+            "description": "Id del usuario",
             "schema": {
               "type": "string",
               "format": "uuid",
-              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "description": "Id del usuario"
             }
           }
         ],
@@ -619,6 +1180,69 @@
               }
             }
           },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "USER_NOT_FOUND, COMPANY_NOT_FOUND",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "USER_NOT_FOUND": {
+                    "$ref": "#/components/examples/USER_NOT_FOUND"
+                  },
+                  "COMPANY_NOT_FOUND": {
+                    "$ref": "#/components/examples/COMPANY_NOT_FOUND"
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "ROLE_ALREADY_ASSIGNED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "ROLE_ALREADY_ASSIGNED": {
+                    "$ref": "#/components/examples/ROLE_ALREADY_ASSIGNED"
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "COMPANY_INACTIVE, ROLE_NOT_ASSIGNABLE, INVALID_ROLE_SCOPE",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "COMPANY_INACTIVE__role_assignment": {
+                    "$ref": "#/components/examples/COMPANY_INACTIVE__role_assignment"
+                  },
+                  "ROLE_NOT_ASSIGNABLE": {
+                    "$ref": "#/components/examples/ROLE_NOT_ASSIGNABLE"
+                  },
+                  "INVALID_ROLE_SCOPE": {
+                    "$ref": "#/components/examples/INVALID_ROLE_SCOPE"
+                  }
+                }
+              }
+            }
+          },
           "default": {
             "$ref": "#/components/responses/Error"
           }
@@ -629,6 +1253,7 @@
       "delete": {
         "operationId": "revokeRoleAssignment",
         "summary": "Revoca una asignación de rol",
+        "description": "Quita una asignación de rol a un usuario. El usuario pierde esos permisos de inmediato.\n\n**Quién puede:** solo el administrador del holding.\n\n**Necesita:** el `userId` y el `assignmentId` en la ruta. No se puede revocar al último administrador del holding.",
         "tags": [
           "access"
         ],
@@ -638,26 +1263,69 @@
             "name": "userId",
             "in": "path",
             "required": true,
+            "description": "Id del usuario",
             "schema": {
               "type": "string",
               "format": "uuid",
-              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "description": "Id del usuario"
             }
           },
           {
             "name": "assignmentId",
             "in": "path",
             "required": true,
+            "description": "Id de la asignación de rol",
             "schema": {
               "type": "string",
               "format": "uuid",
-              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "description": "Id de la asignación de rol"
             }
           }
         ],
         "responses": {
           "204": {
             "description": "Revoca una asignación de rol"
+          },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "ROLE_ASSIGNMENT_NOT_FOUND",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "ROLE_ASSIGNMENT_NOT_FOUND": {
+                    "$ref": "#/components/examples/ROLE_ASSIGNMENT_NOT_FOUND"
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "LAST_HOLDING_ADMIN",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "LAST_HOLDING_ADMIN": {
+                    "$ref": "#/components/examples/LAST_HOLDING_ADMIN"
+                  }
+                }
+              }
+            }
           },
           "default": {
             "$ref": "#/components/responses/Error"
@@ -669,6 +1337,7 @@
       "post": {
         "operationId": "inviteEmployee",
         "summary": "Invita a un colaborador a activar su acceso",
+        "description": "Envía por correo un enlace para que un colaborador cree su cuenta y su contraseña. Si ya había una invitación pendiente para ese correo, la reemplaza.\n\n**Quién puede:** administrador del holding, o RH si la empresa está en su alcance.\n\n**Necesita:** que el colaborador esté activo y sin cuenta. Opcionalmente un correo distinto al registrado.",
         "tags": [
           "invitations"
         ],
@@ -679,20 +1348,24 @@
             "name": "companyId",
             "in": "path",
             "required": true,
+            "description": "Id de la empresa del colaborador",
             "schema": {
               "type": "string",
               "format": "uuid",
-              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "description": "Id de la empresa del colaborador"
             }
           },
           {
             "name": "employeeId",
             "in": "path",
             "required": true,
+            "description": "Id del colaborador",
             "schema": {
               "type": "string",
               "format": "uuid",
-              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "description": "Id del colaborador"
             }
           }
         ],
@@ -717,6 +1390,63 @@
               }
             }
           },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "EMPLOYEE_NOT_FOUND",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "EMPLOYEE_NOT_FOUND__identity": {
+                    "$ref": "#/components/examples/EMPLOYEE_NOT_FOUND__identity"
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "EMPLOYEE_ALREADY_HAS_ACCESS, EMAIL_ALREADY_REGISTERED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "EMPLOYEE_ALREADY_HAS_ACCESS": {
+                    "$ref": "#/components/examples/EMPLOYEE_ALREADY_HAS_ACCESS"
+                  },
+                  "EMAIL_ALREADY_REGISTERED": {
+                    "$ref": "#/components/examples/EMAIL_ALREADY_REGISTERED"
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "EMPLOYEE_INACTIVE",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "EMPLOYEE_INACTIVE": {
+                    "$ref": "#/components/examples/EMPLOYEE_INACTIVE"
+                  }
+                }
+              }
+            }
+          },
           "default": {
             "$ref": "#/components/responses/Error"
           }
@@ -727,6 +1457,7 @@
       "post": {
         "operationId": "inviteExternal",
         "summary": "Invita a una persona que no es colaborador",
+        "description": "Envía por correo un enlace de activación a alguien que no está en el directorio de colaboradores (por ejemplo, un administrador externo).\n\n**Quién puede:** solo el administrador del holding.\n\n**Necesita:** el correo de la persona, que no debe tener cuenta.",
         "tags": [
           "invitations"
         ],
@@ -752,6 +1483,30 @@
               }
             }
           },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "description": "EMAIL_ALREADY_REGISTERED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "EMAIL_ALREADY_REGISTERED": {
+                    "$ref": "#/components/examples/EMAIL_ALREADY_REGISTERED"
+                  }
+                }
+              }
+            }
+          },
           "default": {
             "$ref": "#/components/responses/Error"
           }
@@ -762,6 +1517,7 @@
       "post": {
         "operationId": "activateAccount",
         "summary": "Activa la cuenta con el token de la invitación y fija la contraseña",
+        "description": "Termina el alta de una cuenta invitada: valida el token del correo y fija la contraseña.\n\n**Quién puede:** cualquiera con un token válido (ruta pública).\n\n**Efectos:** crea el usuario y consume la invitación; el token no se puede reutilizar. No inicia sesión: después hay que llamar a `POST /auth/login`.",
         "tags": [
           "invitations"
         ],
@@ -780,6 +1536,45 @@
           "204": {
             "description": "Activa la cuenta con el token de la invitación y fija la contraseña"
           },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "409": {
+            "description": "EMAIL_ALREADY_REGISTERED, EMPLOYEE_ALREADY_HAS_ACCESS",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "EMAIL_ALREADY_REGISTERED": {
+                    "$ref": "#/components/examples/EMAIL_ALREADY_REGISTERED"
+                  },
+                  "EMPLOYEE_ALREADY_HAS_ACCESS": {
+                    "$ref": "#/components/examples/EMPLOYEE_ALREADY_HAS_ACCESS"
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "INVITATION_NOT_VALID, WEAK_PASSWORD",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "INVITATION_NOT_VALID": {
+                    "$ref": "#/components/examples/INVITATION_NOT_VALID"
+                  },
+                  "WEAK_PASSWORD": {
+                    "$ref": "#/components/examples/WEAK_PASSWORD"
+                  }
+                }
+              }
+            }
+          },
           "default": {
             "$ref": "#/components/responses/Error"
           }
@@ -790,6 +1585,7 @@
       "post": {
         "operationId": "requestPasswordReset",
         "summary": "Envía un enlace para restablecer la contraseña (responde igual exista o no el correo)",
+        "description": "Pide un enlace de restablecimiento de contraseña. Siempre responde 204, exista o no la cuenta, para no revelar qué correos están registrados.\n\n**Quién puede:** cualquiera (ruta pública).\n\n**Efectos:** si la cuenta existe y está activa, envía el correo con el enlace.",
         "tags": [
           "passwordResets"
         ],
@@ -808,6 +1604,9 @@
           "204": {
             "description": "Envía un enlace para restablecer la contraseña (responde igual exista o no el correo)"
           },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
+          },
           "default": {
             "$ref": "#/components/responses/Error"
           }
@@ -818,6 +1617,7 @@
       "post": {
         "operationId": "resetPassword",
         "summary": "Fija la contraseña nueva con el token del enlace y cierra todas las sesiones",
+        "description": "Fija una contraseña nueva usando el token del enlace de restablecimiento.\n\n**Quién puede:** cualquiera con un token válido (ruta pública).\n\n**Efectos:** consume el token, cierra todas las sesiones abiertas del usuario y limpia su bloqueo de inicio de sesión.",
         "tags": [
           "passwordResets"
         ],
@@ -836,6 +1636,27 @@
           "204": {
             "description": "Fija la contraseña nueva con el token del enlace y cierra todas las sesiones"
           },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "422": {
+            "description": "PASSWORD_RESET_NOT_VALID, WEAK_PASSWORD",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "PASSWORD_RESET_NOT_VALID": {
+                    "$ref": "#/components/examples/PASSWORD_RESET_NOT_VALID"
+                  },
+                  "WEAK_PASSWORD": {
+                    "$ref": "#/components/examples/WEAK_PASSWORD"
+                  }
+                }
+              }
+            }
+          },
           "default": {
             "$ref": "#/components/responses/Error"
           }
@@ -846,6 +1667,7 @@
       "post": {
         "operationId": "forceEmployeePasswordReset",
         "summary": "Fuerza el restablecimiento de contraseña de un colaborador",
+        "description": "Genera y envía un enlace de restablecimiento al correo de la cuenta de un colaborador.\n\n**Quién puede:** administrador del holding, o RH si la empresa está en su alcance.\n\n**Necesita:** que el colaborador tenga cuenta activa. Responde con los datos del enlace generado.",
         "tags": [
           "passwordResets"
         ],
@@ -856,20 +1678,24 @@
             "name": "companyId",
             "in": "path",
             "required": true,
+            "description": "Id de la empresa del colaborador",
             "schema": {
               "type": "string",
               "format": "uuid",
-              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "description": "Id de la empresa del colaborador"
             }
           },
           {
             "name": "employeeId",
             "in": "path",
             "required": true,
+            "description": "Id del colaborador",
             "schema": {
               "type": "string",
               "format": "uuid",
-              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "description": "Id del colaborador"
             }
           }
         ],
@@ -884,6 +1710,48 @@
               }
             }
           },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "EMPLOYEE_NOT_FOUND, USER_NOT_FOUND",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "EMPLOYEE_NOT_FOUND__identity": {
+                    "$ref": "#/components/examples/EMPLOYEE_NOT_FOUND__identity"
+                  },
+                  "USER_NOT_FOUND": {
+                    "$ref": "#/components/examples/USER_NOT_FOUND"
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "USER_DISABLED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "USER_DISABLED": {
+                    "$ref": "#/components/examples/USER_DISABLED"
+                  }
+                }
+              }
+            }
+          },
           "default": {
             "$ref": "#/components/responses/Error"
           }
@@ -894,6 +1762,7 @@
       "post": {
         "operationId": "forceUserPasswordReset",
         "summary": "Fuerza el restablecimiento de contraseña de cualquier usuario",
+        "description": "Genera y envía un enlace de restablecimiento al correo de cualquier usuario, sea o no colaborador.\n\n**Quién puede:** solo el administrador del holding.\n\n**Necesita:** que el usuario esté activo. Responde con los datos del enlace generado.",
         "tags": [
           "passwordResets"
         ],
@@ -903,10 +1772,12 @@
             "name": "userId",
             "in": "path",
             "required": true,
+            "description": "Id del usuario",
             "schema": {
               "type": "string",
               "format": "uuid",
-              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "description": "Id del usuario"
             }
           }
         ],
@@ -921,6 +1792,45 @@
               }
             }
           },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "USER_NOT_FOUND",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "USER_NOT_FOUND": {
+                    "$ref": "#/components/examples/USER_NOT_FOUND"
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "USER_DISABLED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "USER_DISABLED": {
+                    "$ref": "#/components/examples/USER_DISABLED"
+                  }
+                }
+              }
+            }
+          },
           "default": {
             "$ref": "#/components/responses/Error"
           }
@@ -931,6 +1841,7 @@
       "get": {
         "operationId": "listDevices",
         "summary": "Checadores registrados y su último contacto",
+        "description": "Devuelve los checadores registrados, paginados, con su último contacto y el estado de su reloj.\n\n**Quién puede:** administrador del holding y RH.\n\n**Necesita:** opcionalmente `page` y `pageSize`. No modifica datos.",
         "tags": [
           "attendanceDevices"
         ],
@@ -940,8 +1851,10 @@
             "name": "page",
             "in": "query",
             "required": false,
+            "description": "Opcional. Número de página, desde 1; por defecto 1",
             "schema": {
               "default": 1,
+              "description": "Opcional. Número de página, desde 1; por defecto 1",
               "type": "integer",
               "minimum": 1,
               "maximum": 9007199254740991
@@ -951,8 +1864,10 @@
             "name": "pageSize",
             "in": "query",
             "required": false,
+            "description": "Opcional. Elementos por página, de 1 a 100; por defecto 20",
             "schema": {
               "default": 20,
+              "description": "Opcional. Elementos por página, de 1 a 100; por defecto 20",
               "type": "integer",
               "minimum": 1,
               "maximum": 100
@@ -1000,6 +1915,15 @@
               }
             }
           },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
           "default": {
             "$ref": "#/components/responses/Error"
           }
@@ -1008,6 +1932,7 @@
       "post": {
         "operationId": "registerDevice",
         "summary": "Registra un checador autorizado",
+        "description": "Autoriza un checador para que envíe marcaciones. Un equipo no registrado es rechazado.\n\n**Quién puede:** solo el administrador del holding.\n\n**Necesita:** el número de serie, un nombre y una sede activa. Responde con el `id` del checador.",
         "tags": [
           "attendanceDevices"
         ],
@@ -1033,6 +1958,337 @@
               }
             }
           },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "SITE_NOT_FOUND",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "SITE_NOT_FOUND": {
+                    "$ref": "#/components/examples/SITE_NOT_FOUND"
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "DEVICE_ALREADY_REGISTERED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "DEVICE_ALREADY_REGISTERED": {
+                    "$ref": "#/components/examples/DEVICE_ALREADY_REGISTERED"
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "SITE_INACTIVE",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "SITE_INACTIVE": {
+                    "$ref": "#/components/examples/SITE_INACTIVE"
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/attendance/devices/{deviceId}/site": {
+      "put": {
+        "operationId": "assignDeviceSite",
+        "summary": "Asigna la sede de un checador (y su zona horaria)",
+        "description": "Cambia la sede de un checador; el equipo adopta la zona horaria de la nueva sede.\n\n**Quién puede:** solo el administrador del holding.\n\n**Necesita:** el `deviceId` en la ruta y una sede activa en el cuerpo.",
+        "tags": [
+          "attendanceDevices"
+        ],
+        "x-permission": "attendance.devices:manage",
+        "parameters": [
+          {
+            "name": "deviceId",
+            "in": "path",
+            "required": true,
+            "description": "Id del checador",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "description": "Id del checador"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssignAttendanceDeviceSiteInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Asigna la sede de un checador (y su zona horaria)"
+          },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "DEVICE_NOT_FOUND, SITE_NOT_FOUND",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "DEVICE_NOT_FOUND": {
+                    "$ref": "#/components/examples/DEVICE_NOT_FOUND"
+                  },
+                  "SITE_NOT_FOUND": {
+                    "$ref": "#/components/examples/SITE_NOT_FOUND"
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "SITE_INACTIVE",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "SITE_INACTIVE": {
+                    "$ref": "#/components/examples/SITE_INACTIVE"
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/attendance/devices/{deviceId}/commands": {
+      "post": {
+        "operationId": "queueDeviceCommand",
+        "summary": "Encola un comando USERINFO para el próximo sondeo del checador",
+        "description": "Deja un comando en cola para que el checador lo recoja en su próximo sondeo. Es una herramienta de diagnóstico del protocolo del equipo.\n\n**Quién puede:** solo el administrador del holding.\n\n**Necesita:** el `deviceId` y un comando que cumpla el patrón USERINFO. Responde con el `id` del comando; el resultado en el equipo no se confirma aquí.",
+        "tags": [
+          "attendanceDeviceCommands"
+        ],
+        "x-permission": "attendance.devices:manage",
+        "parameters": [
+          {
+            "name": "deviceId",
+            "in": "path",
+            "required": true,
+            "description": "Id del checador",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "description": "Id del checador"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QueueAttendanceDeviceCommandInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Encola un comando USERINFO para el próximo sondeo del checador",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Created"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "DEVICE_NOT_FOUND",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "DEVICE_NOT_FOUND": {
+                    "$ref": "#/components/examples/DEVICE_NOT_FOUND"
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "get": {
+        "operationId": "listDeviceCommands",
+        "summary": "Bitácora de comandos enviados a un checador",
+        "description": "Devuelve la bitácora de comandos de un checador, paginada, con su estado (en cola o enviado).\n\n**Quién puede:** solo el administrador del holding.\n\n**Necesita:** el `deviceId` en la ruta. No modifica datos.",
+        "tags": [
+          "attendanceDeviceCommands"
+        ],
+        "x-permission": "attendance.devices:manage",
+        "parameters": [
+          {
+            "name": "deviceId",
+            "in": "path",
+            "required": true,
+            "description": "Id del checador",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "description": "Id del checador"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "description": "Opcional. Número de página, desde 1; por defecto 1",
+            "schema": {
+              "default": 1,
+              "description": "Opcional. Número de página, desde 1; por defecto 1",
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            }
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "required": false,
+            "description": "Opcional. Elementos por página, de 1 a 100; por defecto 20",
+            "schema": {
+              "default": 20,
+              "description": "Opcional. Elementos por página, de 1 a 100; por defecto 20",
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Bitácora de comandos enviados a un checador",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/AttendanceDeviceCommand"
+                      }
+                    },
+                    "total": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "page": {
+                      "type": "integer",
+                      "exclusiveMinimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "pageSize": {
+                      "type": "integer",
+                      "exclusiveMinimum": 0,
+                      "maximum": 9007199254740991
+                    }
+                  },
+                  "required": [
+                    "items",
+                    "total",
+                    "page",
+                    "pageSize"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "DEVICE_NOT_FOUND",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "DEVICE_NOT_FOUND": {
+                    "$ref": "#/components/examples/DEVICE_NOT_FOUND"
+                  }
+                }
+              }
+            }
+          },
           "default": {
             "$ref": "#/components/responses/Error"
           }
@@ -1043,6 +2299,7 @@
       "get": {
         "operationId": "listPunches",
         "summary": "Marcaciones crudas recibidas de los checadores",
+        "description": "Devuelve las marcaciones tal como las enviaron los checadores, paginadas y con filtros opcionales por checador, PIN y rango de fechas. Cada una se atribuye a un colaborador cuando su RFC coincide con el PIN.\n\n**Quién puede:** administrador del holding (todas) y RH (solo las de colaboradores de sus empresas).\n\n**Necesita:** nada obligatorio. No modifica datos.",
         "tags": [
           "attendancePunches"
         ],
@@ -1052,8 +2309,10 @@
             "name": "page",
             "in": "query",
             "required": false,
+            "description": "Opcional. Número de página, desde 1; por defecto 1",
             "schema": {
               "default": 1,
+              "description": "Opcional. Número de página, desde 1; por defecto 1",
               "type": "integer",
               "minimum": 1,
               "maximum": 9007199254740991
@@ -1063,8 +2322,10 @@
             "name": "pageSize",
             "in": "query",
             "required": false,
+            "description": "Opcional. Elementos por página, de 1 a 100; por defecto 20",
             "schema": {
               "default": 20,
+              "description": "Opcional. Elementos por página, de 1 a 100; por defecto 20",
               "type": "integer",
               "minimum": 1,
               "maximum": 100
@@ -1074,7 +2335,9 @@
             "name": "deviceId",
             "in": "query",
             "required": false,
+            "description": "Opcional. Solo marcaciones de este checador; si se omite, de todos",
             "schema": {
+              "description": "Opcional. Solo marcaciones de este checador; si se omite, de todos",
               "type": "string",
               "format": "uuid",
               "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
@@ -1084,7 +2347,9 @@
             "name": "pin",
             "in": "query",
             "required": false,
+            "description": "Opcional. Solo marcaciones con este PIN; si se omite, de todos",
             "schema": {
+              "description": "Opcional. Solo marcaciones con este PIN; si se omite, de todos",
               "type": "string",
               "minLength": 1,
               "maxLength": 32
@@ -1094,7 +2359,9 @@
             "name": "from",
             "in": "query",
             "required": false,
+            "description": "Opcional. Instante UTC inicial (ISO 8601); si se omite, sin límite inferior",
             "schema": {
+              "description": "Opcional. Instante UTC inicial (ISO 8601); si se omite, sin límite inferior",
               "type": "string",
               "format": "date-time",
               "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
@@ -1104,7 +2371,9 @@
             "name": "to",
             "in": "query",
             "required": false,
+            "description": "Opcional. Instante UTC final (ISO 8601); si se omite, sin límite superior",
             "schema": {
+              "description": "Opcional. Instante UTC final (ISO 8601); si se omite, sin límite superior",
               "type": "string",
               "format": "date-time",
               "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
@@ -1152,6 +2421,15 @@
               }
             }
           },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
           "default": {
             "$ref": "#/components/responses/Error"
           }
@@ -1167,12 +2445,14 @@
           "token": {
             "type": "string",
             "minLength": 1,
-            "maxLength": 200
+            "maxLength": 200,
+            "description": "Token del enlace recibido por correo"
           },
           "password": {
             "type": "string",
             "minLength": 1,
-            "maxLength": 128
+            "maxLength": 128,
+            "description": "Contraseña nueva; la política exige entre 12 y 128 caracteres"
           }
         },
         "required": [
@@ -1184,12 +2464,15 @@
         "type": "object",
         "properties": {
           "code": {
-            "type": "string"
+            "type": "string",
+            "description": "Código estable y legible por máquinas, p. ej. SITE_NOT_FOUND"
           },
           "message": {
-            "type": "string"
+            "type": "string",
+            "description": "Mensaje en español para mostrar; puede cambiar, no lo uses para decidir"
           },
           "details": {
+            "description": "Opcional. Datos del caso (ids, campos inválidos); su forma depende del código",
             "type": "object",
             "propertyNames": {
               "type": "string"
@@ -1203,15 +2486,44 @@
         ],
         "additionalProperties": false
       },
+      "AssignAttendanceDeviceSiteInput": {
+        "type": "object",
+        "properties": {
+          "siteId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "description": "Sede nueva; debe estar activa"
+          }
+        },
+        "required": [
+          "siteId"
+        ]
+      },
       "AssignEmployeeRfcInput": {
         "type": "object",
         "properties": {
           "rfc": {
-            "type": "string"
+            "type": "string",
+            "description": "RFC de persona física (13 caracteres)"
           }
         },
         "required": [
           "rfc"
+        ]
+      },
+      "AssignEmployeeSiteInput": {
+        "type": "object",
+        "properties": {
+          "siteId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "description": "Sede nueva; debe estar activa y ser del país de la empresa"
+          }
+        },
+        "required": [
+          "siteId"
         ]
       },
       "AssignRoleInput": {
@@ -1224,9 +2536,11 @@
               "HR",
               "DIRECT_MANAGER",
               "EMPLOYEE"
-            ]
+            ],
+            "description": "Rol a asignar; solo HOLDING_ADMIN y HR se pueden asignar por la API"
           },
           "companyId": {
+            "description": "Opcional. Empresa del alcance: obligatoria para HR y prohibida para HOLDING_ADMIN",
             "type": "string",
             "format": "uuid",
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
@@ -1245,13 +2559,15 @@
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
           },
           "serialNumber": {
-            "type": "string"
+            "type": "string",
+            "description": "Número de serie del equipo"
           },
           "name": {
             "type": "string"
           },
           "timeZone": {
-            "type": "string"
+            "type": "string",
+            "description": "Zona horaria IANA del equipo, tomada de su sede"
           },
           "active": {
             "type": "boolean"
@@ -1271,7 +2587,8 @@
               {
                 "type": "null"
               }
-            ]
+            ],
+            "description": "Último contacto del equipo; null si nunca"
           },
           "lastPunchAt": {
             "anyOf": [
@@ -1283,7 +2600,51 @@
               {
                 "type": "null"
               }
-            ]
+            ],
+            "description": "Última marcación recibida; null si ninguna"
+          },
+          "siteId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Sede asignada; null si no tiene"
+          },
+          "clockOffsetSeconds": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Hora recibida − hora de la marcación, medida en el último envío en tiempo real"
+          },
+          "clockOffsetMeasuredAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Cuándo se midió `clockOffsetSeconds`; null si nunca"
+          },
+          "clockSuspect": {
+            "type": "boolean",
+            "description": "true si el reloj del equipo parece desfasado"
           }
         },
         "required": [
@@ -1294,7 +2655,66 @@
           "active",
           "registeredAt",
           "lastSeenAt",
-          "lastPunchAt"
+          "lastPunchAt",
+          "siteId",
+          "clockOffsetSeconds",
+          "clockOffsetMeasuredAt",
+          "clockSuspect"
+        ],
+        "additionalProperties": false
+      },
+      "AttendanceDeviceCommand": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "command": {
+            "type": "string",
+            "description": "Texto del comando tal como se envió al equipo"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "QUEUED",
+              "SENT"
+            ],
+            "description": "QUEUED: en cola; SENT: ya entregado al equipo"
+          },
+          "queuedAt": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+          },
+          "sentAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Cuándo se entregó; null si sigue en cola"
+          },
+          "queuedBy": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "description": "Usuario que lo encoló"
+          }
+        },
+        "required": [
+          "id",
+          "command",
+          "status",
+          "queuedAt",
+          "sentAt",
+          "queuedBy"
         ],
         "additionalProperties": false
       },
@@ -1309,13 +2729,16 @@
           "deviceId": {
             "type": "string",
             "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "description": "Checador que recibió la marcación"
           },
           "serialNumber": {
-            "type": "string"
+            "type": "string",
+            "description": "Número de serie del checador"
           },
           "pin": {
-            "type": "string"
+            "type": "string",
+            "description": "PIN con el que el colaborador se identificó en el equipo"
           },
           "employee": {
             "anyOf": [
@@ -1360,15 +2783,18 @@
             "description": "Hora local del equipo tal como llegó, YYYY-MM-DD HH:mm:ss"
           },
           "status": {
-            "type": "string"
+            "type": "string",
+            "description": "Código de estado de la marcación según el equipo"
           },
           "verifyMode": {
-            "type": "string"
+            "type": "string",
+            "description": "Código del método de verificación (huella, rostro, etc.)"
           },
           "receivedAt": {
             "type": "string",
             "format": "date-time",
-            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
+            "description": "Cuándo la recibió el servidor"
           }
         },
         "required": [
@@ -1394,10 +2820,12 @@
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
           },
           "legalName": {
-            "type": "string"
+            "type": "string",
+            "description": "Razón social"
           },
           "taxId": {
-            "type": "string"
+            "type": "string",
+            "description": "Identificador tributario (RFC en México)"
           },
           "country": {
             "type": "string",
@@ -1405,10 +2833,12 @@
               "MX",
               "DO",
               "CO"
-            ]
+            ],
+            "description": "País de la razón social"
           },
           "active": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "false si la empresa está dada de baja"
           },
           "createdAt": {
             "type": "string",
@@ -1432,11 +2862,13 @@
           "legalName": {
             "type": "string",
             "minLength": 2,
-            "maxLength": 200
+            "maxLength": 200,
+            "description": "Razón social, de 2 a 200 caracteres"
           },
           "taxId": {
             "type": "string",
-            "minLength": 1
+            "minLength": 1,
+            "description": "Identificador tributario; debe ser válido para el país indicado"
           },
           "country": {
             "type": "string",
@@ -1444,7 +2876,8 @@
               "MX",
               "DO",
               "CO"
-            ]
+            ],
+            "description": "País de la razón social"
           }
         },
         "required": [
@@ -1453,13 +2886,43 @@
           "country"
         ]
       },
+      "CreateSiteInput": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 100,
+            "description": "Nombre único de la sede, de 2 a 100 caracteres"
+          },
+          "country": {
+            "type": "string",
+            "enum": [
+              "MX",
+              "DO",
+              "CO"
+            ],
+            "description": "País donde está la sede"
+          },
+          "timeZone": {
+            "type": "string",
+            "description": "Zona horaria IANA; debe pertenecer a la lista permitida para el país"
+          }
+        },
+        "required": [
+          "name",
+          "country",
+          "timeZone"
+        ]
+      },
       "Created": {
         "type": "object",
         "properties": {
           "id": {
             "type": "string",
             "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "description": "Id del recurso creado"
           }
         },
         "required": [
@@ -1483,10 +2946,24 @@
             "description": "Formateado para mostrar, p. ej. GOMA850101HQRRRN04"
           },
           "rfc": {
+            "description": "RFC de persona física; null si aún no se captura",
             "type": [
               "string",
               "null"
             ]
+          },
+          "siteId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Sede asignada; null si no tiene"
           },
           "email": {
             "type": "string",
@@ -1494,6 +2971,7 @@
             "pattern": "^(?:[A-Za-z0-9_'+\\-]+\\.)*[A-Za-z0-9_'+\\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$"
           },
           "positionTitle": {
+            "description": "Puesto; null si no se indicó",
             "type": [
               "string",
               "null"
@@ -1502,7 +2980,8 @@
           "hireDate": {
             "type": "string",
             "format": "date",
-            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$",
+            "description": "Fecha de contratación (YYYY-MM-DD)"
           },
           "status": {
             "type": "string",
@@ -1517,6 +2996,7 @@
           "fullName",
           "nationalId",
           "rfc",
+          "siteId",
           "email",
           "positionTitle",
           "hireDate",
@@ -1535,12 +3015,14 @@
           "email": {
             "type": "string",
             "format": "email",
-            "pattern": "^(?:[A-Za-z0-9_'+\\-]+\\.)*[A-Za-z0-9_'+\\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$"
+            "pattern": "^(?:[A-Za-z0-9_'+\\-]+\\.)*[A-Za-z0-9_'+\\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$",
+            "description": "Correo al que se envió la invitación"
           },
           "expiresAt": {
             "type": "string",
             "format": "date-time",
-            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
+            "description": "Instante en que expira el enlace de activación"
           }
         },
         "required": [
@@ -1554,6 +3036,7 @@
         "type": "object",
         "properties": {
           "email": {
+            "description": "Opcional. Correo de la cuenta; si se omite se usa el correo del colaborador",
             "type": "string",
             "maxLength": 254,
             "format": "email",
@@ -1568,7 +3051,8 @@
             "type": "string",
             "maxLength": 254,
             "format": "email",
-            "pattern": "^(?:[A-Za-z0-9_'+\\-]+\\.)*[A-Za-z0-9_'+\\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$"
+            "pattern": "^(?:[A-Za-z0-9_'+\\-]+\\.)*[A-Za-z0-9_'+\\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$",
+            "description": "Correo de la persona invitada"
           }
         },
         "required": [
@@ -1582,19 +3066,22 @@
             "type": "string",
             "maxLength": 254,
             "format": "email",
-            "pattern": "^(?:[A-Za-z0-9_'+\\-]+\\.)*[A-Za-z0-9_'+\\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$"
+            "pattern": "^(?:[A-Za-z0-9_'+\\-]+\\.)*[A-Za-z0-9_'+\\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$",
+            "description": "Correo de la cuenta"
           },
           "password": {
             "type": "string",
             "minLength": 1,
-            "maxLength": 128
+            "maxLength": 128,
+            "description": "Contraseña de la cuenta"
           },
           "client": {
             "type": "string",
             "enum": [
               "web",
               "mobile"
-            ]
+            ],
+            "description": "Tipo de cliente: `web` guarda la sesión en una cookie httpOnly; `mobile` devuelve un `token`"
           }
         },
         "required": [
@@ -1612,7 +3099,8 @@
           "expiresAt": {
             "type": "string",
             "format": "date-time",
-            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
+            "description": "Instante en que expira la sesión"
           },
           "token": {
             "description": "Solo para client=mobile; en web viaja en una cookie httpOnly",
@@ -1640,12 +3128,14 @@
           "email": {
             "type": "string",
             "format": "email",
-            "pattern": "^(?:[A-Za-z0-9_'+\\-]+\\.)*[A-Za-z0-9_'+\\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$"
+            "pattern": "^(?:[A-Za-z0-9_'+\\-]+\\.)*[A-Za-z0-9_'+\\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$",
+            "description": "Correo al que se envió el enlace"
           },
           "expiresAt": {
             "type": "string",
             "format": "date-time",
-            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
+            "description": "Instante en que expira el enlace"
           }
         },
         "required": [
@@ -1655,26 +3145,46 @@
         ],
         "additionalProperties": false
       },
+      "QueueAttendanceDeviceCommandInput": {
+        "type": "object",
+        "properties": {
+          "command": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500,
+            "pattern": "^(C:\\d+:)?DATA (UPDATE|QUERY|DELETE) USERINFO (?:\\t|[^\\p{Cc}])*$",
+            "description": "Comando USERINFO (`DATA UPDATE|QUERY|DELETE USERINFO ...`, con prefijo `C:<n>:` opcional); hasta 500 caracteres"
+          }
+        },
+        "required": [
+          "command"
+        ]
+      },
       "RegisterAttendanceDeviceInput": {
         "type": "object",
         "properties": {
           "serialNumber": {
             "type": "string",
-            "pattern": "^[A-Za-z0-9]{1,64}$"
+            "pattern": "^[A-Za-z0-9]{1,64}$",
+            "description": "Número de serie impreso en el equipo: solo letras y dígitos, hasta 64"
           },
           "name": {
             "type": "string",
             "minLength": 1,
-            "maxLength": 100
+            "maxLength": 100,
+            "description": "Nombre para identificarlo, hasta 100 caracteres"
           },
-          "timeZone": {
-            "type": "string"
+          "siteId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "description": "Sede donde se instala; de ella toma su zona horaria. Debe estar activa"
           }
         },
         "required": [
           "serialNumber",
           "name",
-          "timeZone"
+          "siteId"
         ]
       },
       "RegisterEmployeeInput": {
@@ -1689,34 +3199,41 @@
                   "MX",
                   "DO",
                   "CO"
-                ]
+                ],
+                "description": "País que emitió el documento"
               },
               "number": {
                 "type": "string",
-                "minLength": 1
+                "minLength": 1,
+                "description": "Número del documento (CURP en México)"
               }
             },
             "required": [
               "country",
               "number"
-            ]
+            ],
+            "description": "Documento de identidad; se valida según el país"
           },
           "firstName": {
             "type": "string",
             "minLength": 1,
-            "maxLength": 100
+            "maxLength": 100,
+            "description": "Nombre(s)"
           },
           "lastName": {
             "type": "string",
             "minLength": 1,
-            "maxLength": 100
+            "maxLength": 100,
+            "description": "Apellido(s)"
           },
           "email": {
             "type": "string",
             "format": "email",
-            "pattern": "^(?:[A-Za-z0-9_'+\\-]+\\.)*[A-Za-z0-9_'+\\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$"
+            "pattern": "^(?:[A-Za-z0-9_'+\\-]+\\.)*[A-Za-z0-9_'+\\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$",
+            "description": "Correo de contacto del colaborador"
           },
           "positionTitle": {
+            "description": "Opcional. Puesto; si se omite queda sin puesto",
             "type": "string",
             "minLength": 1,
             "maxLength": 150
@@ -1724,10 +3241,18 @@
           "hireDate": {
             "type": "string",
             "format": "date",
-            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$",
+            "description": "Fecha de contratación (YYYY-MM-DD)"
           },
           "rfc": {
+            "description": "Opcional. RFC de persona física: obligatorio si el documento es de México y prohibido en otros países",
             "type": "string"
+          },
+          "siteId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "description": "Sede donde trabaja; debe estar activa y ser del país de la empresa"
           }
         },
         "required": [
@@ -1735,7 +3260,8 @@
           "firstName",
           "lastName",
           "email",
-          "hireDate"
+          "hireDate",
+          "siteId"
         ]
       },
       "RequestPasswordResetInput": {
@@ -1745,7 +3271,8 @@
             "type": "string",
             "maxLength": 254,
             "format": "email",
-            "pattern": "^(?:[A-Za-z0-9_'+\\-]+\\.)*[A-Za-z0-9_'+\\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$"
+            "pattern": "^(?:[A-Za-z0-9_'+\\-]+\\.)*[A-Za-z0-9_'+\\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$",
+            "description": "Correo de la cuenta"
           }
         },
         "required": [
@@ -1758,12 +3285,14 @@
           "token": {
             "type": "string",
             "minLength": 1,
-            "maxLength": 200
+            "maxLength": 200,
+            "description": "Token del enlace recibido por correo"
           },
           "password": {
             "type": "string",
             "minLength": 1,
-            "maxLength": 128
+            "maxLength": 128,
+            "description": "Contraseña nueva; la política exige entre 12 y 128 caracteres"
           }
         },
         "required": [
@@ -1798,7 +3327,8 @@
               {
                 "type": "null"
               }
-            ]
+            ],
+            "description": "Empresa del alcance; null si el rol es de todo el holding"
           },
           "assignedAt": {
             "type": "string",
@@ -1837,13 +3367,57 @@
               {
                 "type": "null"
               }
-            ]
+            ],
+            "description": "Colaborador vinculado a la cuenta; null si no tiene"
           }
         },
         "required": [
           "id",
           "email",
           "employeeId"
+        ],
+        "additionalProperties": false
+      },
+      "Site": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "name": {
+            "type": "string"
+          },
+          "country": {
+            "type": "string",
+            "enum": [
+              "MX",
+              "DO",
+              "CO"
+            ]
+          },
+          "timeZone": {
+            "type": "string",
+            "description": "Zona horaria IANA de la sede, p. ej. America/Cancun"
+          },
+          "active": {
+            "type": "boolean",
+            "description": "false si la sede está dada de baja"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "country",
+          "timeZone",
+          "active",
+          "createdAt"
         ],
         "additionalProperties": false
       },
@@ -1876,13 +3450,414 @@
         "additionalProperties": false
       }
     },
+    "examples": {
+      "VALIDATION_ERROR": {
+        "summary": "VALIDATION_ERROR",
+        "value": {
+          "code": "VALIDATION_ERROR",
+          "message": "Solicitud inválida en body",
+          "details": {
+            "location": "body",
+            "issues": [
+              {
+                "origin": "string",
+                "code": "invalid_format",
+                "format": "uuid",
+                "pattern": "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/",
+                "path": [
+                  "siteId"
+                ],
+                "message": "Invalid UUID"
+              }
+            ]
+          }
+        }
+      },
+      "MALFORMED_JSON": {
+        "summary": "MALFORMED_JSON",
+        "value": {
+          "code": "MALFORMED_JSON",
+          "message": "El cuerpo de la petición no es JSON válido"
+        }
+      },
+      "PAYLOAD_TOO_LARGE": {
+        "summary": "PAYLOAD_TOO_LARGE",
+        "value": {
+          "code": "PAYLOAD_TOO_LARGE",
+          "message": "El cuerpo de la petición supera el tamaño permitido"
+        }
+      },
+      "AUTHENTICATION_REQUIRED": {
+        "summary": "AUTHENTICATION_REQUIRED",
+        "value": {
+          "code": "AUTHENTICATION_REQUIRED",
+          "message": "Debes iniciar sesión"
+        }
+      },
+      "FORBIDDEN": {
+        "summary": "FORBIDDEN",
+        "value": {
+          "code": "FORBIDDEN",
+          "message": "No tienes permiso para esta acción"
+        }
+      },
+      "ROUTE_NOT_FOUND": {
+        "summary": "ROUTE_NOT_FOUND",
+        "value": {
+          "code": "ROUTE_NOT_FOUND",
+          "message": "No existe GET /api/v1/nada"
+        }
+      },
+      "INTERNAL_ERROR": {
+        "summary": "INTERNAL_ERROR",
+        "value": {
+          "code": "INTERNAL_ERROR",
+          "message": "Error interno del servidor"
+        }
+      },
+      "INVALID_VALUE": {
+        "summary": "INVALID_VALUE",
+        "value": {
+          "code": "INVALID_VALUE",
+          "message": "Nombre y apellido son obligatorios"
+        }
+      },
+      "BUSINESS_RULE_VIOLATION": {
+        "summary": "BUSINESS_RULE_VIOLATION",
+        "value": {
+          "code": "BUSINESS_RULE_VIOLATION",
+          "message": "No se puede registrar una contratación con más de 90 días de anticipación"
+        }
+      },
+      "COMPANY_NOT_FOUND": {
+        "summary": "COMPANY_NOT_FOUND",
+        "value": {
+          "code": "COMPANY_NOT_FOUND",
+          "message": "La empresa no existe",
+          "details": {
+            "companyId": "0191a2b3-0000-7000-8000-00000000c001"
+          }
+        }
+      },
+      "COMPANY_ALREADY_EXISTS": {
+        "summary": "COMPANY_ALREADY_EXISTS",
+        "value": {
+          "code": "COMPANY_ALREADY_EXISTS",
+          "message": "Ya existe una empresa con ese identificador tributario",
+          "details": {
+            "taxId": "AAA010101AAA"
+          }
+        }
+      },
+      "COMPANY_INACTIVE": {
+        "summary": "COMPANY_INACTIVE",
+        "value": {
+          "code": "COMPANY_INACTIVE",
+          "message": "No se puede contratar en una empresa inactiva",
+          "details": {
+            "companyId": "0191a2b3-0000-7000-8000-00000000c001"
+          }
+        }
+      },
+      "COMPANY_INACTIVE__role_assignment": {
+        "summary": "COMPANY_INACTIVE__role_assignment",
+        "value": {
+          "code": "COMPANY_INACTIVE",
+          "message": "No se puede asignar un rol en una empresa inactiva",
+          "details": {
+            "companyId": "0191a2b3-0000-7000-8000-00000000c001"
+          }
+        }
+      },
+      "SITE_ALREADY_EXISTS": {
+        "summary": "SITE_ALREADY_EXISTS",
+        "value": {
+          "code": "SITE_ALREADY_EXISTS",
+          "message": "Ya existe una sede con ese nombre",
+          "details": {
+            "name": "Sede Cancún Centro"
+          }
+        }
+      },
+      "EMPLOYEE_ALREADY_EXISTS": {
+        "summary": "EMPLOYEE_ALREADY_EXISTS",
+        "value": {
+          "code": "EMPLOYEE_ALREADY_EXISTS",
+          "message": "El colaborador ya está registrado en esta empresa",
+          "details": {
+            "nationalId": "GOMA850101HQRRRN04"
+          }
+        }
+      },
+      "EMPLOYEE_NOT_FOUND": {
+        "summary": "EMPLOYEE_NOT_FOUND",
+        "value": {
+          "code": "EMPLOYEE_NOT_FOUND",
+          "message": "El colaborador no existe",
+          "details": {
+            "employeeId": "0191a2b3-0000-7000-8000-00000000f001"
+          }
+        }
+      },
+      "EMPLOYEE_NOT_FOUND__identity": {
+        "summary": "EMPLOYEE_NOT_FOUND__identity",
+        "value": {
+          "code": "EMPLOYEE_NOT_FOUND",
+          "message": "El colaborador no existe"
+        }
+      },
+      "EMPLOYEE_RFC_ALREADY_REGISTERED": {
+        "summary": "EMPLOYEE_RFC_ALREADY_REGISTERED",
+        "value": {
+          "code": "EMPLOYEE_RFC_ALREADY_REGISTERED",
+          "message": "Ya hay un colaborador registrado con ese RFC",
+          "details": {
+            "rfc": "GOMA850101AB1"
+          }
+        }
+      },
+      "RFC_NOT_APPLICABLE": {
+        "summary": "RFC_NOT_APPLICABLE",
+        "value": {
+          "code": "RFC_NOT_APPLICABLE",
+          "message": "El RFC solo aplica a colaboradores de México"
+        }
+      },
+      "SITE_NOT_FOUND": {
+        "summary": "SITE_NOT_FOUND",
+        "value": {
+          "code": "SITE_NOT_FOUND",
+          "message": "La sede no existe",
+          "details": {
+            "siteId": "0191a2b3-0000-7000-8000-00000000d001"
+          }
+        }
+      },
+      "SITE_INACTIVE": {
+        "summary": "SITE_INACTIVE",
+        "value": {
+          "code": "SITE_INACTIVE",
+          "message": "La sede está inactiva",
+          "details": {
+            "siteId": "0191a2b3-0000-7000-8000-00000000d001"
+          }
+        }
+      },
+      "SITE_COUNTRY_MISMATCH": {
+        "summary": "SITE_COUNTRY_MISMATCH",
+        "value": {
+          "code": "SITE_COUNTRY_MISMATCH",
+          "message": "La sede no es del mismo país que la razón social",
+          "details": {
+            "siteId": "0191a2b3-0000-7000-8000-00000000d001",
+            "siteCountry": "MX",
+            "companyCountry": "CO"
+          }
+        }
+      },
+      "DEVICE_NOT_FOUND": {
+        "summary": "DEVICE_NOT_FOUND",
+        "value": {
+          "code": "DEVICE_NOT_FOUND",
+          "message": "El checador no existe",
+          "details": {
+            "deviceId": "0191a2b3-0000-7000-8000-00000000e001"
+          }
+        }
+      },
+      "DEVICE_ALREADY_REGISTERED": {
+        "summary": "DEVICE_ALREADY_REGISTERED",
+        "value": {
+          "code": "DEVICE_ALREADY_REGISTERED",
+          "message": "Ya existe un equipo con ese número de serie",
+          "details": {
+            "serialNumber": "CKVE000001"
+          }
+        }
+      },
+      "DEVICE_NOT_ALLOWED": {
+        "summary": "DEVICE_NOT_ALLOWED",
+        "value": {
+          "code": "DEVICE_NOT_ALLOWED",
+          "message": "El dispositivo no está autorizado",
+          "details": {
+            "serialNumber": "CKVE000001"
+          }
+        }
+      },
+      "INVALID_CREDENTIALS": {
+        "summary": "INVALID_CREDENTIALS",
+        "value": {
+          "code": "INVALID_CREDENTIALS",
+          "message": "Correo o contraseña incorrectos"
+        }
+      },
+      "LOGIN_TEMPORARILY_BLOCKED": {
+        "summary": "LOGIN_TEMPORARILY_BLOCKED",
+        "value": {
+          "code": "LOGIN_TEMPORARILY_BLOCKED",
+          "message": "Demasiados intentos fallidos. Intenta de nuevo más tarde",
+          "details": {
+            "retryAfterSeconds": 300
+          }
+        }
+      },
+      "WEAK_PASSWORD": {
+        "summary": "WEAK_PASSWORD",
+        "value": {
+          "code": "WEAK_PASSWORD",
+          "message": "La contraseña debe tener entre 12 y 128 caracteres"
+        }
+      },
+      "PASSWORD_RESET_NOT_VALID": {
+        "summary": "PASSWORD_RESET_NOT_VALID",
+        "value": {
+          "code": "PASSWORD_RESET_NOT_VALID",
+          "message": "El enlace para restablecer la contraseña no es válido o ya expiró"
+        }
+      },
+      "USER_ALREADY_EXISTS": {
+        "summary": "USER_ALREADY_EXISTS",
+        "value": {
+          "code": "USER_ALREADY_EXISTS",
+          "message": "Ya existe un usuario con ese correo"
+        }
+      },
+      "USER_NOT_FOUND": {
+        "summary": "USER_NOT_FOUND",
+        "value": {
+          "code": "USER_NOT_FOUND",
+          "message": "El usuario no existe"
+        }
+      },
+      "USER_DISABLED": {
+        "summary": "USER_DISABLED",
+        "value": {
+          "code": "USER_DISABLED",
+          "message": "El usuario está deshabilitado"
+        }
+      },
+      "EMAIL_ALREADY_REGISTERED": {
+        "summary": "EMAIL_ALREADY_REGISTERED",
+        "value": {
+          "code": "EMAIL_ALREADY_REGISTERED",
+          "message": "Ya existe un usuario con ese correo"
+        }
+      },
+      "EMPLOYEE_INACTIVE": {
+        "summary": "EMPLOYEE_INACTIVE",
+        "value": {
+          "code": "EMPLOYEE_INACTIVE",
+          "message": "No se puede invitar a un colaborador desvinculado"
+        }
+      },
+      "EMPLOYEE_ALREADY_HAS_ACCESS": {
+        "summary": "EMPLOYEE_ALREADY_HAS_ACCESS",
+        "value": {
+          "code": "EMPLOYEE_ALREADY_HAS_ACCESS",
+          "message": "El colaborador ya tiene acceso"
+        }
+      },
+      "INVITATION_NOT_VALID": {
+        "summary": "INVITATION_NOT_VALID",
+        "value": {
+          "code": "INVITATION_NOT_VALID",
+          "message": "La invitación no es válida o ya expiró"
+        }
+      },
+      "ROLE_NOT_ASSIGNABLE": {
+        "summary": "ROLE_NOT_ASSIGNABLE",
+        "value": {
+          "code": "ROLE_NOT_ASSIGNABLE",
+          "message": "Ese rol todavía no se puede asignar"
+        }
+      },
+      "INVALID_ROLE_SCOPE": {
+        "summary": "INVALID_ROLE_SCOPE",
+        "value": {
+          "code": "INVALID_ROLE_SCOPE",
+          "message": "HOLDING_ADMIN no lleva empresa; HR requiere una empresa"
+        }
+      },
+      "ROLE_ALREADY_ASSIGNED": {
+        "summary": "ROLE_ALREADY_ASSIGNED",
+        "value": {
+          "code": "ROLE_ALREADY_ASSIGNED",
+          "message": "El usuario ya tiene ese rol activo"
+        }
+      },
+      "ROLE_ASSIGNMENT_NOT_FOUND": {
+        "summary": "ROLE_ASSIGNMENT_NOT_FOUND",
+        "value": {
+          "code": "ROLE_ASSIGNMENT_NOT_FOUND",
+          "message": "La asignación de rol no existe"
+        }
+      },
+      "LAST_HOLDING_ADMIN": {
+        "summary": "LAST_HOLDING_ADMIN",
+        "value": {
+          "code": "LAST_HOLDING_ADMIN",
+          "message": "No se puede quitar el último administrador del holding"
+        }
+      }
+    },
     "responses": {
-      "Error": {
-        "description": "Error con forma `ApiError`: 400 validación, 401 sin sesión, 403 sin permiso, 404 no encontrado, 409 conflicto, 500 inesperado.",
+      "ValidationError": {
+        "description": "La solicitud no cumple el contrato (`VALIDATION_ERROR`): indica dónde y qué campos fallan.",
         "content": {
           "application/json": {
             "schema": {
               "$ref": "#/components/schemas/ApiError"
+            },
+            "examples": {
+              "VALIDATION_ERROR": {
+                "$ref": "#/components/examples/VALIDATION_ERROR"
+              }
+            }
+          }
+        }
+      },
+      "Unauthenticated": {
+        "description": "Falta la sesión o ya expiró (`AUTHENTICATION_REQUIRED`).",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ApiError"
+            },
+            "examples": {
+              "AUTHENTICATION_REQUIRED": {
+                "$ref": "#/components/examples/AUTHENTICATION_REQUIRED"
+              }
+            }
+          }
+        }
+      },
+      "Forbidden": {
+        "description": "La sesión no tiene el permiso que exige la ruta (`FORBIDDEN`).",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ApiError"
+            },
+            "examples": {
+              "FORBIDDEN": {
+                "$ref": "#/components/examples/FORBIDDEN"
+              }
+            }
+          }
+        }
+      },
+      "Error": {
+        "description": "Error inesperado del servidor (`INTERNAL_ERROR`).",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ApiError"
+            },
+            "examples": {
+              "INTERNAL_ERROR": {
+                "$ref": "#/components/examples/INTERNAL_ERROR"
+              }
             }
           }
         }

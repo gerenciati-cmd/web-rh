@@ -20,6 +20,11 @@ export interface AppModule<TCradle extends object> {
    * Se monta en la raíz, fuera de `/api/v1` y de los contratos (ADR 0008).
    */
   readonly deviceRouter?: (cradle: TCradle) => Router;
+  /**
+   * Paths que un equipo consulta constantemente (sondeo); una petición exitosa a ellos se
+   * registra a nivel debug para no ahogar los logs. Los errores conservan su nivel.
+   */
+  readonly quietRequestPaths?: readonly string[];
   /** Suscripciones a eventos de otros módulos (comunicación desacoplada). */
   readonly subscribe?: (cradle: TCradle & { eventBus: EventBus }) => void;
   /** Handlers de jobs asíncronos que ejecuta el worker. */

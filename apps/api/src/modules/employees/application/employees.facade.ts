@@ -1,7 +1,7 @@
 import type { EmployeeId } from '../domain/employee';
 import type { EmployeeRepository } from '../domain/employee.repository';
 
-import type { EmployeeQueries, EmployeeRfcOwner } from './queries/employee.queries';
+import type { EmployeeQueries, EmployeeRfcOwner, SiteMember } from './queries/employee.queries';
 
 /** Lo mínimo que otros módulos pueden saber de un colaborador. */
 export interface EmployeeSummary {
@@ -10,6 +10,7 @@ export interface EmployeeSummary {
   email: string;
   fullName: string;
   rfc: string | null;
+  siteId: string | null;
   active: boolean;
 }
 
@@ -23,6 +24,8 @@ export interface EmployeesApi {
   findByRfcs(rfcs: readonly string[]): Promise<EmployeeRfcOwner[]>;
   /** RFC de los colaboradores de esas empresas; ignora a quienes no tienen RFC. */
   rfcsInCompanies(companyIds: readonly string[]): Promise<string[]>;
+  /** Colaboradores activos de una sede. Consumidor: la sincronización de asistencia. */
+  listActiveOnSite(siteId: string): Promise<SiteMember[]>;
 }
 
 export class EmployeesFacade implements EmployeesApi {
@@ -36,13 +39,14 @@ export class EmployeesFacade implements EmployeesApi {
   async findEmployee(employeeId: string): Promise<EmployeeSummary | null> {
     const employee = await this.deps.employeeRepository.findById(employeeId as EmployeeId);
     if (!employee) return null;
-    const { companyId, email, firstName, lastName, rfc, status } = employee.snapshot;
+    const { companyId, email, firstName, lastName, rfc, siteId, status } = employee.snapshot;
     return {
       id: employee.id,
       companyId,
       email: email.value,
       fullName: `${firstName} ${lastName}`,
       rfc: rfc?.value ?? null,
+      siteId,
       active: status === 'ACTIVE',
     };
   }
@@ -53,5 +57,9 @@ export class EmployeesFacade implements EmployeesApi {
 
   rfcsInCompanies(companyIds: readonly string[]): Promise<string[]> {
     return this.deps.employeeQueries.rfcsInCompanies(companyIds);
+  }
+
+  listActiveOnSite(siteId: string): Promise<SiteMember[]> {
+    return this.deps.employeeQueries.listActiveOnSite(siteId);
   }
 }

@@ -5,7 +5,7 @@ import { Employee, type EmployeeId } from '../domain/employee';
 import { InMemoryEmployeeRepository } from '../infrastructure/in-memory/in-memory-employee.repository';
 
 import { EmployeesFacade } from './employees.facade';
-import type { EmployeeQueries, EmployeeRfcOwner } from './queries/employee.queries';
+import type { EmployeeQueries, EmployeeRfcOwner, SiteMember } from './queries/employee.queries';
 
 function setup() {
   const employeeRepository = new InMemoryEmployeeRepository();
@@ -18,13 +18,23 @@ function setup() {
   };
   const findByRfcs = vi.fn().mockResolvedValue([owner]);
   const rfcsInCompanies = vi.fn().mockResolvedValue(['GOMA850101AB1']);
+  const member: SiteMember = {
+    id: 'emp-1',
+    companyId: 'company-a',
+    fullName: 'Ana Rojas',
+    rfc: 'GOMA850101AB1',
+  };
+  const listActiveOnSite = vi.fn().mockResolvedValue([member]);
   const employeeQueries: EmployeeQueries = {
     listDirectory: vi.fn(),
     findByRfcs,
     rfcsInCompanies,
+    listActiveOnSite,
   };
   return {
     employeeRepository,
+    listActiveOnSite,
+    member,
     findByRfcs,
     rfcsInCompanies,
     owner,
@@ -41,6 +51,7 @@ function hired(rfc: string | null) {
     companyId: 'company-a',
     nationalId: nationalId.value,
     rfc: parsed?.ok ? parsed.value : null,
+    siteId: null,
     firstName: 'Ana',
     lastName: 'Rojas',
     email: email.value,
@@ -67,6 +78,29 @@ describe('EmployeesFacade', () => {
     await employeeRepository.save(hired(null));
 
     expect((await facade.findEmployee('emp-1'))?.rfc).toBeNull();
+  });
+
+  it('findEmployee devuelve siteId null para una fila sin sede', async () => {
+    const { facade, employeeRepository } = setup();
+    await employeeRepository.save(hired('GOMA850101AB1'));
+
+    expect((await facade.findEmployee('emp-1'))?.siteId).toBeNull();
+  });
+
+  it('findEmployee expone la sede del colaborador', async () => {
+    const { facade, employeeRepository } = setup();
+    const employee = hired('GOMA850101AB1');
+    employee.assignSite('site-1', new Date('2026-01-15T12:00:00Z'));
+    await employeeRepository.save(employee);
+
+    expect((await facade.findEmployee('emp-1'))?.siteId).toBe('site-1');
+  });
+
+  it('listActiveOnSite delega en las queries con la misma sede', async () => {
+    const { facade, listActiveOnSite, member } = setup();
+
+    expect(await facade.listActiveOnSite('site-1')).toEqual([member]);
+    expect(listActiveOnSite).toHaveBeenCalledWith('site-1');
   });
 
   it('findEmployee devuelve null si no existe', async () => {

@@ -23,9 +23,17 @@ export function createApp(container: AppContainer): Express {
   app.disable('x-powered-by');
   app.use(helmet());
   app.use(cors({ origin: env.CORS_ORIGINS, credentials: true }));
+  // Los equipos sondean cada pocos segundos: sus peticiones exitosas van a debug.
+  const quietPaths = new Set(modules.flatMap((module) => module.quietRequestPaths ?? []));
   app.use(
     pinoHttp({
       logger,
+      customLogLevel: (req, res, error) => {
+        if (error || res.statusCode >= 500) return 'error';
+        if (res.statusCode >= 400) return 'warn';
+        const path = req.url.split('?')[0] ?? '';
+        return quietPaths.has(path) ? 'debug' : 'info';
+      },
       genReqId: (req, res) => {
         const id = req.headers['x-request-id']?.toString() ?? randomUUID();
         res.setHeader('x-request-id', id);

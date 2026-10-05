@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { API_PREFIX, createApp } from '@/http/app';
 import { Employee, type EmployeeId } from '@/modules/employees/domain/employee';
 
-import { buildTestContainer, signInAs } from './test-app';
+import { buildTestContainer, createTestSite, signInAs } from './test-app';
 
 /** RFC de persona física del colaborador (plan employees-rfc/001): HTTP sobre persistencia en memoria. */
 const NO_EMPLOYEE = '00000000-0000-4000-8000-00000000dead';
@@ -40,13 +40,14 @@ describe('RFC del colaborador (HTTP)', () => {
   let hrBToken: string;
   let companyA: string;
   let companyB: string;
+  let siteId: string;
 
   const call = (method: 'get' | 'post' | 'put', path: string, token: string | null) => {
     const test = request(app)[method](`${API_PREFIX}${path}`);
     return token ? test.set('Authorization', `Bearer ${token}`) : test;
   };
   const hire = (companyId: string, body: object, token = adminToken) =>
-    call('post', `/companies/${companyId}/employees`, token).send(body);
+    call('post', `/companies/${companyId}/employees`, token).send({ siteId, ...body });
   const assign = (
     companyId: string,
     employeeId: string,
@@ -77,6 +78,7 @@ describe('RFC del colaborador (HTTP)', () => {
         companyId,
         nationalId: nationalId.value,
         rfc: null,
+        siteId: null,
         firstName: 'Luis',
         lastName: 'Antiguo',
         email: email.value,
@@ -92,6 +94,7 @@ describe('RFC del colaborador (HTTP)', () => {
     container = buildTestContainer();
     app = createApp(container);
     adminToken = await signInAs(container, { role: 'HOLDING_ADMIN' });
+    siteId = await createTestSite(container);
     companyA = await createCompany('Alfa SA de CV', 'EKU9003173C9');
     companyB = await createCompany('Beta SA de CV', 'AAA010101AAA');
     hrAToken = await signInAs(container, { role: 'HR', companyId: companyA });

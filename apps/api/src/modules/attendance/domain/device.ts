@@ -18,9 +18,18 @@ export interface DeviceProps {
   active: boolean;
   registeredAt: Date;
   lastSeenAt: Date | null;
+  siteId: string | null;
+  clockOffsetSeconds: number | null;
+  clockOffsetMeasuredAt: Date | null;
 }
 
 export const DEVICE_REGISTERED = 'attendance.device.registered';
+
+/**
+ * Desfase máximo tolerado entre la hora recibida y la hora de la marcación antes de considerar
+ * sospechoso el reloj (o la zona) del equipo. Decisión 9 del README de `organization-sedes`.
+ */
+export const CLOCK_OFFSET_TOLERANCE_SECONDS = 300;
 
 /**
  * El equipo consulta al servidor cada ~10 s; `lastSeenAt` solo se reescribe cuando pasó este
@@ -48,6 +57,8 @@ export class Device extends AggregateRoot<DeviceId> {
     id: DeviceId;
     serialNumber: string;
     name: string;
+    siteId: string;
+    /** Zona horaria de la sede; el llamador la obtiene de organization. */
     timeZone: string;
     now: Date;
   }): Result<Device, InvalidValueError> {
@@ -71,6 +82,9 @@ export class Device extends AggregateRoot<DeviceId> {
       active: true,
       registeredAt: input.now,
       lastSeenAt: null,
+      siteId: input.siteId,
+      clockOffsetSeconds: null,
+      clockOffsetMeasuredAt: null,
     });
     device.record(createEvent(DEVICE_REGISTERED, { deviceId: input.id, serialNumber }, input.now));
     return ok(device);
@@ -103,6 +117,36 @@ export class Device extends AggregateRoot<DeviceId> {
 
   get lastSeenAt(): Date | null {
     return this.props.lastSeenAt;
+  }
+
+  get siteId(): string | null {
+    return this.props.siteId;
+  }
+
+  get clockOffsetSeconds(): number | null {
+    return this.props.clockOffsetSeconds;
+  }
+
+  get clockOffsetMeasuredAt(): Date | null {
+    return this.props.clockOffsetMeasuredAt;
+  }
+
+  /** El reloj (o la zona) del equipo se desvía más de la tolerancia en la última medición. */
+  get clockSuspect(): boolean {
+    const { clockOffsetSeconds } = this.props;
+    return (
+      clockOffsetSeconds !== null && Math.abs(clockOffsetSeconds) > CLOCK_OFFSET_TOLERANCE_SECONDS
+    );
+  }
+
+  /** Asigna la sede; la zona horaria del equipo se copia de ella (el llamador la provee). */
+  assignSite(siteId: string, timeZone: string): void {
+    this.props = { ...this.props, siteId, timeZone };
+  }
+
+  /** Guarda la última medición de desfase (hora recibida − hora de la marcación, en segundos). */
+  recordClockOffset(seconds: number, now: Date): void {
+    this.props = { ...this.props, clockOffsetSeconds: seconds, clockOffsetMeasuredAt: now };
   }
 
   /**

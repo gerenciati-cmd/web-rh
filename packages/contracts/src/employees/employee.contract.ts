@@ -12,10 +12,11 @@ export const EmployeeListItemSchema = z
     id: z.uuid(),
     fullName: z.string(),
     nationalId: z.string().describe('Formateado para mostrar, p. ej. GOMA850101HQRRRN04'),
-    rfc: z.string().nullable(),
+    rfc: z.string().nullable().describe('RFC de persona física; null si aún no se captura'),
+    siteId: z.uuid().nullable().describe('Sede asignada; null si no tiene'),
     email: z.email(),
-    positionTitle: z.string().nullable(),
-    hireDate: z.iso.date(),
+    positionTitle: z.string().nullable().describe('Puesto; null si no se indicó'),
+    hireDate: z.iso.date().describe('Fecha de contratación (YYYY-MM-DD)'),
     status: EmployeeStatusSchema,
   })
   .meta({ id: 'EmployeeListItem' });
@@ -24,13 +25,31 @@ export type EmployeeListItem = z.infer<typeof EmployeeListItemSchema>;
 // ── Entradas ───────────────────────────────────────────────────────────────
 export const RegisterEmployeeSchema = z
   .object({
-    nationalId: z.object({ country: CountrySchema, number: z.string().trim().min(1) }),
-    firstName: z.string().trim().min(1).max(100),
-    lastName: z.string().trim().min(1).max(100),
-    email: z.email(),
-    positionTitle: z.string().trim().min(1).max(150).optional(),
-    hireDate: z.iso.date(),
-    rfc: z.string().trim().optional(),
+    nationalId: z
+      .object({
+        country: CountrySchema.describe('País que emitió el documento'),
+        number: z.string().trim().min(1).describe('Número del documento (CURP en México)'),
+      })
+      .describe('Documento de identidad; se valida según el país'),
+    firstName: z.string().trim().min(1).max(100).describe('Nombre(s)'),
+    lastName: z.string().trim().min(1).max(100).describe('Apellido(s)'),
+    email: z.email().describe('Correo de contacto del colaborador'),
+    positionTitle: z
+      .string()
+      .trim()
+      .min(1)
+      .max(150)
+      .optional()
+      .describe('Opcional. Puesto; si se omite queda sin puesto'),
+    hireDate: z.iso.date().describe('Fecha de contratación (YYYY-MM-DD)'),
+    rfc: z
+      .string()
+      .trim()
+      .optional()
+      .describe(
+        'Opcional. RFC de persona física: obligatorio si el documento es de México y prohibido en otros países',
+      ),
+    siteId: z.uuid().describe('Sede donde trabaja; debe estar activa y ser del país de la empresa'),
   })
   .refine((input) => NationalId.isValid(input.nationalId.country, input.nationalId.number), {
     path: ['nationalId', 'number'],
@@ -62,17 +81,38 @@ export const AssignEmployeeRfcSchema = z
     rfc: z
       .string()
       .trim()
-      .refine((rfc) => PersonalRfc.isValid(rfc), 'RFC de persona física inválido'),
+      .refine((rfc) => PersonalRfc.isValid(rfc), 'RFC de persona física inválido')
+      .describe('RFC de persona física (13 caracteres)'),
   })
   .meta({ id: 'AssignEmployeeRfcInput' });
 export type AssignEmployeeRfcInput = z.input<typeof AssignEmployeeRfcSchema>;
 
+export const AssignEmployeeSiteSchema = z
+  .object({
+    siteId: z.uuid().describe('Sede nueva; debe estar activa y ser del país de la empresa'),
+  })
+  .meta({ id: 'AssignEmployeeSiteInput' });
+export type AssignEmployeeSiteInput = z.input<typeof AssignEmployeeSiteSchema>;
+
 export const ListEmployeesQuerySchema = PageQuerySchema.extend({
-  status: EmployeeStatusSchema.optional(),
-  search: z.string().trim().min(1).optional(),
+  status: EmployeeStatusSchema.optional().describe(
+    'Opcional. Filtra por estado; si se omite trae todos',
+  ),
+  search: z
+    .string()
+    .trim()
+    .min(1)
+    .optional()
+    .describe(
+      'Opcional. Texto a buscar en nombre, apellido, correo o documento de identidad; si se omite no filtra',
+    ),
 });
 
-const CompanyScopedParams = z.object({ companyId: z.uuid() });
+const CompanyScopedParams = z.object({ companyId: z.uuid().describe('Id de la empresa') });
+const EmployeeParams = z.object({
+  companyId: z.uuid().describe('Id de la empresa del colaborador'),
+  employeeId: z.uuid().describe('Id del colaborador'),
+});
 
 // ── Rutas ──────────────────────────────────────────────────────────────────
 export const employeeRoutes = {
@@ -80,6 +120,13 @@ export const employeeRoutes = {
     method: 'GET',
     path: '/companies/:companyId/employees',
     summary: 'Directorio de colaboradores de una empresa',
+    description: [
+      'Devuelve el directorio de colaboradores de una empresa, paginado, con filtro opcional por estado y búsqueda por texto.',
+      '',
+      '**Quién puede:** administrador del holding, o RH si la empresa está en su alcance.',
+      '',
+      '**Necesita:** el `companyId` en la ruta. No modifica datos.',
+    ].join('\n'),
     access: requires('employees:read', { companyParam: 'companyId' }),
     params: CompanyScopedParams,
     query: ListEmployeesQuerySchema,
@@ -89,6 +136,23 @@ export const employeeRoutes = {
     method: 'POST',
     path: '/companies/:companyId/employees',
     summary: 'Registra (contrata) un colaborador',
+    description: [
+      'Registra a un colaborador en una empresa. Queda activo y con la sede indicada.',
+      '',
+      '**Quién puede:** administrador del holding, o RH si la empresa está en su alcance.',
+      '',
+      '**Necesita:** documento de identidad válido, nombre, correo, fecha de contratación y sede activa del mismo país que la empresa. El RFC es obligatorio para México y no aplica en otros países. Responde con el `id` del colaborador.',
+    ].join('\n'),
+    errors: [
+      'COMPANY_NOT_FOUND',
+      'SITE_NOT_FOUND',
+      'EMPLOYEE_ALREADY_EXISTS',
+      'EMPLOYEE_RFC_ALREADY_REGISTERED',
+      'COMPANY_INACTIVE',
+      'SITE_INACTIVE',
+      'SITE_COUNTRY_MISMATCH',
+      'BUSINESS_RULE_VIOLATION',
+    ],
     access: requires('employees:register', { companyParam: 'companyId' }),
     params: CompanyScopedParams,
     body: RegisterEmployeeSchema,
@@ -99,9 +163,41 @@ export const employeeRoutes = {
     method: 'PUT',
     path: '/companies/:companyId/employees/:employeeId/rfc',
     summary: 'Captura o corrige el RFC de un colaborador',
+    description: [
+      'Fija el RFC de un colaborador mexicano, o lo corrige si ya tenía uno. Reemplaza el valor anterior.',
+      '',
+      '**Quién puede:** administrador del holding, o RH si la empresa está en su alcance.',
+      '',
+      '**Necesita:** un RFC de persona física válido que ningún otro colaborador tenga.',
+    ].join('\n'),
+    errors: ['EMPLOYEE_NOT_FOUND', 'EMPLOYEE_RFC_ALREADY_REGISTERED', 'RFC_NOT_APPLICABLE'],
     access: requires('employees:update', { companyParam: 'companyId' }),
-    params: z.object({ companyId: z.uuid(), employeeId: z.uuid() }),
+    params: EmployeeParams,
     body: AssignEmployeeRfcSchema,
+    response: z.undefined(),
+    successStatus: 204,
+  }),
+  assignEmployeeSite: defineRoute({
+    method: 'PUT',
+    path: '/companies/:companyId/employees/:employeeId/site',
+    summary: 'Asigna o cambia la sede de un colaborador',
+    description: [
+      'Asigna la sede de un colaborador o la cambia por otra. Reemplaza la sede anterior.',
+      '',
+      '**Quién puede:** administrador del holding, o RH si la empresa está en su alcance.',
+      '',
+      '**Necesita:** el `siteId` de una sede activa del mismo país que la empresa del colaborador.',
+    ].join('\n'),
+    errors: [
+      'EMPLOYEE_NOT_FOUND',
+      'SITE_NOT_FOUND',
+      'COMPANY_NOT_FOUND',
+      'SITE_INACTIVE',
+      'SITE_COUNTRY_MISMATCH',
+    ],
+    access: requires('employees:update', { companyParam: 'companyId' }),
+    params: EmployeeParams,
+    body: AssignEmployeeSiteSchema,
     response: z.undefined(),
     successStatus: 204,
   }),

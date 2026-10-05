@@ -1,12 +1,16 @@
 import type { ParsedRequest, RouteAccess, RouteDefinition, RouteResponse } from '@rrhh/contracts';
 import type { DomainError, Result } from '@rrhh/domain';
 import type { Router } from 'express';
-import type { z } from 'zod';
+import { z } from 'zod';
 
 import { hasPermission, type Actor } from '@/shared/application/actor';
 
 import { PermissionDeniedError, requireActor, type RequestContext } from './request-context';
 import { RequestValidationError } from './request-validation-error';
+
+// La API responde en español: los mensajes propios de los contratos ya lo son; esto traduce los
+// que genera Zod por defecto (p. ej. "Too small"). Es global: la validación del API pasa por aquí.
+z.config(z.locales.es());
 
 declare global {
   // eslint-disable-next-line @typescript-eslint/no-namespace

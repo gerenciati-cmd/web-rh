@@ -13,4 +13,5 @@ export * from './tax-id/personal-rfc';
 export * from './tax-id/tax-id';
 export * from './tax-id/validators';
 export * from './result';
+export * from './site-time-zones';
 export * from './time-zone';

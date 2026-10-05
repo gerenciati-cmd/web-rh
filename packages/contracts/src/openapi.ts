@@ -1,6 +1,9 @@
 import { z } from 'zod';
 
 import { ApiErrorSchema } from './common';
+import type { ApiErrorBody } from './common';
+import { API_ERRORS, errorRefCode, errorRefVariant } from './errors';
+import type { ApiErrorStatus } from './errors';
 import type { RouteDefinition } from './http';
 
 type JsonSchema = Record<string, unknown>;
@@ -41,7 +44,7 @@ export function buildOpenApiDocument(routes: RouteCatalogue): JsonSchema {
 
   return {
     openapi: '3.1.0',
-    info: { title: 'API RRHH APS Holding', version: '1' },
+    info: { title: 'API RRHH APS Holding', version: '1', description: introduction() },
     servers: [{ url: '/api/v1' }],
     // Sin `{}`: la sesión es obligatoria salvo en las rutas públicas, que la excluyen con
     // `security: []` a nivel de operación.
@@ -49,12 +52,26 @@ export function buildOpenApiDocument(routes: RouteCatalogue): JsonSchema {
     paths,
     components: {
       schemas: sortedByKey(schemas),
+      examples: errorExamples(),
       responses: {
-        Error: {
-          description:
-            'Error con forma `ApiError`: 400 validación, 401 sin sesión, 403 sin permiso, 404 no encontrado, 409 conflicto, 500 inesperado.',
-          content: { 'application/json': { schema: apiError } },
-        },
+        ValidationError: errorResponse(
+          'La solicitud no cumple el contrato (`VALIDATION_ERROR`): indica dónde y qué campos fallan.',
+          apiError,
+          ['VALIDATION_ERROR'],
+        ),
+        Unauthenticated: errorResponse(
+          'Falta la sesión o ya expiró (`AUTHENTICATION_REQUIRED`).',
+          apiError,
+          ['AUTHENTICATION_REQUIRED'],
+        ),
+        Forbidden: errorResponse(
+          'La sesión no tiene el permiso que exige la ruta (`FORBIDDEN`).',
+          apiError,
+          ['FORBIDDEN'],
+        ),
+        Error: errorResponse('Error inesperado del servidor (`INTERNAL_ERROR`).', apiError, [
+          'INTERNAL_ERROR',
+        ]),
       },
       securitySchemes: {
         bearerAuth: {
@@ -99,6 +116,7 @@ function operationFor(
   return {
     operationId,
     summary: route.summary,
+    description: route.description,
     tags: [module],
     ...(route.access.kind === 'public' ? { security: [] } : {}),
     ...(route.access.kind === 'permission'
@@ -118,9 +136,120 @@ function operationFor(
       : {}),
     responses: {
       [status]: success,
+      ...errorResponsesFor(operationId, route, schemas),
       default: { $ref: '#/components/responses/Error' },
     },
   };
+}
+
+/**
+ * Respuestas de error de una ruta. Las genéricas se derivan de lo que la ruta ya declara (400 si
+ * recibe entrada, 401 si exige sesión, 403 si exige permiso); las de dominio salen de `errors`,
+ * agrupadas por status. Solo referencias: los cuerpos de ejemplo viven una vez en
+ * `components.examples` y las respuestas genéricas una vez en `components.responses`.
+ */
+function errorResponsesFor(
+  operationId: string,
+  route: RouteDefinition,
+  schemas: Record<string, JsonSchema>,
+): Record<string, JsonSchema> {
+  const responses: Record<string, JsonSchema> = {};
+  if (route.params || route.query || route.body) {
+    responses['400'] = { $ref: '#/components/responses/ValidationError' };
+  }
+  if (route.access.kind !== 'public') {
+    responses['401'] = { $ref: '#/components/responses/Unauthenticated' };
+  }
+  if (route.access.kind === 'permission') {
+    responses['403'] = { $ref: '#/components/responses/Forbidden' };
+  }
+
+  // Por status: cada entrada es el nombre del ejemplo (`CODE` o `CODE__variante`).
+  const codesByStatus = new Map<ApiErrorStatus, string[]>();
+  for (const ref of route.errors ?? []) {
+    const code = errorRefCode(ref);
+    const { status } = API_ERRORS[code];
+    codesByStatus.set(status, [
+      ...(codesByStatus.get(status) ?? []),
+      exampleName(code, errorRefVariant(ref)),
+    ]);
+  }
+  const apiError = toSchema(ApiErrorSchema, 'output', schemas);
+  for (const [status, codes] of [...codesByStatus].sort(([a], [b]) => a - b)) {
+    if (responses[String(status)]) {
+      throw new Error(`OpenAPI: ${operationId} declara errores ${status} que ya se derivan solos`);
+    }
+    responses[String(status)] = errorResponse(
+      codes.map((name) => name.split('__')[0]).join(', '),
+      apiError,
+      codes,
+    );
+  }
+  return responses;
+}
+
+/** Respuesta de error: la forma `ApiError` más un ejemplo POR código, solo como `$ref`. */
+function errorResponse(
+  description: string,
+  apiError: JsonSchema,
+  codes: readonly string[],
+): JsonSchema {
+  return {
+    description,
+    content: {
+      'application/json': {
+        schema: apiError,
+        examples: Object.fromEntries(
+          codes.map((code) => [code, { $ref: `#/components/examples/${code}` }]),
+        ),
+      },
+    },
+  };
+}
+
+/** Nombre del ejemplo en `components.examples`: el código, o `CODE__variante` si no es el habitual. */
+function exampleName(code: string, variant: string): string {
+  return variant === 'default' ? code : `${code}__${variant}`;
+}
+
+/** Un ejemplo por código y variante del catálogo, emitido una sola vez. */
+function errorExamples(): Record<string, JsonSchema> {
+  return Object.fromEntries(
+    Object.entries(API_ERRORS).flatMap(([code, doc]) =>
+      Object.entries<ApiErrorBody>(doc.examples).map(([variant, value]) => {
+        const name = exampleName(code, variant);
+        return [name, { summary: name, value }];
+      }),
+    ),
+  );
+}
+
+/** Portada de la referencia: autenticación, forma del error, paginación y todos los códigos. */
+function introduction(): string {
+  const rows = Object.entries(API_ERRORS).map(
+    ([code, doc]) => `| \`${code}\` | ${doc.status} | ${doc.description} |`,
+  );
+  return [
+    'API de RRHH del holding. Toda la entrada y salida es JSON.',
+    '',
+    '## Autenticación',
+    '',
+    'Casi todas las rutas exigen sesión. Para probar aquí: llama a `POST /auth/login` con `client: "mobile"`, copia el `token` de la respuesta y pégalo en **Authentication → bearerAuth**. El cliente web usa una cookie httpOnly en su lugar.',
+    '',
+    '## Forma de los errores',
+    '',
+    'Todo error responde `{ "code", "message", "details"? }`. `code` es estable y es lo que debe usar un cliente para decidir qué hacer; `message` está en español y puede cambiar.',
+    '',
+    '## Paginación',
+    '',
+    'Los listados aceptan `page` (por defecto 1) y `pageSize` (por defecto 20, máximo 100) y responden `{ items, total, page, pageSize }`.',
+    '',
+    '## Códigos de error',
+    '',
+    '| Código | Status | Cuándo ocurre |',
+    '| --- | --- | --- |',
+    ...rows,
+  ].join('\n');
 }
 
 /** Un parámetro OpenAPI por cada propiedad del objeto Zod de params/query. */
@@ -143,6 +272,8 @@ function parametersFrom(
     name,
     in: location,
     required: location === 'path' || required.has(name),
+    // Scalar muestra la descripción junto al nombre solo si está en el parámetro, no en su esquema.
+    ...(typeof property.description === 'string' ? { description: property.description } : {}),
     schema: property,
   }));
 }

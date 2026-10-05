@@ -1,7 +1,14 @@
 import { Email, NationalId, PersonalRfc } from '@rrhh/domain';
 import { describe, expect, it } from 'vitest';
 
-import { Employee, EMPLOYEE_HIRED, EMPLOYEE_TERMINATED, type EmployeeId } from './employee';
+import {
+  Employee,
+  EMPLOYEE_HIRED,
+  EMPLOYEE_RFC_ASSIGNED,
+  EMPLOYEE_SITE_ASSIGNED,
+  EMPLOYEE_TERMINATED,
+  type EmployeeId,
+} from './employee';
 
 const now = new Date('2026-01-15T12:00:00Z');
 
@@ -16,6 +23,7 @@ function hire(overrides: Partial<Parameters<typeof Employee.hire>[0]> = {}) {
     companyId: 'company-1',
     nationalId: nationalId.value,
     rfc: rfc.value,
+    siteId: 'site-1',
     firstName: 'Ana',
     lastName: 'Rojas',
     email: email.value,
@@ -81,7 +89,7 @@ describe('Employee', () => {
       if (!hired.ok) throw hired.error;
       const employee = Employee.restore(hired.value.id, { ...hired.value.snapshot, rfc: null });
 
-      expect(employee.assignRfc(rfcOf('GOMA850101AB2')).ok).toBe(true);
+      expect(employee.assignRfc(rfcOf('GOMA850101AB2'), now).ok).toBe(true);
       expect(employee.snapshot.rfc?.value).toBe('GOMA850101AB2');
     });
 
@@ -89,16 +97,26 @@ describe('Employee', () => {
       const hired = hire();
       if (!hired.ok) throw hired.error;
 
-      expect(hired.value.assignRfc(rfcOf('GOMA850101AB9')).ok).toBe(true);
+      expect(hired.value.assignRfc(rfcOf('GOMA850101AB9'), now).ok).toBe(true);
       expect(hired.value.snapshot.rfc?.value).toBe('GOMA850101AB9');
     });
 
-    it('assignRfc no emite eventos', () => {
+    it('assignRfc registra EMPLOYEE_RFC_ASSIGNED al cambiar el RFC', () => {
       const hired = hire();
       if (!hired.ok) throw hired.error;
       hired.value.pullEvents();
 
-      hired.value.assignRfc(rfcOf('GOMA850101AB9'));
+      hired.value.assignRfc(rfcOf('GOMA850101AB9'), now);
+
+      expect(hired.value.pullEvents().map((e) => e.name)).toEqual([EMPLOYEE_RFC_ASSIGNED]);
+    });
+
+    it('assignRfc no registra evento si el RFC no cambia', () => {
+      const hired = hire();
+      if (!hired.ok) throw hired.error;
+      hired.value.pullEvents();
+
+      expect(hired.value.assignRfc(rfcOf('GOMA850101AB1'), now).ok).toBe(true);
 
       expect(hired.value.pullEvents()).toEqual([]);
     });
@@ -107,10 +125,58 @@ describe('Employee', () => {
       const hired = hire({ nationalId: doId.value, rfc: undefined });
       if (!hired.ok) throw hired.error;
 
-      const result = hired.value.assignRfc(rfcOf('GOMA850101AB1'));
+      const result = hired.value.assignRfc(rfcOf('GOMA850101AB1'), now);
 
       expect(!result.ok && result.error.code).toBe('RFC_NOT_APPLICABLE');
       expect(hired.value.snapshot.rfc).toBeNull();
+    });
+  });
+
+  describe('sede', () => {
+    const hiredEmployee = () => {
+      const result = hire();
+      if (!result.ok) throw result.error;
+      result.value.pullEvents();
+      return result.value;
+    };
+
+    it('guarda la sede en el snapshot al contratar', () => {
+      const result = hire({ siteId: 'site-9' });
+      expect(result.ok && result.value.snapshot.siteId).toBe('site-9');
+    });
+
+    it('assignSite cambia la sede y registra EMPLOYEE_SITE_ASSIGNED con la sede previa', () => {
+      const employee = hiredEmployee();
+
+      employee.assignSite('site-2', now);
+
+      expect(employee.snapshot.siteId).toBe('site-2');
+      const events = employee.pullEvents();
+      expect(events.map((e) => e.name)).toEqual([EMPLOYEE_SITE_ASSIGNED]);
+      expect(events[0]?.payload).toEqual({
+        employeeId: 'emp-1',
+        siteId: 'site-2',
+        previousSiteId: 'site-1',
+      });
+    });
+
+    it('assignSite a una fila sin sede registra previousSiteId null', () => {
+      const source = hiredEmployee();
+      const employee = Employee.restore(source.id, { ...source.snapshot, siteId: null });
+
+      employee.assignSite('site-2', now);
+
+      expect(employee.snapshot.siteId).toBe('site-2');
+      expect(employee.pullEvents()[0]?.payload).toMatchObject({ previousSiteId: null });
+    });
+
+    it('assignSite con la misma sede no cambia nada ni registra evento', () => {
+      const employee = hiredEmployee();
+
+      employee.assignSite('site-1', now);
+
+      expect(employee.snapshot.siteId).toBe('site-1');
+      expect(employee.pullEvents()).toEqual([]);
     });
   });
 

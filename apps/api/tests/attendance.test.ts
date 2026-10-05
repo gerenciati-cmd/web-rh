@@ -2,8 +2,9 @@ import request from 'supertest';
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import { API_PREFIX, createApp } from '@/http/app';
+import { Device, type DeviceId } from '@/modules/attendance/domain/device';
 
-import { buildTestContainer, signInAs } from './test-app';
+import { buildTestContainer, createTestSite, signInAs } from './test-app';
 
 /**
  * Rutas `/api/v1/attendance/*` y su integración con `/iclock` (plan attendance-marcaciones/001),
@@ -11,7 +12,7 @@ import { buildTestContainer, signInAs } from './test-app';
  * por el router ADMS, así que el registro, la autorización del equipo y el listado se prueban
  * encadenados.
  */
-const device = { serialNumber: 'TESTSN001', name: 'Entrada principal', timeZone: 'America/Cancun' };
+const device = { serialNumber: 'TESTSN001', name: 'Entrada principal', siteId: '' };
 
 const TWO_PUNCHES =
   '1\t2026-09-28 08:01:00\t0\t1\t0\t0\t0\t0\t0\t0\t\n' +
@@ -25,6 +26,7 @@ function field(response: request.Response, key: string): unknown[] {
 
 describe('attendance HTTP', () => {
   let app: ReturnType<typeof createApp>;
+  let container: ReturnType<typeof buildTestContainer>;
   let adminToken: string;
   let hrToken: string;
   let noRoleToken: string;
@@ -32,6 +34,7 @@ describe('attendance HTTP', () => {
   const api = (token: string | null) => ({
     get: (path: string) => withAuth(request(app).get(`${API_PREFIX}${path}`), token),
     post: (path: string) => withAuth(request(app).post(`${API_PREFIX}${path}`), token),
+    put: (path: string) => withAuth(request(app).put(`${API_PREFIX}${path}`), token),
   });
 
   function withAuth<T extends request.Test>(test: T, token: string | null): T {
@@ -51,9 +54,11 @@ describe('attendance HTTP', () => {
   }
 
   beforeEach(async () => {
-    const container = buildTestContainer();
+    container = buildTestContainer();
     app = createApp(container);
     adminToken = await signInAs(container, { role: 'HOLDING_ADMIN' });
+    // La sede da la zona horaria del checador; se crea en cada prueba porque el almacén es nuevo.
+    device.siteId = await createTestSite(container);
     const created = await api(adminToken)
       .post('/companies')
       .send({ legalName: 'Alfa SA de CV', taxId: 'EKU9003173C9', country: 'MX' })
@@ -91,10 +96,19 @@ describe('attendance HTTP', () => {
       expect(response.body.code).toBe('DEVICE_ALREADY_REGISTERED');
     });
 
-    it('zona horaria inválida: 400 VALIDATION_ERROR', async () => {
+    it('sede inexistente: 404 SITE_NOT_FOUND', async () => {
       const response = await api(adminToken)
         .post('/attendance/devices')
-        .send({ ...device, timeZone: 'Mars/Olympus' })
+        .send({ ...device, siteId: '00000000-0000-4000-8000-0000000000ff' })
+        .expect(404);
+
+      expect(response.body.code).toBe('SITE_NOT_FOUND');
+    });
+
+    it('con zona horaria y sin siteId: 400 VALIDATION_ERROR', async () => {
+      const response = await api(adminToken)
+        .post('/attendance/devices')
+        .send({ serialNumber: 'TESTSN001', name: 'Entrada', timeZone: 'America/Cancun' })
         .expect(400);
 
       expect(response.body.code).toBe('VALIDATION_ERROR');
@@ -103,7 +117,7 @@ describe('attendance HTTP', () => {
     it.each([
       ['serial con símbolos', { serialNumber: 'SN-001' }],
       ['nombre vacío', { name: '' }],
-      ['sin zona horaria', { timeZone: undefined }],
+      ['sin sede', { siteId: undefined }],
     ])('%s: 400 VALIDATION_ERROR', async (_name, override) => {
       const response = await api(adminToken)
         .post('/attendance/devices')
@@ -126,6 +140,100 @@ describe('attendance HTTP', () => {
     });
   });
 
+  describe('PUT /attendance/devices/:deviceId/site', () => {
+    /** Equipo registrado antes del plan 003: sin sede y con una zona libre. */
+    async function legacyDevice(): Promise<string> {
+      const id = '00000000-0000-4000-8000-0000000000d1';
+      await container.cradle.deviceRepository.save(
+        Device.restore(id as DeviceId, {
+          serialNumber: 'LEGACYSN1',
+          name: 'Equipo anterior',
+          timeZone: 'UTC',
+          active: true,
+          registeredAt: new Date('2026-01-15T12:00:00Z'),
+          lastSeenAt: null,
+          siteId: null,
+          clockOffsetSeconds: null,
+          clockOffsetMeasuredAt: null,
+        }),
+      );
+      return id;
+    }
+
+    it('equipo sin sede: 204 y la lista muestra siteId y la zona de la sede', async () => {
+      const id = await legacyDevice();
+      const created = await container.cradle.createSite.execute({
+        name: 'Sede CDMX',
+        country: 'MX',
+        timeZone: 'America/Mexico_City',
+      });
+      if (!created.ok) throw created.error;
+
+      await api(adminToken)
+        .put(`/attendance/devices/${id}/site`)
+        .send({ siteId: created.value.id })
+        .expect(204);
+
+      const list = await api(adminToken).get('/attendance/devices').expect(200);
+      expect(list.body.items[0]).toMatchObject({
+        id,
+        siteId: created.value.id,
+        timeZone: 'America/Mexico_City',
+      });
+    });
+
+    it('equipo inexistente: 404 DEVICE_NOT_FOUND', async () => {
+      const response = await api(adminToken)
+        .put('/attendance/devices/00000000-0000-4000-8000-0000000000ff/site')
+        .send({ siteId: device.siteId })
+        .expect(404);
+
+      expect(response.body.code).toBe('DEVICE_NOT_FOUND');
+    });
+
+    it('sede inexistente: 404 SITE_NOT_FOUND', async () => {
+      const id = await registerDevice();
+
+      const response = await api(adminToken)
+        .put(`/attendance/devices/${id}/site`)
+        .send({ siteId: '00000000-0000-4000-8000-0000000000ff' })
+        .expect(404);
+
+      expect(response.body.code).toBe('SITE_NOT_FOUND');
+    });
+
+    it('body sin siteId o deviceId no UUID: 400 VALIDATION_ERROR', async () => {
+      const id = await registerDevice();
+
+      const noSite = await api(adminToken)
+        .put(`/attendance/devices/${id}/site`)
+        .send({})
+        .expect(400);
+      const badId = await api(adminToken)
+        .put('/attendance/devices/no-uuid/site')
+        .send({ siteId: device.siteId })
+        .expect(400);
+
+      expect(noSite.body.code).toBe('VALIDATION_ERROR');
+      expect(badId.body.code).toBe('VALIDATION_ERROR');
+    });
+
+    it('HR: 403 FORBIDDEN; sin sesión: 401', async () => {
+      const id = await registerDevice();
+
+      const forbidden = await api(hrToken)
+        .put(`/attendance/devices/${id}/site`)
+        .send({ siteId: device.siteId })
+        .expect(403);
+      await api(null)
+        .put(`/attendance/devices/${id}/site`)
+        .send({ siteId: device.siteId })
+        .expect(401);
+
+      expect(forbidden.body.code).toBe('FORBIDDEN');
+    });
+  });
+
   describe('GET /attendance/devices', () => {
     it('HOLDING_ADMIN y HR lo listan; el equipo recién registrado no tiene contacto ni marcaciones', async () => {
       const id = await registerDevice();
@@ -141,6 +249,10 @@ describe('attendance HTTP', () => {
           active: true,
           lastSeenAt: null,
           lastPunchAt: null,
+          siteId: device.siteId,
+          clockOffsetSeconds: null,
+          clockOffsetMeasuredAt: null,
+          clockSuspect: false,
         });
       }
     });
