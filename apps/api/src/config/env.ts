@@ -19,6 +19,22 @@ const EnvSchema = z.object({
         .map((origin) => origin.trim())
         .filter(Boolean),
     ),
+  // Proxies de confianza para Express (`trust proxy`): la barrera de red de los checadores y el
+  // throttle de login leen `req.ip`. Vacío = ninguno (se usa la IP del socket); un entero = saltos;
+  // si no, lista de IPs/CIDR separadas por coma. Un valor demasiado amplio deja que un cliente
+  // falsee su IP con `X-Forwarded-For`.
+  TRUST_PROXY: z
+    .string()
+    .default('')
+    .transform((value): boolean | number | string[] => {
+      const trimmed = value.trim();
+      if (trimmed === '') return false;
+      if (/^\d+$/.test(trimmed)) return Number(trimmed);
+      return trimmed
+        .split(',')
+        .map((entry) => entry.trim())
+        .filter(Boolean);
+    }),
   DATABASE_URL: z.url(),
   REDIS_URL: z.url().default('redis://localhost:6379'),
   // Sesiones y login: valores de desarrollo (plan 001, README decisión 5).

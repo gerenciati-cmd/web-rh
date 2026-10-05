@@ -52,6 +52,8 @@ export class PrismaAttendanceQueries implements AttendanceQueries {
       clockSuspect:
         row.clockOffsetSeconds !== null &&
         Math.abs(row.clockOffsetSeconds) > CLOCK_OFFSET_TOLERANCE_SECONDS,
+      allowedNetworks: row.allowedNetworks,
+      lastSeenIp: row.lastSeenIp,
     }));
     return { items, total, page, pageSize };
   }

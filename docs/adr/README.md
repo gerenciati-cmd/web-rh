@@ -21,5 +21,6 @@ cómo se comunican los módulos o cualquier decisión difícil de revertir.
 | 0011 | [Sesiones opacas en Postgres](0011-sesiones-opacas-en-postgres.md)                                                      | Aceptado |
 | 0012 | [Autorización declarada en los contratos](0012-autorizacion-declarada-en-contratos.md)                                  | Aceptado |
 | 0013 | [Registro de equipos en base de datos como autenticación del dispositivo](0013-registro-de-equipos-en-base-de-datos.md) | Aceptado |
+| 0014 | [Barrera de red por checador en `/iclock`](0014-barrera-de-red-por-checador.md)                                         | Aceptado |
 
 Plantilla: [0000-plantilla.md](0000-plantilla.md).

@@ -29,7 +29,7 @@ async function setUp(registeredSerials: readonly string[]) {
       now: clock.now(),
     });
     if (!device.ok) throw device.error;
-    await deviceRepository.save(device.value);
+    await deviceRepository.add(device.value);
   }
   return {
     logger,
@@ -48,6 +48,7 @@ describe('RecordDeviceContact', () => {
     query: { SN: 'TESTSN001' },
     bodyLength: 0,
     body: '',
+    sourceIp: null,
   };
 
   it('rechaza un número de serie no registrado y no autoriza', async () => {
@@ -181,7 +182,7 @@ describe('RecordDeviceContact', () => {
 
   it('rechaza un equipo registrado pero inactivo, con el mismo aviso', async () => {
     const { logger, command, deviceRepository } = await setUp([]);
-    await deviceRepository.save(
+    await deviceRepository.add(
       Device.restore('00000000-0000-4000-8000-0000000000bb' as DeviceId, {
         serialNumber: 'TESTSN001',
         name: 'Equipo inactivo',
@@ -192,6 +193,8 @@ describe('RecordDeviceContact', () => {
         siteId: null,
         clockOffsetSeconds: null,
         clockOffsetMeasuredAt: null,
+        allowedNetworks: [],
+        lastSeenIp: null,
       }),
     );
 

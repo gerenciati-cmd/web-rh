@@ -300,6 +300,17 @@ export const API_ERRORS = {
       },
     },
   },
+  DEVICE_NETWORK_UNRESTRICTED: {
+    status: 422,
+    description: 'El checador no tiene redes permitidas: no puede recibir comandos.',
+    examples: {
+      default: {
+        code: 'DEVICE_NETWORK_UNRESTRICTED',
+        message: 'El checador no tiene redes permitidas: no puede recibir comandos',
+        details: { deviceId: DEVICE_ID },
+      },
+    },
+  },
 
   // ── identity: sesión y contraseñas ───────────────────────────────────────
   INVALID_CREDENTIALS: {

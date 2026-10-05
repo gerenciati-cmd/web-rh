@@ -25,6 +25,12 @@ export const DeviceSchema = z
       .nullable()
       .describe('Cuándo se midió `clockOffsetSeconds`; null si nunca'),
     clockSuspect: z.boolean().describe('true si el reloj del equipo parece desfasado'),
+    allowedNetworks: z
+      .array(z.string())
+      .describe(
+        'Redes IPv4 (IP o CIDR) desde las que el checador puede conectarse; vacía = sin restricción de red y sin comandos',
+      ),
+    lastSeenIp: z.string().nullable().describe('IP de origen del último contacto; null si nunca'),
   })
   .meta({ id: 'AttendanceDevice' });
 export type DeviceDto = z.infer<typeof DeviceSchema>;
@@ -55,6 +61,16 @@ export const AssignDeviceSiteSchema = z
   .object({ siteId: z.uuid().describe('Sede nueva; debe estar activa') })
   .meta({ id: 'AssignAttendanceDeviceSiteInput' });
 export type AssignDeviceSiteInput = z.input<typeof AssignDeviceSiteSchema>;
+
+export const SetDeviceNetworksSchema = z
+  .object({
+    allowedNetworks: z
+      .array(z.union([z.ipv4(), z.cidrv4()]))
+      .max(10)
+      .describe('IPs o rangos CIDR IPv4, hasta 10; una lista vacía quita la restricción'),
+  })
+  .meta({ id: 'SetAttendanceDeviceNetworksInput' });
+export type SetDeviceNetworksInput = z.input<typeof SetDeviceNetworksSchema>;
 
 // ── Rutas ──────────────────────────────────────────────────────────────────
 export const attendanceDeviceRoutes = {
@@ -105,6 +121,25 @@ export const attendanceDeviceRoutes = {
     access: requires('attendance.devices:manage'),
     params: z.object({ deviceId: z.uuid().describe('Id del checador') }),
     body: AssignDeviceSiteSchema,
+    response: z.undefined(),
+    successStatus: 204,
+  }),
+  setDeviceNetworks: defineRoute({
+    method: 'PUT',
+    path: '/attendance/devices/:deviceId/networks',
+    summary: 'Define las redes desde las que un checador puede conectarse',
+    description: [
+      'Reemplaza la lista de IPs o rangos IPv4 desde los que el checador puede conectarse a `/iclock`; desde otra IP se le rechaza.',
+      'Con la lista vacía el checador sigue enviando marcaciones desde cualquier IP, pero no recibe comandos.',
+      '',
+      '**Quién puede:** solo el administrador del holding.',
+      '',
+      '**Necesita:** el `deviceId` en la ruta y la lista completa en el cuerpo.',
+    ].join('\n'),
+    errors: ['DEVICE_NOT_FOUND'],
+    access: requires('attendance.devices:manage'),
+    params: z.object({ deviceId: z.uuid().describe('Id del checador') }),
+    body: SetDeviceNetworksSchema,
     response: z.undefined(),
     successStatus: 204,
   }),

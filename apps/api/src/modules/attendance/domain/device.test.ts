@@ -115,6 +115,8 @@ describe('Device.assignSite', () => {
       siteId: null,
       clockOffsetSeconds: null,
       clockOffsetMeasuredAt: null,
+      allowedNetworks: [],
+      lastSeenIp: null,
     });
 
     device.assignSite('00000000-0000-4000-8000-0000000000a1', 'America/Cancun');
@@ -170,27 +172,27 @@ describe('Device.markSeen', () => {
     const device = registered();
     const seenAt = new Date(NOW.getTime() + 1000);
 
-    expect(device.markSeen(seenAt)).toBe(true);
+    expect(device.markSeen(seenAt, null)).toBe(true);
     expect(device.lastSeenAt).toEqual(seenAt);
   });
 
   it('dentro de la resolución no cambia nada ni pide persistir', () => {
     const device = registered();
     const first = new Date(NOW.getTime() + 1000);
-    device.markSeen(first);
+    device.markSeen(first, null);
 
     const shortlyAfter = new Date(first.getTime() + DEVICE_SEEN_RESOLUTION_MS - 1);
-    expect(device.markSeen(shortlyAfter)).toBe(false);
+    expect(device.markSeen(shortlyAfter, null)).toBe(false);
     expect(device.lastSeenAt).toEqual(first);
   });
 
   it('exactamente al cumplirse la resolución vuelve a anotar', () => {
     const device = registered();
     const first = new Date(NOW.getTime() + 1000);
-    device.markSeen(first);
+    device.markSeen(first, null);
 
     const exactly = new Date(first.getTime() + DEVICE_SEEN_RESOLUTION_MS);
-    expect(device.markSeen(exactly)).toBe(true);
+    expect(device.markSeen(exactly, null)).toBe(true);
     expect(device.lastSeenAt).toEqual(exactly);
   });
 });
@@ -207,6 +209,8 @@ describe('Device.restore', () => {
       siteId: null,
       clockOffsetSeconds: null,
       clockOffsetMeasuredAt: null,
+      allowedNetworks: [],
+      lastSeenIp: null,
     });
 
     expect(device.active).toBe(false);

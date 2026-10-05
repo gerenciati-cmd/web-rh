@@ -40,7 +40,7 @@ describe('ADMS /iclock', () => {
         now: clock.now(),
       });
       if (!device.ok) throw device.error;
-      await deviceRepository.save(device.value);
+      await deviceRepository.add(device.value);
     }
     container.register({
       recordDeviceContact: asValue(new RecordDeviceContact({ logger, deviceRepository, clock })),

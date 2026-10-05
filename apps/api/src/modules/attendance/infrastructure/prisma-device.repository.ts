@@ -24,13 +24,10 @@ export class PrismaDeviceRepository implements DeviceRepository {
     return row ? DeviceMapper.toDomain(row) : null;
   }
 
-  async save(device: Device): Promise<Result<void, DeviceAlreadyRegisteredError>> {
-    const data = DeviceMapper.toPersistence(device);
+  async add(device: Device): Promise<Result<void, DeviceAlreadyRegisteredError>> {
     try {
-      await this.deps.database.client.attendanceDevice.upsert({
-        where: { id: data.id },
-        create: data,
-        update: data,
+      await this.deps.database.client.attendanceDevice.create({
+        data: DeviceMapper.toPersistence(device),
       });
       return ok(undefined);
     } catch (error) {
@@ -39,5 +36,31 @@ export class PrismaDeviceRepository implements DeviceRepository {
         return err(new DeviceAlreadyRegisteredError(device.serialNumber));
       throw error;
     }
+  }
+
+  async saveContact(device: Device): Promise<void> {
+    await this.deps.database.client.attendanceDevice.update({
+      where: { id: device.id },
+      data: {
+        lastSeenAt: device.lastSeenAt,
+        lastSeenIp: device.lastSeenIp,
+        clockOffsetSeconds: device.clockOffsetSeconds,
+        clockOffsetMeasuredAt: device.clockOffsetMeasuredAt,
+      },
+    });
+  }
+
+  async saveSite(device: Device): Promise<void> {
+    await this.deps.database.client.attendanceDevice.update({
+      where: { id: device.id },
+      data: { siteId: device.siteId, timeZone: device.timeZone },
+    });
+  }
+
+  async saveAllowedNetworks(device: Device): Promise<void> {
+    await this.deps.database.client.attendanceDevice.update({
+      where: { id: device.id },
+      data: { allowedNetworks: [...device.allowedNetworks] },
+    });
   }
 }

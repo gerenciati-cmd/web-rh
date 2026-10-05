@@ -54,7 +54,7 @@ describe('nivel de log por ruta (sondeo de checadores)', () => {
       now: new FixedClock().now(),
     });
     if (!device.ok) throw device.error;
-    await container.cradle.deviceRepository.save(device.value);
+    await container.cradle.deviceRepository.add(device.value);
 
     const response = await request(app).get('/iclock/getrequest?SN=SNPOLL001&INFO=x');
 

@@ -56,7 +56,7 @@ export const attendanceDeviceCommandRoutes = {
       '',
       '**Necesita:** el `deviceId` y un comando que cumpla el patrón USERINFO. Responde con el `id` del comando; el resultado en el equipo no se confirma aquí.',
     ].join('\n'),
-    errors: ['DEVICE_NOT_FOUND'],
+    errors: ['DEVICE_NOT_FOUND', 'DEVICE_NETWORK_UNRESTRICTED'],
     access: requires('attendance.devices:manage'),
     params: DeviceParams,
     body: QueueDeviceCommandSchema,

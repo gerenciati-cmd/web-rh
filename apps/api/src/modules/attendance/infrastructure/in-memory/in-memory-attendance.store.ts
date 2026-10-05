@@ -8,7 +8,7 @@ import type {
 import { err, ok, type Result } from '@rrhh/domain';
 
 import type { AttendanceQueries, RawPunch } from '../../application/queries/attendance.queries';
-import type { Device, DeviceId } from '../../domain/device';
+import { Device, type DeviceId, type DeviceProps } from '../../domain/device';
 import type { DeviceCommand } from '../../domain/device-command';
 import type { DeviceCommandRepository } from '../../domain/device-command.repository';
 import type { DeviceRepository } from '../../domain/device.repository';
@@ -45,27 +45,75 @@ export class InMemoryDeviceCommandRepository implements DeviceCommandRepository 
   }
 }
 
+/**
+ * Guarda y entrega copias, como una BD: un agregado cargado antes no ve (ni pisa) lo que otro
+ * escribió después, y cada `save*` copia solo sus columnas (mismas reglas que Prisma).
+ */
 export class InMemoryDeviceRepository implements DeviceRepository {
   constructor(private readonly store: InMemoryAttendanceStore) {}
 
   findById(id: DeviceId): Promise<Device | null> {
-    return Promise.resolve(this.store.devices.get(id) ?? null);
+    const device = this.store.devices.get(id);
+    return Promise.resolve(device ? copyDevice(device) : null);
   }
 
   findBySerialNumber(serialNumber: string): Promise<Device | null> {
     const devices = [...this.store.devices.values()];
-    return Promise.resolve(devices.find((device) => device.serialNumber === serialNumber) ?? null);
+    const device = devices.find((other) => other.serialNumber === serialNumber);
+    return Promise.resolve(device ? copyDevice(device) : null);
   }
 
-  save(device: Device): Promise<Result<void, DeviceAlreadyRegisteredError>> {
+  add(device: Device): Promise<Result<void, DeviceAlreadyRegisteredError>> {
     const duplicate = [...this.store.devices.values()].some(
-      (other) => other.id !== device.id && other.serialNumber === device.serialNumber,
+      (other) => other.id === device.id || other.serialNumber === device.serialNumber,
     );
     if (duplicate)
       return Promise.resolve(err(new DeviceAlreadyRegisteredError(device.serialNumber)));
-    this.store.devices.set(device.id, device);
+    this.store.devices.set(device.id, copyDevice(device));
     return Promise.resolve(ok(undefined));
   }
+
+  saveContact(device: Device): Promise<void> {
+    return this.merge(device, {
+      lastSeenAt: device.lastSeenAt,
+      lastSeenIp: device.lastSeenIp,
+      clockOffsetSeconds: device.clockOffsetSeconds,
+      clockOffsetMeasuredAt: device.clockOffsetMeasuredAt,
+    });
+  }
+
+  saveSite(device: Device): Promise<void> {
+    return this.merge(device, { siteId: device.siteId, timeZone: device.timeZone });
+  }
+
+  saveAllowedNetworks(device: Device): Promise<void> {
+    return this.merge(device, { allowedNetworks: [...device.allowedNetworks] });
+  }
+
+  private merge(device: Device, fields: Partial<DeviceProps>): Promise<void> {
+    const stored = this.store.devices.get(device.id);
+    // Igual que el `update` de Prisma: actualizar un equipo inexistente es un error inesperado.
+    if (!stored) return Promise.reject(new Error(`Equipo inexistente: ${device.id}`));
+    this.store.devices.set(device.id, copyDevice(stored, fields));
+    return Promise.resolve();
+  }
+}
+
+function copyDevice(device: Device, fields: Partial<DeviceProps> = {}): Device {
+  return Device.restore(device.id, {
+    serialNumber: device.serialNumber,
+    name: device.name,
+    timeZone: device.timeZone,
+    active: device.active,
+    registeredAt: device.registeredAt,
+    lastSeenAt: device.lastSeenAt,
+    siteId: device.siteId,
+    clockOffsetSeconds: device.clockOffsetSeconds,
+    clockOffsetMeasuredAt: device.clockOffsetMeasuredAt,
+    allowedNetworks: device.allowedNetworks,
+    lastSeenIp: device.lastSeenIp,
+    ...fields,
+  });
 }
 
 export class InMemoryPunchRepository implements PunchRepository {
@@ -168,6 +216,8 @@ export class InMemoryAttendanceQueries implements AttendanceQueries {
       clockOffsetSeconds: device.clockOffsetSeconds,
       clockOffsetMeasuredAt: device.clockOffsetMeasuredAt?.toISOString() ?? null,
       clockSuspect: device.clockSuspect,
+      allowedNetworks: [...device.allowedNetworks],
+      lastSeenIp: device.lastSeenIp,
     };
   }
 

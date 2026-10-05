@@ -2,7 +2,7 @@
 
 Runbook de la sonda del módulo `attendance`
 (plan `plans/attendance-sonda-zkteco/001-recepcion-adms-solo-log.md`, ADR 0008; autenticación por registro en BD:
-ADR 0013).
+ADR 0013; barrera de red: ADR 0014).
 
 ## Qué hace y qué no
 
@@ -11,7 +11,8 @@ operaciones y usuarios (`OPERLOG`), biometría (`BIODATA`, `BIOPHOTO`, `USERPIC`
 equipo (`options`).
 
 - Solo atiende equipos **registrados** (`POST /api/v1/attendance/devices`, solo HOLDING_ADMIN) y
-  activos; cualquier otro recibe 403.
+  activos; cualquier otro recibe 403. Si el equipo tiene redes permitidas, también se rechaza
+  (403) un request que llegue desde otra IP (ver "Redes permitidas").
 - Las marcaciones `ATTLOG` se guardan sin duplicados (el equipo reenvía su historial en cada
   handshake), con la hora local tal como llegó y su instante UTC, calculado con la zona horaria
   del equipo registrado.
@@ -45,7 +46,9 @@ SenseFace 2A, firmware `ZAM70-NF24HA-Ver3.3.12`, PushVersion `Ver 3.1.2S-2025061
    inactiva, `SITE_INACTIVE`; un equipo no registrado recibe 403 en `/iclock`.
    Para equipos registrados antes de que existieran las sedes (sin sede), o para moverlos de
    sede, usa `PUT /api/v1/attendance/devices/:id/site` con `{"siteId":"…"}`: responde 204 y
-   actualiza también la zona horaria del equipo.
+   actualiza también la zona horaria del equipo. Asigna la sede **antes** de conectar el equipo:
+   si la cambias mientras sube su historial, las marcaciones de ese envío en curso se convierten
+   con la zona anterior (los envíos siguientes ya usan la nueva; el cambio de sede no se pierde).
 
 2. Para ver cada registro, usa `LOG_LEVEL=debug`. En `info` solo se ve el resumen por envío. Las líneas `request completed` del sondeo
    (`GET /iclock/getrequest`, cada ~10 s) aparecen solo con `LOG_LEVEL=debug`; si fallan (p. ej. 403) se ven siempre.
@@ -57,6 +60,34 @@ SenseFace 2A, firmware `ZAM70-NF24HA-Ver3.3.12`, PushVersion `Ver 3.1.2S-2025061
    - "Dirección del servidor": la IP de tu máquina en la LAN.
    - "Puerto del servidor": el valor de `PORT`.
    - "Habilitar servidor proxy": apagado.
+
+## Redes permitidas
+
+Cada equipo tiene una lista de redes IPv4 (IP o rango CIDR, hasta 10) desde las que puede
+conectarse a `/iclock` (ADR 0014).
+
+1. Conecta el equipo y consulta `GET /api/v1/attendance/devices`: `lastSeenIp` es la IP desde la
+   que llegó su último contacto.
+2. Permite esa IP (o el rango de la sede) como HOLDING_ADMIN:
+
+   ```sh
+   curl -X PUT -H 'Content-Type: application/json' -H "Authorization: Bearer $TOKEN" \
+     -d '{"allowedNetworks":["192.168.1.50"]}' \
+     http://localhost:3001/api/v1/attendance/devices/<id>/networks
+   ```
+
+   Responde 204; la lista se guarda canónica (`192.168.1.50/32`). Una lista vacía (`[]`) quita la
+   restricción.
+
+- **Sin redes permitidas el equipo no recibe comandos**: sigue enviando marcaciones desde
+  cualquier IP, pero encolar responde 422 `DEVICE_NETWORK_UNRESTRICTED` y los comandos que ya
+  estaban pendientes se quedan en cola (`QUEUED`) hasta que tenga redes.
+- Desde una IP fuera de la lista, el equipo recibe `403 ERROR: dispositivo no autorizado` y el
+  log escribe `zkteco: IP no permitida` con el serial y la IP.
+- Detrás de un reverse proxy, configura `TRUST_PROXY` (por ejemplo `1` si hay un solo proxy
+  delante); si no, el API ve la IP del proxy y no la del equipo. No pongas un valor más amplio que
+  tus proxies reales: cualquiera podría falsear su IP con `X-Forwarded-For`.
+- Una sede con IP pública dinámica necesita un rango más amplio o una IP fija. Solo IPv4.
 
 ## Atribución
 
@@ -110,7 +141,8 @@ C:1:DATA UPDATE USERINFO PIN=GOMA850101AB1\tName=Ana Rojas\tPri=0\tPasswd=\tCard
 
 - Encolar (HOLDING_ADMIN): `POST /api/v1/attendance/devices/:deviceId/commands` con
   `{ "command": "DATA UPDATE USERINFO …" }`. Solo se aceptan comandos `USERINFO` (con prefijo
-  opcional `C:<n>:`); cualquier otro texto responde 400.
+  opcional `C:<n>:`); cualquier otro texto responde 400. El equipo debe tener redes permitidas
+  (ver "Redes permitidas"); si no, 422 `DEVICE_NETWORK_UNRESTRICTED`.
 - Entrega: el siguiente `GET /iclock/getrequest` de ese equipo responde exactamente el texto
   encolado, una sola vez; los siguientes vuelven a `OK`.
 - Resultado: el equipo responde en `POST /iclock/devicecmd`; el log lo muestra como
@@ -121,18 +153,20 @@ C:1:DATA UPDATE USERINFO PIN=GOMA850101AB1\tName=Ana Rojas\tPri=0\tPasswd=\tCard
 
 ## Qué buscar en el log
 
-| Mensaje                             | Nivel | Cuándo                                            |
-| ----------------------------------- | ----- | ------------------------------------------------- |
-| `zkteco: contacto del dispositivo`  | info  | handshake, resultado de comando, ruta desconocida |
-| `zkteco: contacto del dispositivo`  | debug | consulta de comandos (cada ~10 s)                 |
-| `zkteco: datos recibidos`           | info  | cada envío: tabla, total y conteo por tipo        |
-| `zkteco: registro`                  | debug | cada registro interpretado y redactado            |
-| `zkteco: marcaciones guardadas`     | info  | tras un `ATTLOG`: recibidas, nuevas y duplicadas  |
-| `zkteco: marcación rechazada`       | warn  | línea `ATTLOG` con PIN o fecha inválidos          |
-| `zkteco: dispositivo no autorizado` | warn  | SN no registrado o equipo inactivo                |
-| `zkteco: comando encolado`          | info  | un administrador encoló un comando                |
-| `zkteco: comando entregado`         | info  | el equipo recibió el comando en su consulta       |
-| `zkteco: resultado de comando`      | info  | respuesta del equipo en `devicecmd` (redactada)   |
+| Mensaje                                 | Nivel | Cuándo                                             |
+| --------------------------------------- | ----- | -------------------------------------------------- |
+| `zkteco: contacto del dispositivo`      | info  | handshake, resultado de comando, ruta desconocida  |
+| `zkteco: contacto del dispositivo`      | debug | consulta de comandos (cada ~10 s)                  |
+| `zkteco: datos recibidos`               | info  | cada envío: tabla, total y conteo por tipo         |
+| `zkteco: registro`                      | debug | cada registro interpretado y redactado             |
+| `zkteco: marcaciones guardadas`         | info  | tras un `ATTLOG`: recibidas, nuevas y duplicadas   |
+| `zkteco: marcación rechazada`           | warn  | línea `ATTLOG` con PIN o fecha inválidos           |
+| `zkteco: dispositivo no autorizado`     | warn  | SN no registrado o equipo inactivo                 |
+| `zkteco: IP no permitida`               | warn  | request desde una IP fuera de las redes del equipo |
+| `zkteco: redes del equipo actualizadas` | info  | un administrador cambió las redes permitidas       |
+| `zkteco: comando encolado`              | info  | un administrador encoló un comando                 |
+| `zkteco: comando entregado`             | info  | el equipo recibió el comando en su consulta        |
+| `zkteco: resultado de comando`          | info  | respuesta del equipo en `devicecmd` (redactada)    |
 
 Si aparece un contacto `kind: 'unknown'`, el firmware usó una ruta que la sonda no conoce:
 anótala para el siguiente plan.

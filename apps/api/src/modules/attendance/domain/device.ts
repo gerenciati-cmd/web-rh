@@ -9,6 +9,13 @@ import {
   type Result,
 } from '@rrhh/domain';
 
+import {
+  formatIpv4Network,
+  ipv4NetworkContains,
+  parseIpv4Address,
+  parseIpv4Network,
+} from './ipv4-network';
+
 export type DeviceId = Id<'Device'>;
 
 export interface DeviceProps {
@@ -21,6 +28,9 @@ export interface DeviceProps {
   siteId: string | null;
   clockOffsetSeconds: number | null;
   clockOffsetMeasuredAt: Date | null;
+  /** Redes IPv4 canónicas (`a.b.c.d/n`); vacía = sin restricción de red y sin comandos. */
+  allowedNetworks: readonly string[];
+  lastSeenIp: string | null;
 }
 
 export const DEVICE_REGISTERED = 'attendance.device.registered';
@@ -36,6 +46,9 @@ export const CLOCK_OFFSET_TOLERANCE_SECONDS = 300;
  * intervalo, para no convertir cada consulta en una escritura a la BD.
  */
 export const DEVICE_SEEN_RESOLUTION_MS = 60_000;
+
+/** Tope de redes permitidas por equipo (igual que el contrato). */
+export const MAX_ALLOWED_NETWORKS = 10;
 
 const SERIAL_PATTERN = /^[A-Za-z0-9]{1,64}$/;
 
@@ -85,6 +98,8 @@ export class Device extends AggregateRoot<DeviceId> {
       siteId: input.siteId,
       clockOffsetSeconds: null,
       clockOffsetMeasuredAt: null,
+      allowedNetworks: [],
+      lastSeenIp: null,
     });
     device.record(createEvent(DEVICE_REGISTERED, { deviceId: input.id, serialNumber }, input.now));
     return ok(device);
@@ -131,6 +146,22 @@ export class Device extends AggregateRoot<DeviceId> {
     return this.props.clockOffsetMeasuredAt;
   }
 
+  get allowedNetworks(): readonly string[] {
+    return this.props.allowedNetworks;
+  }
+
+  get lastSeenIp(): string | null {
+    return this.props.lastSeenIp;
+  }
+
+  /**
+   * Solo un equipo con redes permitidas recibe comandos: llevan RFC y nombre, y sin barrera de
+   * red los tomaría cualquiera que conozca el número de serie (decisión 12 del README).
+   */
+  get receivesCommands(): boolean {
+    return this.props.allowedNetworks.length > 0;
+  }
+
   /** El reloj (o la zona) del equipo se desvía más de la tolerancia en la última medición. */
   get clockSuspect(): boolean {
     const { clockOffsetSeconds } = this.props;
@@ -149,16 +180,43 @@ export class Device extends AggregateRoot<DeviceId> {
     this.props = { ...this.props, clockOffsetSeconds: seconds, clockOffsetMeasuredAt: now };
   }
 
-  /**
-   * Anota el contacto del equipo. Devuelve `true` si hay algo que persistir (primera vez o ya
-   * pasó `DEVICE_SEEN_RESOLUTION_MS`); si no, no cambia nada.
-   */
-  markSeen(now: Date): boolean {
-    const { lastSeenAt } = this.props;
-    if (lastSeenAt !== null && now.getTime() - lastSeenAt.getTime() < DEVICE_SEEN_RESOLUTION_MS) {
-      return false;
+  /** Reemplaza las redes permitidas (IP o CIDR IPv4); se guardan canónicas y sin repetir. */
+  setAllowedNetworks(networks: readonly string[]): Result<void, InvalidValueError> {
+    const canonical = new Set<string>();
+    for (const text of networks) {
+      const network = parseIpv4Network(text);
+      if (!network) return err(new InvalidValueError(`Red IPv4 inválida: ${text}`));
+      canonical.add(formatIpv4Network(network));
     }
-    this.props = { ...this.props, lastSeenAt: now };
+    if (canonical.size > MAX_ALLOWED_NETWORKS) {
+      return err(new InvalidValueError(`Máximo ${MAX_ALLOWED_NETWORKS} redes por checador`));
+    }
+    this.props = { ...this.props, allowedNetworks: [...canonical] };
+    return ok(undefined);
+  }
+
+  /** Sin redes permitidas acepta cualquier origen; si hay, la IP debe caer en alguna. */
+  acceptsAddress(ip: string | null): boolean {
+    const { allowedNetworks } = this.props;
+    if (allowedNetworks.length === 0) return true;
+    const address = ip === null ? null : parseIpv4Address(ip);
+    if (address === null) return false;
+    return allowedNetworks.some((text) => {
+      const network = parseIpv4Network(text);
+      return network !== null && ipv4NetworkContains(network, address);
+    });
+  }
+
+  /**
+   * Anota el contacto del equipo y su IP de origen. Devuelve `true` si hay algo que persistir
+   * (primera vez, ya pasó `DEVICE_SEEN_RESOLUTION_MS` o cambió la IP); si no, no cambia nada.
+   */
+  markSeen(now: Date, ip: string | null): boolean {
+    const { lastSeenAt, lastSeenIp } = this.props;
+    const recent =
+      lastSeenAt !== null && now.getTime() - lastSeenAt.getTime() < DEVICE_SEEN_RESOLUTION_MS;
+    if (recent && ip === lastSeenIp) return false;
+    this.props = { ...this.props, lastSeenAt: now, lastSeenIp: ip };
     return true;
   }
 }

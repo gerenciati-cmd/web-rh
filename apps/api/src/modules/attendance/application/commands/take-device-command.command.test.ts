@@ -2,11 +2,12 @@ import { describe, expect, it } from 'vitest';
 
 import { FixedClock, RecordingLogger } from '@/shared/testing/fakes';
 
-import type { DeviceId } from '../../domain/device';
+import { Device, type DeviceId } from '../../domain/device';
 import { DeviceCommand, type DeviceCommandId } from '../../domain/device-command';
 import {
   InMemoryAttendanceStore,
   InMemoryDeviceCommandRepository,
+  InMemoryDeviceRepository,
 } from '../../infrastructure/in-memory/in-memory-attendance.store';
 
 import { TakeDeviceCommand } from './take-device-command.command';
@@ -14,9 +15,29 @@ import { TakeDeviceCommand } from './take-device-command.command';
 const DEVICE = '00000000-0000-4000-8000-0000000000d1' as DeviceId;
 const OTHER_DEVICE = '00000000-0000-4000-8000-0000000000d2' as DeviceId;
 
+/** Equipo con redes permitidas: solo esos reciben comandos (plan 005). */
+function deviceWithNetworks(id: DeviceId, serialNumber: string): Device {
+  return Device.restore(id, {
+    serialNumber,
+    name: serialNumber,
+    timeZone: 'America/Cancun',
+    active: true,
+    registeredAt: new Date('2026-10-01T12:00:00Z'),
+    lastSeenAt: null,
+    siteId: null,
+    clockOffsetSeconds: null,
+    clockOffsetMeasuredAt: null,
+    allowedNetworks: ['127.0.0.1/32'],
+    lastSeenIp: null,
+  });
+}
+
 function setUp() {
   const store = new InMemoryAttendanceStore();
   const repository = new InMemoryDeviceCommandRepository(store);
+  const deviceRepository = new InMemoryDeviceRepository(store);
+  store.devices.set(DEVICE, deviceWithNetworks(DEVICE, 'TESTSN001'));
+  store.devices.set(OTHER_DEVICE, deviceWithNetworks(OTHER_DEVICE, 'TESTSN002'));
   const logger = new RecordingLogger();
   const clock = new FixedClock();
 
@@ -39,7 +60,12 @@ function setUp() {
     logger,
     clock,
     queue,
-    take: new TakeDeviceCommand({ deviceCommandRepository: repository, clock, logger }),
+    take: new TakeDeviceCommand({
+      deviceRepository,
+      deviceCommandRepository: repository,
+      clock,
+      logger,
+    }),
   };
 }
 

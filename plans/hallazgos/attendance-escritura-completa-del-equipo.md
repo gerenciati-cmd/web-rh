@@ -1,5 +1,5 @@
 ---
-status: planned
+status: resolved
 module: attendance
 found: 2026-10-02
 plan: attendance-marcaciones/005
@@ -34,3 +34,11 @@ caso de uso: `lastSeenAt`, desfase, sede), o versión optimista en `attendance.d
 el plan que vuelva a tocar el repositorio de equipos (004 o 005). Mientras tanto, en la
 instalación: asignar la sede antes de conectar el equipo, o repetir el PUT y confirmar con
 `GET /attendance/devices`.
+
+## Resolución
+
+2026-10-05, plan `attendance-marcaciones/005`. `DeviceRepository.save` se reemplazó por
+escrituras dirigidas: `add` (alta), `saveContact` (lo que escribe el equipo: `lastSeenAt`,
+`lastSeenIp`, desfase), `saveSite` (`siteId`, `timeZone`) y `saveAllowedNetworks`. Un envío del
+equipo ya no pisa la sede ni la zona. Queda una limitación documentada en el runbook: las
+marcaciones del envío que estaba en curso al cambiar la sede se convierten con la zona anterior.

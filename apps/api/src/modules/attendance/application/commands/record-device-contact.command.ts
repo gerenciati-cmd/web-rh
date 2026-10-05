@@ -18,6 +18,8 @@ export interface RecordDeviceContactInput {
   query: Readonly<Record<string, string>>;
   bodyLength: number;
   body: string;
+  /** IP de origen del request (ya resuelta según `TRUST_PROXY`); null si no se conoce. */
+  sourceIp: string | null;
 }
 
 interface Deps {
@@ -42,18 +44,23 @@ export class RecordDeviceContact implements Command<
     const { logger, deviceRepository, clock } = this.deps;
     // El cuerpo nunca va al log tal cual: solo su largo y, en resultados de comando, campos
     // redactados.
-    const { serialNumber, body, ...contact } = input;
+    const { serialNumber, body, sourceIp, ...contact } = input;
 
     const device = await deviceRepository.findBySerialNumber(serialNumber);
     if (!device?.active) {
-      logger.warn({ serialNumber, ...contact }, 'zkteco: dispositivo no autorizado');
+      logger.warn({ serialNumber, sourceIp, ...contact }, 'zkteco: dispositivo no autorizado');
+      return err(new DeviceNotAllowedError(serialNumber));
+    }
+    // Misma respuesta que un serial desconocido: desde afuera no se distingue el motivo.
+    if (!device.acceptsAddress(sourceIp)) {
+      logger.warn({ serialNumber, sourceIp, ...contact }, 'zkteco: IP no permitida');
       return err(new DeviceNotAllowedError(serialNumber));
     }
 
     // `lastSeenAt` es estado informativo: markSeen limita la escritura a una por minuto.
-    if (device.markSeen(clock.now())) await deviceRepository.save(device);
+    if (device.markSeen(clock.now(), sourceIp)) await deviceRepository.saveContact(device);
 
-    const logged = { serialNumber, ...contact };
+    const logged = { serialNumber, sourceIp, ...contact };
     // El equipo consulta comandos cada pocos segundos: a nivel info inundaría el log.
     if (contact.kind === 'poll') logger.debug(logged, 'zkteco: contacto del dispositivo');
     else logger.info(logged, 'zkteco: contacto del dispositivo');

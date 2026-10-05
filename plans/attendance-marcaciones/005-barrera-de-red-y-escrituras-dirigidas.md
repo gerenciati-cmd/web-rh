@@ -1,5 +1,5 @@
 ---
-status: draft
+status: testing
 module: attendance
 min_implementer: mid
 depends_on: ['004']
@@ -117,7 +117,7 @@ BusinessRuleViolationError` (`code = 'DEVICE_NETWORK_UNRESTRICTED'`, message
    - Observable result: `pnpm --filter @rrhh/api typecheck` passes (callers fixed in step 4).
 
 3. **Repository: targeted writes + persistence**
-   - Files: `apps/api/src/modules/attendance/domain/device.repository.ts` (modify), `apps/api/prisma/schema.prisma` (modify), `apps/api/prisma/migrations/<timestamp>_add_device_networks/migration.sql` (create), `apps/api/src/modules/attendance/infrastructure/prisma-device.repository.ts` (modify), `apps/api/src/modules/attendance/infrastructure/attendance.mapper.ts` (modify), `apps/api/src/modules/attendance/infrastructure/in-memory/in-memory-attendance.store.ts` (modify), `apps/api/src/modules/attendance/infrastructure/prisma-attendance.queries.ts` (modify)
+   - Files: `apps/api/src/modules/attendance/domain/device.repository.ts` (modify), `apps/api/prisma/schema.prisma` (modify), `apps/api/prisma/migrations/20261005165911_add_device_networks/migration.sql` (create), `apps/api/src/modules/attendance/infrastructure/prisma-device.repository.ts` (modify), `apps/api/src/modules/attendance/infrastructure/attendance.mapper.ts` (modify), `apps/api/src/modules/attendance/infrastructure/in-memory/in-memory-attendance.store.ts` (modify), `apps/api/src/modules/attendance/infrastructure/prisma-attendance.queries.ts` (modify)
    - Do: replace `save` in `DeviceRepository` with four methods, each with a docblock naming who
      writes those columns: `add(device)` (insert; unique violation →
      `DeviceAlreadyRegisteredError`, as today's catch at `prisma-device.repository.ts:37-40`);
@@ -180,6 +180,13 @@ allowedNetworks }`): `DeviceNotFoundError`, `setAllowedNetworks`, `saveAllowedNe
      `plan: attendance-marcaciones/005`, a "Resolución" paragraph.
    - Observable result: `pnpm check` passes (plans lint included).
 
+7. **Existing tests adapted to the new signatures** (declared by the implementer, deviation 2)
+   - Files: `packages/contracts/src/attendance/device.contract.test.ts` (modify), `apps/api/src/modules/attendance/domain/device.test.ts` (modify), `apps/api/src/modules/attendance/application/commands/assign-device-site.command.test.ts` (modify), `apps/api/src/modules/attendance/application/commands/queue-device-command.command.test.ts` (modify), `apps/api/src/modules/attendance/application/commands/record-device-contact.command.test.ts` (modify), `apps/api/src/modules/attendance/application/commands/record-device-push.command.test.ts` (modify), `apps/api/src/modules/attendance/application/commands/take-device-command.command.test.ts` (modify), `apps/api/tests/attendance-device-commands.test.ts` (modify), `apps/api/tests/attendance.test.ts` (modify), `apps/api/tests/request-logging-and-body-errors.test.ts` (modify), `apps/api/tests/zkteco-adms.test.ts` (modify), `apps/api/tests/integration/attendance/prisma-attendance.int.test.ts` (modify), `apps/api/tests/integration/attendance/prisma-device-command.int.test.ts` (modify)
+   - Do: mechanical only — `save` → `add`/`saveContact`/`saveSite`, the two new `DeviceProps`,
+     `markSeen(now, null)`, `sourceIp: null` in inputs and expected logs, and devices with networks
+     in the command fixtures. No new behavior tested here (that is the tester's phase).
+   - Observable result: the pre-existing suites stay green.
+
 ## Acceptance criteria
 
 - [ ] `GET /api/v1/attendance/devices` shows `allowedNetworks: []` and `lastSeenIp` (the IP of
@@ -215,6 +222,35 @@ allowedNetworks }`): `DeviceNotFoundError`, `setAllowedNetworks`, `saveAllowedNe
 | e2e         | no      | (no e2e infrastructure yet)                                                                                                                                        |
 
 ## Deviations
+
+Implemented inline by the main session on 2026-10-05 (the user approved the plan in chat:
+"implementalo"). `pnpm check` green (api 838 passed / 5 skipped, contracts 260);
+`pnpm test:integration` 15 files / 178 tests green; migration applied on dev and test DBs.
+
+1. **Migration name** (cosmetic). The plan had a `<timestamp>` placeholder; the real folder is
+   `20261005165911_add_device_networks`, written into the step 3 `Files:` line. The SQL is only
+   the two `ADD COLUMN` (Prisma emits `allowed_networks TEXT[] DEFAULT ARRAY[]::TEXT[]`, nullable
+   at the DB level as Prisma does for scalar lists; the client always writes an array).
+   `prisma format` also realigned the whitespace of the `AttendanceDevice` block.
+2. **Existing tests had to change** (scope; mechanical, no design impact). The plan did not list
+   the test files that call `DeviceRepository.save`, build `DeviceProps`, call `markSeen(now)` or
+   build use-case inputs without `sourceIp`, nor the command fixtures that now need networks
+   (decision 12). They were adapted mechanically and declared in the new step 7. No new
+   behavior was tested: that remains the tester's phase.
+3. **Prisma client regeneration** (cosmetic). `pnpm db:migrate` did not regenerate the client;
+   ran `pnpm db:generate` (generated code, not versioned).
+4. **`sourceIp` in the contact log** (small addition, not in the plan's text). The info/debug log
+   `zkteco: contacto del dispositivo` and both `dispositivo no autorizado` warns now carry
+   `sourceIp`, so the admin can see where a device connects from (the plan only asked for it in
+   `IP no permitida`). The IP of a device is not personal data.
+5. **In-memory device repository returns copies** (plan step 3 said "copies only its fields onto
+   the stored device"). To match Prisma, `findById`/`findBySerialNumber` also return copies, so a
+   stale instance cannot mutate the stored one; `add` rejects a repeated id as well as a repeated
+   serial. `saveContact`/`saveSite`/`saveAllowedNetworks` on a missing id reject the promise
+   (as Prisma's `update` does).
+6. **`DeviceRepository.add` returns `Result`; the three `save*` return `Promise<void>`** as the plan
+   said, so `AssignDeviceSite` no longer propagates a save error (it could only be a serial
+   conflict, impossible when the serial does not change).
 
 ## Test coverage
 

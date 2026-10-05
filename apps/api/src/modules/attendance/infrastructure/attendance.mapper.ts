@@ -27,9 +27,12 @@ export const DeviceMapper = {
       siteId: row.siteId,
       clockOffsetSeconds: row.clockOffsetSeconds,
       clockOffsetMeasuredAt: row.clockOffsetMeasuredAt,
+      allowedNetworks: row.allowedNetworks,
+      lastSeenIp: row.lastSeenIp,
     });
   },
 
+  /** Fila completa: solo para el alta (las demás escrituras son dirigidas). */
   toPersistence(device: Device) {
     return {
       id: device.id,
@@ -42,6 +45,8 @@ export const DeviceMapper = {
       siteId: device.siteId,
       clockOffsetSeconds: device.clockOffsetSeconds,
       clockOffsetMeasuredAt: device.clockOffsetMeasuredAt,
+      allowedNetworks: [...device.allowedNetworks],
+      lastSeenIp: device.lastSeenIp,
     };
   },
 };
