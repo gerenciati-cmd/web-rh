@@ -274,4 +274,76 @@ Run at the end: `pnpm check` green (api 838 passed / 5 skipped, contracts 259);
 
 ## Review findings
 
+Revisión 2026-10-06 (reviewer, subagente). Alcance: commits `6e5f411` (código) y `08cac26`
+(tests); los commits del plan 005 en la rama quedan fuera.
+
+### Checklist — 13/13
+
+- [x] `plans:scope`: sale con código 1, pero cada entrada se explica. Los "fuera de alcance" son
+      archivos del plan 005 (`d7f595c`, `d9dd4b7`, `5b9a0ad`, …), que no son de esta revisión,
+      más `complete-device-commands.command.test.ts`, un archivo de test nuevo del tester
+      (permitido). "Declarados sin cambios": la ruta placeholder de la migración (la reemplazó
+      `20261006120000_add_device_command_result`, anotada en la deviación 1) y
+      `prisma-attendance.queries.ts` (el plan dice "nothing beyond the mapper"). Hot file
+      `schema.prisma`: con `git diff -w` solo tiene 4 inserciones; el resto es la realineación de
+      espacios de `prisma format` en `AttendanceDevice`.
+- [x] `pnpm check` en verde (turbo 19/19 desde caché sobre el HEAD limpio; además corrí en vivo
+      `vitest run src/modules/attendance tests/attendance-device-commands.test.ts`: 16 archivos,
+      217 tests en verde).
+- [x] `pnpm test:integration` en verde, corrida en vivo: 15 archivos, 188 tests.
+- [x] Reglas de negocio en `domain/` (`queue`/`complete`/`markSent`, `parseCommandResults`); el
+      router solo enruta.
+- [x] CQRS ligero: `claim`/`nextNumber`/`findByNumber` son operaciones del command, no métodos
+      para pantallas; la bitácora sigue en `AttendanceQueries` → DTO.
+- [x] Tipos desde `@rrhh/contracts`; `openapi.json` regenerado.
+- [x] Errores: `InvalidValueError` en `queue`; no se filtran detalles internos.
+- [x] Tiempo vía `Clock`; las fechas son `Timestamptz(3)`.
+- [x] Migración nueva: solo `ADD COLUMN` ×3 + índice único; sin `DROP` y sin FK entre módulos.
+- [x] DI: `completeDeviceCommands` se registra una vez; `container.test.ts` en verde.
+- [x] Sin secretos ni datos reales (los fixtures de RFC/nombre son los sintéticos que ya existían).
+- [x] Deviations honestas. Comprobé la 3 (`copyOf` en `nextQueued`/`findByNumber`,
+      `in-memory-attendance.store.ts`) y la 4 (`markSent` exige `QUEUED`, `device-command.ts:120-123`).
+- [x] Docs actualizadas: runbook de `zkteco-senseface-2a.md`, ADR 0014 e índice de ADRs.
+
+### Hallazgos
+
+**Low**
+
+- **L1 — El ADR 0014 y el runbook proponen como señal de robo algo que el mismo atacante puede
+  borrar.** `docs/adr/0014-comandos-salientes-con-serial-como-credencial.md:39-40` dice que un
+  comando robado "la bitácora lo muestra como `SENT` sin resultado", y
+  `docs/integraciones/zkteco-senseface-2a.md:123-124` dice que un `SENT` sin
+  respuesta "merece revisarse". Pero con este plan, `POST /iclock/devicecmd` solo se autentica con
+  el mismo serial (`zkteco-adms.router.ts:100-106` → `CompleteDeviceCommands`). Escenario: quien
+  roba `C:57:DATA UPDATE USERINFO …` con un `getrequest` y el serial ya conoce el número 57. Le
+  basta enviar `POST /iclock/devicecmd?SN=<serial>` con `ID=57&Return=0&CMD=DATA` para que el
+  comando quede `DONE`/`returnCode "0"`. La bitácora entonces muestra un éxito que el equipo real
+  nunca recibió, y la señal desaparece. El mismo atacante también puede marcar `FAILED` (o `DONE`)
+  cualquier comando `SENT` legítimo de ese equipo. Arreglo (solo docs, dentro del alcance del paso
+  6): en Consecuencias, decir que el serial también permite falsificar el resultado, así que la
+  bitácora no sirve para detectar un robo con un atacante activo; corregir igual la frase del
+  runbook. No hace falta código, porque la barrera queda fuera de alcance (decisión 12).
+
+- **L2 — El caso HTTP de AC1 "con `C:9:…` → 400" no existe, y la tabla de cobertura lo da por
+  CONFIRMED.** En `apps/api/tests/attendance-device-commands.test.ts:73-80` el `it.each` de 400
+  solo trae `CLEAR DATA`, `REBOOT` y `DATA UPDATE BIODATA Pin=1`, y ningún test del archivo encola
+  un texto con prefijo. Aun así, la fila "AC1" de `## Test coverage` lo marca CONFIRMED como
+  "(ya existente)". El rechazo sí está probado en las capas de contrato
+  (`device-command.contract.test.ts`) y de dominio, así que el riesgo real es bajo: si alguien
+  quitara el `.regex` del body del contrato en `bindRoute`, ningún test HTTP lo detectaría. La
+  corrección es solo de test (tester): agregar `'C:9:DATA QUERY USERINFO PIN=X'` al `it.each` de
+  400, o bajar la fila a la capa de contrato.
+
+**Info (no requieren cambio)**
+
+- I1 — Las filas del plan 004 con prefijo escrito a mano y todavía `QUEUED` se entregarían como
+  `C:<n>:C:1:DATA …` (`device-command.ts:91-93`). La deviación 2 y el ADR dicen que no hay filas
+  así en dev ni ambiente desplegado, así que **no está confirmado** que exista algún caso real. Si
+  apareciera un ambiente con datos del 004, habría que tratarlo con un hallazgo/migración de datos.
+- I2 — Dos `devicecmd` idénticos y simultáneos: los dos leen `SENT`, completan y guardan (upsert
+  idempotente). El único efecto es un `comando completado` duplicado en el log.
+
+Resultado: 0 High, 0 Medium, 2 Low (L1 docs del implementer, L2 test del tester), 2 Info.
+El status sigue en `review`.
+
 ## Verification
