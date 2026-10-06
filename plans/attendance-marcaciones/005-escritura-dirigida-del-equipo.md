@@ -94,15 +94,15 @@ getters, ...the written fields from the argument })`, so a stale object passed i
 
 ## Acceptance criteria
 
-- [ ] Integration (the race, deterministic): two instances of the same device loaded from the DB;
+- [x] Integration (the race, deterministic): two instances of the same device loaded from the DB;
       instance A gets `assignSite(newSite, 'America/Mexico_City')` + `saveSite`; then instance B
       (stale) gets `markSeen` + `recordClockOffset` + `saveActivity`. The row has the new
       `siteId`/`timeZone` **and** B's `lastSeenAt`/offset. Same in the reverse order.
-- [ ] Running app: `PUT /api/v1/attendance/devices/:id/site` → 204 and `GET /attendance/devices`
+- [x] Running app: `PUT /api/v1/attendance/devices/:id/site` → 204 and `GET /attendance/devices`
       shows the new sede and zone; a `POST /iclock/cdata?table=ATTLOG` push afterwards still
       updates `lastSeenAt` and keeps the new sede.
-- [ ] Running app: `GET /iclock/getrequest` updates `lastSeenAt` (at most once a minute) as before.
-- [ ] `POST /api/v1/attendance/devices` still → 201, and a repeated serial → 409
+- [x] Running app: `GET /iclock/getrequest` updates `lastSeenAt` (at most once a minute) as before.
+- [x] `POST /api/v1/attendance/devices` still → 201, and a repeated serial → 409
       `DEVICE_ALREADY_REGISTERED`.
 
 ## Test layers required
@@ -269,3 +269,23 @@ afectados, 53 tests verdes; `tests/integration/attendance`, 3 archivos / 38 test
 Sin hallazgos abiertos. Plan 005 a `verify`.
 
 ## Verification
+
+**PASS** — 2026-10-06, main session, at `a9b806b` (HEAD also carries plan 006 code), against the
+dev API on `localhost:3001` (`pnpm dev:api`; dev DB seeded with `pnpm db:seed`).
+
+- Suites: `pnpm check` green (api 846 passed / 5 skipped, contracts 259, domain 98);
+  `pnpm test:integration` 15 files / 183 tests green.
+- Criterion 1 (the race, both orders): covered by the integration tests in
+  `prisma-attendance.int.test.ts` (green above); not reproducible by hand over HTTP.
+- Script over HTTP and `/iclock` (synthetic sedes `Verificación 005 A|B <suffix>`, devices
+  `VER005<suffix>` and `VER005B<suffix>`, suffix `MUX3G8X8`), 13/13 PASS:
+  - [x] Criterion 2: `PUT …/devices/:id/site` → 204; the list shows the new sede and
+        `America/Mexico_City`; a `POST /iclock/cdata?table=ATTLOG` afterwards → `OK: 1`, sets
+        `lastSeenAt` and the clock offset, and keeps the new sede and zone.
+  - [x] Criterion 3: `GET /iclock/getrequest` on a fresh device → `OK`, sets `lastSeenAt`, keeps
+        the sede; an immediate second poll does not rewrite it.
+  - [x] Criterion 4: `POST /attendance/devices` → 201; repeated serial → 409
+        `DEVICE_ALREADY_REGISTERED`.
+  - Unhappy path: `PUT …/site` on an unknown device → 404 `DEVICE_NOT_FOUND`.
+- API log during the run: no error lines.
+- Data left in the dev DB: the two sedes and two devices above (one punch, PIN `9100`).
