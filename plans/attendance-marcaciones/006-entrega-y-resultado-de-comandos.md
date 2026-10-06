@@ -1,5 +1,5 @@
 ---
-status: review
+status: verify
 module: attendance
 min_implementer: mid
 depends_on: ['004']
@@ -358,5 +358,28 @@ El status sigue en `review`.
 
 **Reparación (sesión principal, 2026-10-06):** review → `implementing` para L1 (solo docs:
 ADR 0014 y runbook); después L2 va al tester (testing → review) y vuelve a revisión.
+
+### Re-revisión 2026-10-06 (reviewer, subagente)
+
+Alcance: las reparaciones `7032c97` (L1, docs) y `34aebec` (L2, test) sobre `6e5f411`/`08cac26`.
+
+- **L1 — RESUELTO.** Cambió la viñeta de Consecuencias de
+  `docs/adr/0014-comandos-salientes-con-serial-como-credencial.md`. Ahora dice que, con el serial,
+  se puede responder `devicecmd` y cerrar como `DONE`/`FAILED` ese comando o cualquier otro `SENT`
+  del equipo, y que la bitácora no es evidencia confiable de entrega. Ya no queda la señal falsa
+  de "`SENT` sin resultado". La viñeta de la bitácora en `docs/integraciones/zkteco-senseface-2a.md`
+  se corrigió igual, y el cambio está anotado en la deviación 7. Ese commit solo toca docs y el
+  plan. Nit cosmético que no bloquea: en el runbook, el código inline `ID=<n>&`/`Return=0` quedó
+  partido entre dos líneas, así que se ve como `ID=<n>& Return=0`.
+- **L2 — RESUELTO.** `apps/api/tests/attendance-device-commands.test.ts:73-84` agrega
+  `'C:9:DATA QUERY USERINFO PIN=X'` al `it.each` de 400 `VALIDATION_ERROR`. Lo corrí en vivo y el
+  archivo pasa: 24 tests. La fila AC1 de `## Test coverage` ahora cita ese caso. Ese commit solo
+  toca el test y el plan.
+- `pnpm check` en verde. Turbo vino entero de caché (19/19); format, arch, plans, harness y el
+  resto de los pasos corrieron en vivo. Las reparaciones no tocan `infrastructure/` ni código de
+  producción, así que la corrida de integración anterior (188 en verde) sigue siendo válida.
+- Checklist 13/13; los hallazgos abiertos pasan a 0. I1 e I2 siguen como información.
+
+Resultado: todo resuelto. Status → `verify`.
 
 ## Verification
