@@ -3,6 +3,7 @@ import { asClass } from 'awilix';
 import type { AppModule } from '@/shared/app-module';
 
 import { AssignDeviceSite } from './application/commands/assign-device-site.command';
+import { CompleteDeviceCommands } from './application/commands/complete-device-commands.command';
 import { QueueDeviceCommand } from './application/commands/queue-device-command.command';
 import { RecordDeviceContact } from './application/commands/record-device-contact.command';
 import { RecordDevicePush } from './application/commands/record-device-push.command';
@@ -41,6 +42,7 @@ export interface AttendanceCradle {
   deviceCommandRepository: DeviceCommandRepository;
   queueDeviceCommand: QueueDeviceCommand;
   takeDeviceCommand: TakeDeviceCommand;
+  completeDeviceCommands: CompleteDeviceCommands;
   listDeviceCommands: ListDeviceCommands;
 }
 
@@ -63,6 +65,7 @@ export const attendanceModule: AppModule<AttendanceCradle> = {
     recordDevicePush: asClass(RecordDevicePush).singleton(),
     queueDeviceCommand: asClass(QueueDeviceCommand).singleton(),
     takeDeviceCommand: asClass(TakeDeviceCommand).singleton(),
+    completeDeviceCommands: asClass(CompleteDeviceCommands).singleton(),
     listDeviceCommands: asClass(ListDeviceCommands).singleton(),
   },
   router: createAttendanceRouter,

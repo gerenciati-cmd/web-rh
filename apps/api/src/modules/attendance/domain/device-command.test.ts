@@ -8,6 +8,7 @@ const deviceId = '00000000-0000-4000-8000-0000000000d1' as DeviceId;
 const base = {
   id: '00000000-0000-4000-8000-0000000000c1' as DeviceCommandId,
   deviceId,
+  number: 1,
   queuedBy: '00000000-0000-4000-8000-0000000000a1',
   now: NOW,
 };
@@ -17,7 +18,6 @@ describe('DeviceCommand.queue', () => {
     'DATA UPDATE USERINFO PIN=GOMA850101AB1\tName=Ana Rojas',
     'DATA QUERY USERINFO PIN=1',
     'DATA DELETE USERINFO PIN=1',
-    'C:12:DATA UPDATE USERINFO PIN=1',
   ])('encola el comando de la familia USERINFO %j', (command) => {
     const result = DeviceCommand.queue({ ...base, command });
 
@@ -39,6 +39,8 @@ describe('DeviceCommand.queue', () => {
     'data update userinfo PIN=1',
     ' DATA UPDATE USERINFO PIN=1',
     'C:x:DATA UPDATE USERINFO PIN=1',
+    // Plan 006: el prefijo lo asigna el API; escrito a mano se rechaza.
+    'C:12:DATA UPDATE USERINFO PIN=1',
     // Hallazgo H1 de la revisión: un salto de línea colaría un segundo comando.
     'DATA QUERY USERINFO PIN=1\nC:99:CLEAR DATA',
     'DATA QUERY USERINFO PIN=1\r\nCLEAR DATA',

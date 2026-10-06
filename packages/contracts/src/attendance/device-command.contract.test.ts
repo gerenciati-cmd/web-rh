@@ -12,7 +12,6 @@ describe('QueueDeviceCommandSchema', () => {
     'DATA UPDATE USERINFO PIN=GOMA850101AB1\tName=Ana Rojas',
     'DATA QUERY USERINFO PIN=1',
     'DATA DELETE USERINFO PIN=1',
-    'C:12:DATA UPDATE USERINFO PIN=1',
   ])('acepta el comando USERINFO %j', (command) => {
     expect(QueueDeviceCommandSchema.safeParse({ command }).success).toBe(true);
   });
@@ -22,6 +21,8 @@ describe('QueueDeviceCommandSchema', () => {
     'REBOOT',
     'DATA UPDATE BIODATA Pin=1',
     'DATA UPDATE USERINFO',
+    // Plan 006: el prefijo C:<n>: lo asigna el API.
+    'C:12:DATA UPDATE USERINFO PIN=1',
     // Hallazgo H1 de la revisión: un salto de línea colaría un segundo comando.
     'DATA QUERY USERINFO PIN=1\nC:99:CLEAR DATA',
     'DATA QUERY USERINFO PIN=1\rCLEAR DATA',
@@ -65,10 +66,13 @@ describe('QueueDeviceCommandSchema', () => {
 describe('DeviceCommandSchema', () => {
   const valid = {
     id: '00000000-0000-4000-8000-0000000000c1',
+    number: 1,
     command: 'DATA QUERY USERINFO PIN=1',
     status: 'QUEUED',
     queuedAt: '2026-10-02T12:00:00.000Z',
     sentAt: null,
+    returnCode: null,
+    completedAt: null,
     queuedBy: '00000000-0000-4000-8000-0000000000a1',
   };
 
@@ -84,7 +88,8 @@ describe('DeviceCommandSchema', () => {
   });
 
   it('rechaza un estado desconocido', () => {
-    expect(DeviceCommandSchema.safeParse({ ...valid, status: 'FAILED' }).success).toBe(false);
+    // Plan 006: FAILED pasó a ser un estado válido; se prueba con uno inexistente.
+    expect(DeviceCommandSchema.safeParse({ ...valid, status: 'CANCELLED' }).success).toBe(false);
   });
 });
 

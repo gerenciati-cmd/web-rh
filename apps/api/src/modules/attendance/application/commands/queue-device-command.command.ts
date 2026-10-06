@@ -36,6 +36,7 @@ export class QueueDeviceCommand implements Command<QueueDeviceCommandInput, { id
     const command = DeviceCommand.queue({
       id: idGenerator.next() as DeviceCommandId,
       deviceId: device.id,
+      number: await deviceCommandRepository.nextNumber(),
       command: input.command,
       queuedBy: input.queuedBy,
       now: clock.now(),
@@ -45,7 +46,11 @@ export class QueueDeviceCommand implements Command<QueueDeviceCommandInput, { id
     await deviceCommandRepository.save(command.value);
     // El texto del comando puede llevar un PIN o un nombre: no se registra.
     logger.info(
-      { serialNumber: device.serialNumber, commandId: command.value.id },
+      {
+        serialNumber: device.serialNumber,
+        commandId: command.value.id,
+        number: command.value.number,
+      },
       'zkteco: comando encolado',
     );
     return ok({ id: command.value.id });

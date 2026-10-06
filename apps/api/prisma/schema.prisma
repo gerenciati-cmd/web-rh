@@ -215,34 +215,38 @@ model LoginThrottle {
 // ── Módulo: attendance ──────────────────────────────────────────────────────
 
 model AttendanceDevice {
-  id           String            @id @db.Uuid
-  serialNumber String            @unique @map("serial_number") @db.VarChar(64)
-  name         String            @db.VarChar(100)
-  timeZone     String            @map("time_zone") @db.VarChar(64)
-  active       Boolean           @default(true)
-  registeredAt DateTime          @map("registered_at") @db.Timestamptz(3)
-  lastSeenAt   DateTime?         @map("last_seen_at") @db.Timestamptz(3)
+  id                    String                    @id @db.Uuid
+  serialNumber          String                    @unique @map("serial_number") @db.VarChar(64)
+  name                  String                    @db.VarChar(100)
+  timeZone              String                    @map("time_zone") @db.VarChar(64)
+  active                Boolean                   @default(true)
+  registeredAt          DateTime                  @map("registered_at") @db.Timestamptz(3)
+  lastSeenAt            DateTime?                 @map("last_seen_at") @db.Timestamptz(3)
   /// referencia por id a organization.sites, sin FK (ADR 0010)
-  siteId                String?  @map("site_id") @db.Uuid
-  clockOffsetSeconds    Int?     @map("clock_offset_seconds")
-  clockOffsetMeasuredAt DateTime? @map("clock_offset_measured_at") @db.Timestamptz(3)
-  punches     AttendancePunch[]
-  commands    AttendanceDeviceCommand[]
+  siteId                String?                   @map("site_id") @db.Uuid
+  clockOffsetSeconds    Int?                      @map("clock_offset_seconds")
+  clockOffsetMeasuredAt DateTime?                 @map("clock_offset_measured_at") @db.Timestamptz(3)
+  punches               AttendancePunch[]
+  commands              AttendanceDeviceCommand[]
 
   @@map("devices")
   @@schema("attendance")
 }
 
 model AttendanceDeviceCommand {
-  id       String           @id @db.Uuid
-  deviceId String           @map("device_id") @db.Uuid
+  id          String           @id @db.Uuid
+  deviceId    String           @map("device_id") @db.Uuid
   /// Mismo módulo: la FK al equipo está permitida.
-  device   AttendanceDevice @relation(fields: [deviceId], references: [id])
-  command  String           @db.VarChar(500)
-  status   String           @db.VarChar(8)
-  queuedAt DateTime         @map("queued_at") @db.Timestamptz(3)
-  sentAt   DateTime?        @map("sent_at") @db.Timestamptz(3)
-  queuedBy String           @map("queued_by") @db.Uuid
+  device      AttendanceDevice @relation(fields: [deviceId], references: [id])
+  /// Número C:<n>: con el que se entrega; el equipo lo devuelve como ID en su respuesta.
+  number      Int              @unique @default(autoincrement())
+  command     String           @db.VarChar(500)
+  status      String           @db.VarChar(8)
+  queuedAt    DateTime         @map("queued_at") @db.Timestamptz(3)
+  sentAt      DateTime?        @map("sent_at") @db.Timestamptz(3)
+  returnCode  String?          @map("return_code") @db.VarChar(16)
+  completedAt DateTime?        @map("completed_at") @db.Timestamptz(3)
+  queuedBy    String           @map("queued_by") @db.Uuid
 
   @@index([deviceId, status, queuedAt])
   @@map("device_commands")

@@ -80,7 +80,7 @@ describe('QueueDeviceCommand', () => {
     expect(logger.entries).toEqual([
       {
         level: 'info',
-        obj: { serialNumber: 'TESTSN001', commandId: result.value.id },
+        obj: { serialNumber: 'TESTSN001', commandId: result.value.id, number: 1 },
         msg: 'zkteco: comando encolado',
       },
     ]);

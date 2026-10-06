@@ -123,7 +123,7 @@ describe('sonda de comandos ADMS (HTTP)', () => {
       const first = await request(app).get(`/iclock/getrequest?SN=${SERIAL}`).expect(200);
       const second = await request(app).get(`/iclock/getrequest?SN=${SERIAL}`).expect(200);
 
-      expect(first.text).toBe(USER_COMMAND);
+      expect(first.text).toBe(`C:1:${USER_COMMAND}`);
       expect(second.text).toBe('OK');
     });
 
@@ -142,7 +142,11 @@ describe('sonda de comandos ADMS (HTTP)', () => {
         polls.push((await request(app).get(`/iclock/getrequest?SN=${SERIAL}`)).text);
       }
 
-      expect(polls).toEqual(['DATA QUERY USERINFO PIN=1', 'DATA QUERY USERINFO PIN=2', 'OK']);
+      expect(polls).toEqual([
+        'C:1:DATA QUERY USERINFO PIN=1',
+        'C:2:DATA QUERY USERINFO PIN=2',
+        'OK',
+      ]);
     });
 
     it('un equipo no registrado no recibe comandos de otro y se le niega', async () => {
@@ -152,7 +156,7 @@ describe('sonda de comandos ADMS (HTTP)', () => {
 
       expect(response.text).not.toContain('USERINFO');
       const still = await request(app).get(`/iclock/getrequest?SN=${SERIAL}`).expect(200);
-      expect(still.text).toBe(USER_COMMAND);
+      expect(still.text).toBe(`C:1:${USER_COMMAND}`);
     });
   });
 
@@ -237,17 +241,24 @@ describe('sonda de comandos ADMS (HTTP)', () => {
       expect(JSON.stringify(logger.entries)).not.toContain('Ana Rojas');
     });
 
-    it('acepta el resultado separado por saltos de línea', async () => {
+    // Plan 006 (hallazgo L3 del 004): cada línea es un resultado propio.
+    it('registra un resultado por línea', async () => {
       await request(app)
         .post(`/iclock/devicecmd?SN=${SERIAL}`)
         .set('Content-Type', 'text/plain')
-        .send('ID=2\nReturn=-1\nCMD=DATA')
+        .send('ID=2&Return=-1&CMD=DATA\nID=3&Return=0&CMD=DATA')
         .expect(200);
 
       expect(logger.entries).toContainEqual(
         expect.objectContaining({
           msg: 'zkteco: resultado de comando',
           obj: { serialNumber: SERIAL, fields: { ID: '2', Return: '-1', CMD: 'DATA' } },
+        }),
+      );
+      expect(logger.entries).toContainEqual(
+        expect.objectContaining({
+          msg: 'zkteco: resultado de comando',
+          obj: { serialNumber: SERIAL, fields: { ID: '3', Return: '0', CMD: 'DATA' } },
         }),
       );
     });

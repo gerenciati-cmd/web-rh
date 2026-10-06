@@ -1,6 +1,7 @@
 import express, { Router, type Request, type Response } from 'express';
 import { z } from 'zod';
 
+import type { CompleteDeviceCommands } from '../application/commands/complete-device-commands.command';
 import type {
   DeviceContactKind,
   RecordDeviceContact,
@@ -26,6 +27,7 @@ export function createZktecoAdmsRouter(deps: {
   recordDeviceContact: RecordDeviceContact;
   recordDevicePush: RecordDevicePush;
   takeDeviceCommand: TakeDeviceCommand;
+  completeDeviceCommands: CompleteDeviceCommands;
 }): Router {
   const router = Router();
 
@@ -35,7 +37,10 @@ export function createZktecoAdmsRouter(deps: {
   const contact =
     (
       kind: DeviceContactKind,
-      onOk: (device: { serialNumber: string; deviceId: string }) => string | Promise<string>,
+      onOk: (
+        device: { serialNumber: string; deviceId: string },
+        body: string,
+      ) => string | Promise<string>,
     ) =>
     async (req: Request, res: Response) => {
       const query = parseQuery(req, res);
@@ -54,7 +59,7 @@ export function createZktecoAdmsRouter(deps: {
         sendNotAllowed(res);
         return;
       }
-      sendText(res, await onOk({ serialNumber: query.SN, deviceId: result.value.deviceId }));
+      sendText(res, await onOk({ serialNumber: query.SN, deviceId: result.value.deviceId }, body));
     };
 
   router.get(
@@ -91,9 +96,13 @@ export function createZktecoAdmsRouter(deps: {
       async ({ deviceId }) => (await deps.takeDeviceCommand.execute({ deviceId })) ?? 'OK',
     ),
   );
+  // El equipo responde aquí a cada comando entregado; la respuesta cierra el comando.
   router.post(
     '/iclock/devicecmd',
-    contact('command-result', () => 'OK'),
+    contact('command-result', async ({ deviceId }, body) => {
+      await deps.completeDeviceCommands.execute({ deviceId, body });
+      return 'OK';
+    }),
   );
   // Último: registra rutas que el firmware use y aún no conocemos (p. ej. `registry`).
   router.all(

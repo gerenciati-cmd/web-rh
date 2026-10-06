@@ -25,6 +25,7 @@ function setUp() {
     const result = DeviceCommand.queue({
       id,
       deviceId,
+      number: n,
       command: `DATA QUERY USERINFO PIN=${n}`,
       queuedBy: '00000000-0000-4000-8000-0000000000a1',
       now: queuedAt,
@@ -56,8 +57,8 @@ describe('TakeDeviceCommand', () => {
     const newer = await queue(2, DEVICE, new Date('2026-10-02T12:05:00Z'));
     const older = await queue(1, DEVICE, new Date('2026-10-02T12:00:00Z'));
 
-    expect(await take.execute({ deviceId: DEVICE })).toBe('DATA QUERY USERINFO PIN=1');
-    expect(await take.execute({ deviceId: DEVICE })).toBe('DATA QUERY USERINFO PIN=2');
+    expect(await take.execute({ deviceId: DEVICE })).toBe('C:1:DATA QUERY USERINFO PIN=1');
+    expect(await take.execute({ deviceId: DEVICE })).toBe('C:2:DATA QUERY USERINFO PIN=2');
     expect(await take.execute({ deviceId: DEVICE })).toBeNull();
     expect(store.commands.get(older)?.status).toBe('SENT');
     expect(store.commands.get(newer)?.status).toBe('SENT');
@@ -75,7 +76,7 @@ describe('TakeDeviceCommand', () => {
     expect(logger.entries).toEqual([
       {
         level: 'info',
-        obj: { deviceId: DEVICE, commandId: id },
+        obj: { deviceId: DEVICE, commandId: id, number: 1 },
         msg: 'zkteco: comando entregado',
       },
     ]);

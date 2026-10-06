@@ -4,7 +4,7 @@ import type { Clock, Logger } from '@/shared/application/ports';
 import type { Command } from '@/shared/application/use-case';
 
 import type { DeviceId } from '../../domain/device';
-import { parseCommandResult, redactDeviceFields } from '../../domain/device-record';
+import { parseCommandResults, redactDeviceFields } from '../../domain/device-record';
 import type { DeviceRepository } from '../../domain/device.repository';
 import { DeviceNotAllowedError } from '../../domain/errors';
 
@@ -59,10 +59,12 @@ export class RecordDeviceContact implements Command<
     else logger.info(logged, 'zkteco: contacto del dispositivo');
 
     if (contact.kind === 'command-result') {
-      logger.info(
-        { serialNumber, fields: redactDeviceFields(parseCommandResult(body)) },
-        'zkteco: resultado de comando',
-      );
+      for (const result of parseCommandResults(body)) {
+        logger.info(
+          { serialNumber, fields: redactDeviceFields(result) },
+          'zkteco: resultado de comando',
+        );
+      }
     }
 
     return ok({ deviceId: device.id });

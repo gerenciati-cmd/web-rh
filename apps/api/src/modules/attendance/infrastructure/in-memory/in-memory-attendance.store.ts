@@ -9,7 +9,7 @@ import { err, ok, type Result } from '@rrhh/domain';
 
 import type { AttendanceQueries, RawPunch } from '../../application/queries/attendance.queries';
 import { Device, type DeviceId, type DeviceProps } from '../../domain/device';
-import type { DeviceCommand } from '../../domain/device-command';
+import { DeviceCommand } from '../../domain/device-command';
 import type { DeviceCommandRepository } from '../../domain/device-command.repository';
 import type { DeviceRepository } from '../../domain/device.repository';
 import { DeviceAlreadyRegisteredError } from '../../domain/errors';
@@ -27,6 +27,8 @@ export class InMemoryAttendanceStore {
 }
 
 export class InMemoryDeviceCommandRepository implements DeviceCommandRepository {
+  #lastNumber = 0;
+
   constructor(private readonly store: InMemoryAttendanceStore) {}
 
   save(command: DeviceCommand): Promise<void> {
@@ -34,6 +36,26 @@ export class InMemoryDeviceCommandRepository implements DeviceCommandRepository 
     return Promise.resolve();
   }
 
+  claim(command: DeviceCommand): Promise<boolean> {
+    // Como el `updateMany` condicional de Prisma: solo gana si lo guardado sigue en cola.
+    if (this.store.commands.get(command.id)?.status !== 'QUEUED') return Promise.resolve(false);
+    this.store.commands.set(command.id, copyOf(command));
+    return Promise.resolve(true);
+  }
+
+  nextNumber(): Promise<number> {
+    this.#lastNumber += 1;
+    return Promise.resolve(this.#lastNumber);
+  }
+
+  findByNumber(deviceId: DeviceId, number: number): Promise<DeviceCommand | null> {
+    const found = [...this.store.commands.values()].find(
+      (command) => command.deviceId === deviceId && command.number === number,
+    );
+    return Promise.resolve(found ? copyOf(found) : null);
+  }
+
+  // Devuelve una copia, como una lectura de BD: marcarla enviada no toca lo guardado hasta `claim`.
   nextQueued(deviceId: DeviceId): Promise<DeviceCommand | null> {
     const queued = [...this.store.commands.values()]
       .filter((command) => command.deviceId === deviceId && command.status === 'QUEUED')
@@ -41,8 +63,23 @@ export class InMemoryDeviceCommandRepository implements DeviceCommandRepository 
         (a, b) =>
           a.queuedAt.getTime() - b.queuedAt.getTime() || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
       );
-    return Promise.resolve(queued[0] ?? null);
+    const [oldest] = queued;
+    return Promise.resolve(oldest ? copyOf(oldest) : null);
   }
+}
+
+function copyOf(command: DeviceCommand): DeviceCommand {
+  return DeviceCommand.restore(command.id, {
+    deviceId: command.deviceId,
+    number: command.number,
+    command: command.command,
+    status: command.status,
+    queuedAt: command.queuedAt,
+    sentAt: command.sentAt,
+    returnCode: command.returnCode,
+    completedAt: command.completedAt,
+    queuedBy: command.queuedBy,
+  });
 }
 
 export class InMemoryDeviceRepository implements DeviceRepository {
@@ -148,10 +185,13 @@ export class InMemoryAttendanceQueries implements AttendanceQueries {
       )
       .map((command) => ({
         id: command.id,
+        number: command.number,
         command: command.command,
         status: command.status,
         queuedAt: command.queuedAt.toISOString(),
         sentAt: command.sentAt?.toISOString() ?? null,
+        returnCode: command.returnCode,
+        completedAt: command.completedAt?.toISOString() ?? null,
         queuedBy: command.queuedBy,
       }));
     const items = all.slice((page - 1) * pageSize, page * pageSize);

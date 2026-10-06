@@ -156,16 +156,15 @@ describe('RecordDeviceContact', () => {
       expect(logged).not.toContain('1234');
     });
 
-    it('un cuerpo sin pares registra el resultado con campos vacíos', async () => {
+    // Plan 006: una línea sin pares no es un resultado (antes se registraba con campos vacíos).
+    it('un cuerpo sin pares no registra ningún resultado', async () => {
       const { logger, command } = await setUp(['TESTSN001']);
 
       await command.execute({ ...resultInput, body: 'OK', bodyLength: 2 });
 
-      expect(logger.entries).toContainEqual({
-        level: 'info',
-        obj: { serialNumber: 'TESTSN001', fields: {} },
-        msg: 'zkteco: resultado de comando',
-      });
+      expect(logger.entries.map((entry) => entry.msg)).not.toContain(
+        'zkteco: resultado de comando',
+      );
     });
 
     it('otros tipos de contacto no registran resultado de comando aunque traigan cuerpo', async () => {

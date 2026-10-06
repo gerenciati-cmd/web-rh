@@ -65,18 +65,24 @@ export function isDeviceIdentifier(text: string): boolean {
 const MAX_LOGGABLE_VALUE_LENGTH = 64;
 
 /**
- * Interpreta el cuerpo de `devicecmd` como pares `clave=valor` separados por `&` o salto de línea.
- * Lo que no tiene forma de par con clave identificadora se ignora: el formato no está confirmado.
+ * Interpreta el cuerpo de `devicecmd`: un resultado por línea, cada uno con pares `clave=valor`
+ * separados por `&` (observado: `ID=4&Return=0&CMD=DATA`, una línea). Varias líneas por cuerpo es
+ * una hipótesis. Lo que no tiene forma de par con clave identificadora se ignora, y una línea sin
+ * ningún par válido se descarta.
  */
-export function parseCommandResult(body: string): Record<string, string> {
-  const fields: Record<string, string> = {};
-  for (const part of body.split(/[&\r\n]+/)) {
-    const eq = part.indexOf('=');
-    if (eq <= 0) continue;
-    const key = part.slice(0, eq);
-    if (isDeviceIdentifier(key)) fields[key] = part.slice(eq + 1);
+export function parseCommandResults(body: string): Record<string, string>[] {
+  const results: Record<string, string>[] = [];
+  for (const line of body.split(/\r?\n|\r/)) {
+    const fields: Record<string, string> = {};
+    for (const part of line.split('&')) {
+      const eq = part.indexOf('=');
+      if (eq <= 0) continue;
+      const key = part.slice(0, eq);
+      if (isDeviceIdentifier(key)) fields[key] = part.slice(eq + 1);
+    }
+    if (Object.keys(fields).length > 0) results.push(fields);
   }
-  return fields;
+  return results;
 }
 
 /** Conserva todas las claves y reemplaza por `[redactado:<largo>]` los valores no permitidos. */

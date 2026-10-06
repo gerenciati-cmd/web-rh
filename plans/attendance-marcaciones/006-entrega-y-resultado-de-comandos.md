@@ -1,5 +1,5 @@
 ---
-status: approved
+status: testing
 module: attendance
 min_implementer: mid
 depends_on: ['004']
@@ -205,6 +205,38 @@ deps.completeDeviceCommands.execute({ deviceId, body }); return 'OK'; })` — ex
 | e2e         | no      | (no e2e infrastructure yet)                                                               |
 
 ## Deviations
+
+1. **Migration written from `prisma migrate diff`** (cosmetic): `pnpm db:migrate` stops in a
+   non-interactive shell because of the unique-index warning. The SQL came from
+   `prisma migrate diff --from-config-datasource --to-schema` (only `ADD COLUMN` ×3 + unique
+   index, no `DROP`), saved as `20261006120000_add_device_command_result/migration.sql` and
+   applied with `db:deploy`.
+2. **Dev DB was behind** (note): before this migration, `migrate dev` applied 9 existing
+   migrations (`create_role_assignments` … `create_device_commands`) that the local `rrhh` DB
+   lacked. Nothing was dropped. So the dev DB had **no** plan-004 command rows, and acceptance
+   criterion 6 (existing rows get a `number`) cannot be checked there; the `SERIAL` column fills
+   existing rows by Postgres semantics; for the verifier.
+3. **In-memory reads return copies** (cosmetic, needed by the plan): `nextQueued` and
+   `findByNumber` return a copy, as a DB read would; otherwise `markSent` on the returned object
+   mutated the stored one and `claim` always lost.
+4. **`markSent` guard** (cosmetic): it now acts only from `QUEUED` (was "not SENT"), so a DONE or
+   FAILED command never goes back to SENT.
+5. **Assertions changed in Step 7 files** (forced by the plan's behavior):
+   - `device-command.test.ts` and `device-command.contract.test.ts`: `C:12:DATA UPDATE USERINFO
+PIN=1` moved from "accepted" to "rejected".
+   - `device-command.contract.test.ts`: the "unknown status" case used `FAILED`, now valid;
+     it uses `CANCELLED`.
+   - `device-record.test.ts`: the multi-line case now expects one result per line.
+   - `record-device-contact.command.test.ts`: a body without pairs no longer logs an empty
+     result ("no registra ningún resultado").
+   - `tests/attendance-device-commands.test.ts`: delivered texts carry `C:<n>:`; the multi-line
+     `devicecmd` case sends two one-line results and expects two log lines.
+   - `queue-device-command.command.test.ts` / `take-device-command.command.test.ts`: logs carry
+     `number`.
+6. **Lint** (cosmetic): `result.ID` / `result.Return` in dot notation (`dot-notation` rule).
+
+Run at the end: `pnpm check` green (api 838 passed / 5 skipped, contracts 259);
+`pnpm test:integration` 15 files / 178 tests green.
 
 ## Test coverage
 

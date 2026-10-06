@@ -2107,7 +2107,7 @@
       "post": {
         "operationId": "queueDeviceCommand",
         "summary": "Encola un comando USERINFO para el próximo sondeo del checador",
-        "description": "Deja un comando en cola para que el checador lo recoja en su próximo sondeo. Es una herramienta de diagnóstico del protocolo del equipo.\n\n**Quién puede:** solo el administrador del holding.\n\n**Necesita:** el `deviceId` y un comando que cumpla el patrón USERINFO. Responde con el `id` del comando; el resultado en el equipo no se confirma aquí.",
+        "description": "Deja un comando en cola para que el checador lo recoja en su próximo sondeo. Es una herramienta de diagnóstico del protocolo del equipo.\n\n**Quién puede:** solo el administrador del holding.\n\n**Necesita:** el `deviceId` y un comando que cumpla el patrón USERINFO, sin prefijo `C:<n>:`. Responde con el `id` del comando; el resultado del equipo se ve en la bitácora.",
         "tags": [
           "attendanceDeviceCommands"
         ],
@@ -2179,7 +2179,7 @@
       "get": {
         "operationId": "listDeviceCommands",
         "summary": "Bitácora de comandos enviados a un checador",
-        "description": "Devuelve la bitácora de comandos de un checador, paginada, con su estado (en cola o enviado).\n\n**Quién puede:** solo el administrador del holding.\n\n**Necesita:** el `deviceId` en la ruta. No modifica datos.",
+        "description": "Devuelve la bitácora de comandos de un checador, paginada, con su estado (en cola, enviado, o el resultado que respondió el equipo).\n\n**Quién puede:** solo el administrador del holding.\n\n**Necesita:** el `deviceId` en la ruta. No modifica datos.",
         "tags": [
           "attendanceDeviceCommands"
         ],
@@ -2671,17 +2671,25 @@
             "format": "uuid",
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
           },
+          "number": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991,
+            "description": "Número con el que se envió (C:<n>:); el equipo lo devuelve como ID"
+          },
           "command": {
             "type": "string",
-            "description": "Texto del comando tal como se envió al equipo"
+            "description": "Texto del comando, sin el prefijo C:<n>:"
           },
           "status": {
             "type": "string",
             "enum": [
               "QUEUED",
-              "SENT"
+              "SENT",
+              "DONE",
+              "FAILED"
             ],
-            "description": "QUEUED: en cola; SENT: ya entregado al equipo"
+            "description": "QUEUED: en cola; SENT: entregado; DONE: el equipo respondió Return=0; FAILED: respondió otro código"
           },
           "queuedAt": {
             "type": "string",
@@ -2701,6 +2709,26 @@
             ],
             "description": "Cuándo se entregó; null si sigue en cola"
           },
+          "returnCode": {
+            "description": "Código Return que respondió el equipo; null si aún no responde",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "completedAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Cuándo llegó la respuesta del equipo; null si aún no responde"
+          },
           "queuedBy": {
             "type": "string",
             "format": "uuid",
@@ -2710,10 +2738,13 @@
         },
         "required": [
           "id",
+          "number",
           "command",
           "status",
           "queuedAt",
           "sentAt",
+          "returnCode",
+          "completedAt",
           "queuedBy"
         ],
         "additionalProperties": false
@@ -3152,8 +3183,8 @@
             "type": "string",
             "minLength": 1,
             "maxLength": 500,
-            "pattern": "^(C:\\d+:)?DATA (UPDATE|QUERY|DELETE) USERINFO (?:\\t|[^\\p{Cc}])*$",
-            "description": "Comando USERINFO (`DATA UPDATE|QUERY|DELETE USERINFO ...`, con prefijo `C:<n>:` opcional); hasta 500 caracteres"
+            "pattern": "^DATA (UPDATE|QUERY|DELETE) USERINFO (?:\\t|[^\\p{Cc}])*$",
+            "description": "Comando USERINFO (`DATA UPDATE|QUERY|DELETE USERINFO ...`), sin prefijo `C:<n>:`: lo asigna el API; hasta 500 caracteres"
           }
         },
         "required": [

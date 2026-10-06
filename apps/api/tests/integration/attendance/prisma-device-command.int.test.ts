@@ -43,6 +43,7 @@ async function savedCommand(
   const created = DeviceCommand.queue({
     id,
     deviceId: device.id,
+    number: await commands.nextNumber(),
     command: text,
     queuedBy: USER,
     now: queuedAt,
@@ -153,10 +154,13 @@ describe('PrismaAttendanceQueries.listDeviceCommands', () => {
     expect(second.items.map((item) => item.command)).toEqual(['DATA QUERY USERINFO PIN=1']);
     expect(first.items[0]).toEqual({
       id: expect.any(String),
+      number: expect.any(Number),
       command: 'DATA QUERY USERINFO PIN=3',
       status: 'QUEUED',
       queuedAt: '2026-10-02T12:02:00.000Z',
       sentAt: null,
+      returnCode: null,
+      completedAt: null,
       queuedBy: USER,
     });
   });

@@ -11,8 +11,14 @@ interface Deps {
 }
 
 /**
- * Entrega el comando en cola más antiguo del equipo (una sola vez) cuando éste consulta
- * `getrequest`; devuelve su texto, o `null` si no hay ninguno.
+ * Intentos ante sondeos concurrentes del mismo equipo; si se pierden todos, el equipo vuelve a
+ * preguntar en ~10 s.
+ */
+const MAX_CLAIM_ATTEMPTS = 3;
+
+/**
+ * Entrega el comando en cola más antiguo del equipo (una sola vez, aun con sondeos concurrentes)
+ * cuando éste consulta `getrequest`; devuelve su texto con `C:<n>:`, o `null` si no hay ninguno.
  */
 export class TakeDeviceCommand implements UseCase<{ deviceId: string }, string | null> {
   constructor(private readonly deps: Deps) {}
@@ -20,12 +26,19 @@ export class TakeDeviceCommand implements UseCase<{ deviceId: string }, string |
   async execute(input: { deviceId: string }): Promise<string | null> {
     const { deviceCommandRepository, clock, logger } = this.deps;
 
-    const command = await deviceCommandRepository.nextQueued(input.deviceId as DeviceId);
-    if (!command) return null;
+    for (let attempt = 0; attempt < MAX_CLAIM_ATTEMPTS; attempt += 1) {
+      const command = await deviceCommandRepository.nextQueued(input.deviceId as DeviceId);
+      if (!command) return null;
 
-    command.markSent(clock.now());
-    await deviceCommandRepository.save(command);
-    logger.info({ deviceId: input.deviceId, commandId: command.id }, 'zkteco: comando entregado');
-    return command.command;
+      command.markSent(clock.now());
+      if (await deviceCommandRepository.claim(command)) {
+        logger.info(
+          { deviceId: input.deviceId, commandId: command.id, number: command.number },
+          'zkteco: comando entregado',
+        );
+        return command.wireText;
+      }
+    }
+    return null;
   }
 }
