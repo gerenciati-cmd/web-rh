@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
+import { TakeDeviceCommand } from '@/modules/attendance/application/commands/take-device-command.command';
 import { Device, type DeviceId } from '@/modules/attendance/domain/device';
 import { DeviceCommand, type DeviceCommandId } from '@/modules/attendance/domain/device-command';
 import { PrismaAttendanceQueries } from '@/modules/attendance/infrastructure/prisma-attendance.queries';
 import { PrismaDeviceCommandRepository } from '@/modules/attendance/infrastructure/prisma-device-command.repository';
 import { PrismaDeviceRepository } from '@/modules/attendance/infrastructure/prisma-device.repository';
-import { SequentialIdGenerator } from '@/shared/testing/fakes';
+import { FixedClock, RecordingLogger, SequentialIdGenerator } from '@/shared/testing/fakes';
 
 import { useTestDatabase } from '../support';
 
@@ -132,6 +133,84 @@ describe('PrismaDeviceCommandRepository', () => {
     expect(await commands.nextQueued(a.id)).toBeNull();
     expect((await commands.nextQueued(b.id))?.id).toBe(forB.id);
   });
+
+  it('nextNumber devuelve enteros crecientes y únicos, aun entre equipos distintos', async () => {
+    const a = await savedDevice('TESTSN001');
+    const b = await savedDevice('TESTSN002');
+
+    const first = await savedCommand(a, 'DATA QUERY USERINFO PIN=1', NOW);
+    const second = await savedCommand(b, 'DATA QUERY USERINFO PIN=2', NOW);
+
+    expect(second.number).toBeGreaterThan(first.number);
+    expect(first.number).not.toBe(second.number);
+  });
+
+  it('findByNumber encuentra el comando de ese equipo y número, y null si no existe o es de otro equipo', async () => {
+    const a = await savedDevice('TESTSN001');
+    const b = await savedDevice('TESTSN002');
+    const command = await savedCommand(a, 'DATA QUERY USERINFO PIN=1', NOW);
+
+    expect((await commands.findByNumber(a.id, command.number))?.id).toBe(command.id);
+    expect(await commands.findByNumber(b.id, command.number)).toBeNull();
+    expect(await commands.findByNumber(a.id, command.number + 1000)).toBeNull();
+  });
+
+  // Acceptance criterion 5 del plan 006: con reclamo condicional, de dos tomas simultáneas del
+  // mismo comando solo una debe ganar.
+  it('claim: de dos reclamos concurrentes del mismo comando QUEUED, exactamente uno gana', async () => {
+    const device = await savedDevice('TESTSN001');
+    const command = await savedCommand(device, 'DATA QUERY USERINFO PIN=1', NOW);
+    const sentAt = new Date('2026-10-02T12:00:10Z');
+    const copyA = DeviceCommand.restore(command.id, {
+      deviceId: device.id,
+      number: command.number,
+      command: command.command,
+      status: 'QUEUED',
+      queuedAt: NOW,
+      sentAt: null,
+      returnCode: null,
+      completedAt: null,
+      queuedBy: USER,
+    });
+    const copyB = DeviceCommand.restore(command.id, {
+      deviceId: device.id,
+      number: command.number,
+      command: command.command,
+      status: 'QUEUED',
+      queuedAt: NOW,
+      sentAt: null,
+      returnCode: null,
+      completedAt: null,
+      queuedBy: USER,
+    });
+    copyA.markSent(sentAt);
+    copyB.markSent(sentAt);
+
+    const results = await Promise.all([commands.claim(copyA), commands.claim(copyB)]);
+
+    expect(results.filter(Boolean)).toHaveLength(1);
+    const stored = await commands.findByNumber(device.id, command.number);
+    expect(stored?.status).toBe('SENT');
+  });
+
+  it('TakeDeviceCommand: dos tomas concurrentes del mismo equipo con un único comando en cola entregan solo una', async () => {
+    const device = await savedDevice('TESTSN001');
+    await savedCommand(device, 'DATA QUERY USERINFO PIN=1', NOW);
+    const take = new TakeDeviceCommand({
+      deviceCommandRepository: commands,
+      clock: new FixedClock(NOW),
+      logger: new RecordingLogger(),
+    });
+
+    const [first, second] = await Promise.all([
+      take.execute({ deviceId: device.id }),
+      take.execute({ deviceId: device.id }),
+    ]);
+
+    const delivered = [first, second].filter((result) => result !== null);
+    expect(delivered).toHaveLength(1);
+    expect([first, second]).toContain(null);
+  });
 });
 
 describe('PrismaAttendanceQueries.listDeviceCommands', () => {
@@ -161,6 +240,30 @@ describe('PrismaAttendanceQueries.listDeviceCommands', () => {
       sentAt: null,
       returnCode: null,
       completedAt: null,
+      queuedBy: USER,
+    });
+  });
+
+  it('un comando completado trae returnCode y completedAt en el DTO', async () => {
+    const device = await savedDevice('TESTSN001');
+    const command = await savedCommand(device, 'DATA QUERY USERINFO PIN=1', NOW);
+    const sentAt = new Date('2026-10-02T12:00:05Z');
+    const completedAt = new Date('2026-10-02T12:00:10Z');
+    command.markSent(sentAt);
+    command.complete('0', completedAt);
+    await commands.save(command);
+
+    const page = await queries.listDeviceCommands(device.id, { page: 1, pageSize: 10 });
+
+    expect(page.items[0]).toEqual({
+      id: command.id,
+      number: command.number,
+      command: 'DATA QUERY USERINFO PIN=1',
+      status: 'DONE',
+      queuedAt: NOW.toISOString(),
+      sentAt: sentAt.toISOString(),
+      returnCode: '0',
+      completedAt: completedAt.toISOString(),
       queuedBy: USER,
     });
   });

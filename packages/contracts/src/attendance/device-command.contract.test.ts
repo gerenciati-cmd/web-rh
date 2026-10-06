@@ -91,6 +91,27 @@ describe('DeviceCommandSchema', () => {
     // Plan 006: FAILED pasó a ser un estado válido; se prueba con uno inexistente.
     expect(DeviceCommandSchema.safeParse({ ...valid, status: 'CANCELLED' }).success).toBe(false);
   });
+
+  it('acepta DONE y FAILED con returnCode y completedAt', () => {
+    const done = {
+      ...valid,
+      status: 'DONE',
+      sentAt: '2026-10-02T12:00:05.000Z',
+      returnCode: '0',
+      completedAt: '2026-10-02T12:00:10.000Z',
+    };
+    const failed = { ...done, status: 'FAILED', returnCode: '-1' };
+
+    expect(DeviceCommandSchema.safeParse(done).success).toBe(true);
+    expect(DeviceCommandSchema.safeParse(failed).success).toBe(true);
+  });
+
+  it('rechaza returnCode o completedAt que no sean texto/fecha ISO', () => {
+    expect(DeviceCommandSchema.safeParse({ ...valid, returnCode: 0 }).success).toBe(false);
+    expect(DeviceCommandSchema.safeParse({ ...valid, completedAt: '2026-10-02' }).success).toBe(
+      false,
+    );
+  });
 });
 
 describe('attendanceDeviceCommandRoutes', () => {

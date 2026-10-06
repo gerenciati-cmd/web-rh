@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { FixedClock, RecordingLogger } from '@/shared/testing/fakes';
 
@@ -40,6 +40,7 @@ function setUp() {
     logger,
     clock,
     queue,
+    repository,
     take: new TakeDeviceCommand({ deviceCommandRepository: repository, clock, logger }),
   };
 }
@@ -88,5 +89,47 @@ describe('TakeDeviceCommand', () => {
 
     expect(await take.execute({ deviceId: DEVICE })).toBeNull();
     expect(store.commands.get(other)?.status).toBe('QUEUED');
+  });
+
+  // Plan 006 (review L2 del 004): el claim es condicional; un sondeo concurrente puede ganarlo
+  // primero y este caso de uso debe reintentar con el siguiente comando en cola.
+  it('si otro sondeo gana el reclamo (claim), reintenta y entrega otro comando', async () => {
+    const { take, queue, store, repository, logger } = setUp();
+    const lost = await queue(1, DEVICE, new Date('2026-10-02T12:00:00Z'));
+    const next = await queue(2, DEVICE, new Date('2026-10-02T12:05:00Z'));
+    // Simula la carrera real: entre nuestro nextQueued y claim, otro sondeo concurrente ya marcó
+    // SENT la misma fila (el claim del repositorio pierde), así que el reintento debe mirar la
+    // cola de nuevo en vez de repetir el mismo comando.
+    vi.spyOn(repository, 'claim').mockImplementationOnce((command) => {
+      const concurrentWinner = store.commands.get(command.id);
+      if (concurrentWinner) concurrentWinner.markSent(new Date('2026-10-02T12:00:05Z'));
+      return Promise.resolve(false);
+    });
+
+    const delivered = await take.execute({ deviceId: DEVICE });
+
+    expect(delivered).toBe('C:2:DATA QUERY USERINFO PIN=2');
+    // El comando 1 quedó SENT por el "otro sondeo" simulado, no por este caso de uso.
+    expect(store.commands.get(lost)?.status).toBe('SENT');
+    expect(store.commands.get(next)?.status).toBe('SENT');
+    expect(logger.entries).toEqual([
+      {
+        level: 'info',
+        obj: { deviceId: DEVICE, commandId: next, number: 2 },
+        msg: 'zkteco: comando entregado',
+      },
+    ]);
+  });
+
+  it('tras perder el reclamo en cada intento (3), devuelve null sin entregar nada', async () => {
+    const { take, queue, store, repository, logger } = setUp();
+    const only = await queue(1, DEVICE, new Date('2026-10-02T12:00:00Z'));
+    vi.spyOn(repository, 'claim').mockResolvedValue(false);
+
+    const delivered = await take.execute({ deviceId: DEVICE });
+
+    expect(delivered).toBeNull();
+    expect(store.commands.get(only)?.status).toBe('QUEUED');
+    expect(logger.entries).toEqual([]);
   });
 });

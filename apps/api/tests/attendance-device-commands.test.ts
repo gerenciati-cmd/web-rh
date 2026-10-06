@@ -262,6 +262,97 @@ describe('sonda de comandos ADMS (HTTP)', () => {
         }),
       );
     });
+
+    /**
+     * AC3/AC4 del plan 006: `devicecmd` también cierra el comando que `ID` identifica
+     * (`CompleteDeviceCommands`), aparte del log de contacto de arriba. Se observa a través de la
+     * bitácora, no del log: `completeDeviceCommands` usa el logger/clock reales del contenedor,
+     * que este archivo no reemplaza.
+     */
+    async function queuedAndSent(command: string): Promise<{ id: string; number: number }> {
+      const created = await queue(command).expect(201);
+      const listBefore = await api(adminToken)
+        .get(`/attendance/devices/${deviceId}/commands`)
+        .expect(200);
+      const before = (listBefore.body as { items: { id: string; number: number }[] }).items.find(
+        (item) => item.id === created.body.id,
+      );
+      if (!before) throw new Error('comando recién encolado no aparece en la bitácora');
+      await request(app).get(`/iclock/getrequest?SN=${SERIAL}`).expect(200);
+      return { id: created.body.id as string, number: before.number };
+    }
+
+    async function commandInLog(id: string) {
+      const list = await api(adminToken)
+        .get(`/attendance/devices/${deviceId}/commands`)
+        .expect(200);
+      const items = list.body.items as {
+        id: string;
+        status: string;
+        returnCode: string | null;
+        completedAt: string | null;
+      }[];
+      const found = items.find((item) => item.id === id);
+      if (!found) throw new Error(`comando ${id} no aparece en la bitácora`);
+      return found;
+    }
+
+    it('Return=0 deja el comando DONE con returnCode y completedAt en la bitácora', async () => {
+      const { id, number } = await queuedAndSent('DATA QUERY USERINFO PIN=1');
+
+      await request(app)
+        .post(`/iclock/devicecmd?SN=${SERIAL}`)
+        .set('Content-Type', 'text/plain')
+        .send(`ID=${number}&Return=0&CMD=DATA`)
+        .expect(200);
+
+      const found = await commandInLog(id);
+      expect(found.status).toBe('DONE');
+      expect(found.returnCode).toBe('0');
+      expect(typeof found.completedAt).toBe('string');
+    });
+
+    it('un Return distinto de 0 en otro comando lo deja FAILED', async () => {
+      const first = await queuedAndSent('DATA QUERY USERINFO PIN=1');
+      const second = await queuedAndSent('DATA QUERY USERINFO PIN=2');
+
+      await request(app)
+        .post(`/iclock/devicecmd?SN=${SERIAL}`)
+        .set('Content-Type', 'text/plain')
+        .send(`ID=${second.number}&Return=-1&CMD=DATA`)
+        .expect(200);
+
+      expect((await commandInLog(second.id)).status).toBe('FAILED');
+      // El otro comando, sin resultado todavía, sigue SENT.
+      expect((await commandInLog(first.id)).status).toBe('SENT');
+    });
+
+    it('un ID desconocido responde OK y no cambia ningún comando de la bitácora', async () => {
+      const { id } = await queuedAndSent('DATA QUERY USERINFO PIN=1');
+
+      const response = await request(app)
+        .post(`/iclock/devicecmd?SN=${SERIAL}`)
+        .set('Content-Type', 'text/plain')
+        .send('ID=999999&Return=0&CMD=DATA')
+        .expect(200);
+
+      expect(response.text).toBe('OK');
+      expect((await commandInLog(id)).status).toBe('SENT');
+    });
+
+    it('un cuerpo con dos líneas cierra cada comando de su propia línea', async () => {
+      const a = await queuedAndSent('DATA QUERY USERINFO PIN=1');
+      const b = await queuedAndSent('DATA QUERY USERINFO PIN=2');
+
+      await request(app)
+        .post(`/iclock/devicecmd?SN=${SERIAL}`)
+        .set('Content-Type', 'text/plain')
+        .send(`ID=${a.number}&Return=0&CMD=DATA\nID=${b.number}&Return=-2&CMD=DATA`)
+        .expect(200);
+
+      expect((await commandInLog(a.id)).status).toBe('DONE');
+      expect((await commandInLog(b.id)).status).toBe('FAILED');
+    });
   });
 
   describe('OpenAPI', () => {

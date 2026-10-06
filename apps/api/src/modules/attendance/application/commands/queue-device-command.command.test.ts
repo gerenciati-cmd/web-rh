@@ -64,6 +64,26 @@ describe('QueueDeviceCommand', () => {
     expect(saved?.deviceId).toBe(device.id);
     expect(saved?.queuedBy).toBe(QUEUED_BY);
     expect(saved?.queuedAt).toEqual(clock.now());
+    // Plan 006: el API asigna el número C:<n>: a partir de deviceCommandRepository.nextNumber().
+    expect(saved?.number).toBe(1);
+  });
+
+  it('asigna números consecutivos a comandos sucesivos', async () => {
+    const { command, device, store } = await setUp();
+
+    const first = await command.execute({
+      deviceId: device.id,
+      command: COMMAND,
+      queuedBy: QUEUED_BY,
+    });
+    const second = await command.execute({
+      deviceId: device.id,
+      command: COMMAND,
+      queuedBy: QUEUED_BY,
+    });
+
+    expect(first.ok && store.commands.get(first.value.id)?.number).toBe(1);
+    expect(second.ok && store.commands.get(second.value.id)?.number).toBe(2);
   });
 
   it('registra el encolado sin el texto del comando (puede llevar un PIN o un nombre)', async () => {
