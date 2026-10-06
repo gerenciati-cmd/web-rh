@@ -1,5 +1,5 @@
 ---
-status: planned
+status: resolved
 module: attendance
 found: 2026-10-02
 plan: attendance-marcaciones/005
@@ -34,3 +34,7 @@ caso de uso: `lastSeenAt`, desfase, sede), o versión optimista en `attendance.d
 el plan que vuelva a tocar el repositorio de equipos (004 o 005). Mientras tanto, en la
 instalación: asignar la sede antes de conectar el equipo, o repetir el PUT y confirmar con
 `GET /attendance/devices`.
+
+## Resolución
+
+Resuelto por `attendance-marcaciones/005`: escrituras dirigidas (`saveActivity` / `saveSite`).

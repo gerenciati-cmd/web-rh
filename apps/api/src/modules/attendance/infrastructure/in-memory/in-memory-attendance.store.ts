@@ -8,7 +8,7 @@ import type {
 import { err, ok, type Result } from '@rrhh/domain';
 
 import type { AttendanceQueries, RawPunch } from '../../application/queries/attendance.queries';
-import type { Device, DeviceId } from '../../domain/device';
+import { Device, type DeviceId, type DeviceProps } from '../../domain/device';
 import type { DeviceCommand } from '../../domain/device-command';
 import type { DeviceCommandRepository } from '../../domain/device-command.repository';
 import type { DeviceRepository } from '../../domain/device.repository';
@@ -65,6 +65,43 @@ export class InMemoryDeviceRepository implements DeviceRepository {
       return Promise.resolve(err(new DeviceAlreadyRegisteredError(device.serialNumber)));
     this.store.devices.set(device.id, device);
     return Promise.resolve(ok(undefined));
+  }
+
+  saveActivity(device: Device): Promise<void> {
+    return this.update(device, {
+      lastSeenAt: device.lastSeenAt,
+      clockOffsetSeconds: device.clockOffsetSeconds,
+      clockOffsetMeasuredAt: device.clockOffsetMeasuredAt,
+    });
+  }
+
+  saveSite(device: Device): Promise<void> {
+    return this.update(device, { siteId: device.siteId, timeZone: device.timeZone });
+  }
+
+  /**
+   * Como el `update` de Prisma: solo cambian los campos dados, así un objeto viejo no pisa lo
+   * que otro escribió después. Un equipo inexistente rechaza.
+   */
+  private update(device: Device, fields: Partial<DeviceProps>): Promise<void> {
+    const stored = this.store.devices.get(device.id);
+    if (!stored) return Promise.reject(new Error(`El equipo ${device.id} no existe`));
+    this.store.devices.set(
+      device.id,
+      Device.restore(stored.id, {
+        serialNumber: stored.serialNumber,
+        name: stored.name,
+        timeZone: stored.timeZone,
+        active: stored.active,
+        registeredAt: stored.registeredAt,
+        lastSeenAt: stored.lastSeenAt,
+        siteId: stored.siteId,
+        clockOffsetSeconds: stored.clockOffsetSeconds,
+        clockOffsetMeasuredAt: stored.clockOffsetMeasuredAt,
+        ...fields,
+      }),
+    );
+    return Promise.resolve();
   }
 }
 

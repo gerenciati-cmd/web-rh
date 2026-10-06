@@ -44,6 +44,20 @@ export const DeviceMapper = {
       clockOffsetMeasuredAt: device.clockOffsetMeasuredAt,
     };
   },
+
+  /** Columnas que escribe el tráfico del equipo. */
+  toActivity(device: Device) {
+    return {
+      lastSeenAt: device.lastSeenAt,
+      clockOffsetSeconds: device.clockOffsetSeconds,
+      clockOffsetMeasuredAt: device.clockOffsetMeasuredAt,
+    };
+  },
+
+  /** Columnas que escribe el administrador al asignar la sede. */
+  toSite(device: Device) {
+    return { siteId: device.siteId, timeZone: device.timeZone };
+  },
 };
 
 export const DeviceCommandMapper = {

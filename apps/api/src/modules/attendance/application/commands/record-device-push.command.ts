@@ -110,7 +110,7 @@ export class RecordDevicePush implements Command<
     }
 
     const seen = device.markSeen(clock.now());
-    if (seen || offsetRecorded) await deviceRepository.save(device);
+    if (seen || offsetRecorded) await deviceRepository.saveActivity(device);
 
     // `accepted` cuenta todo lo procesado, también lo rechazado: el equipo no debe reenviar esas líneas.
     return ok({ accepted: records.length });

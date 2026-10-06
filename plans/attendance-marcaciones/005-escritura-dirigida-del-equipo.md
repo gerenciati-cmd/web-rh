@@ -1,5 +1,5 @@
 ---
-status: approved
+status: testing
 module: attendance
 min_implementer: mid
 depends_on: []
@@ -117,6 +117,17 @@ getters, ...the written fields from the argument })`, so a stale object passed i
 | e2e         | no      | (no e2e infrastructure yet)                                                                |
 
 ## Deviations
+
+1. **In-memory method takes the written fields explicitly** (cosmetic): `saveActivity`/`saveSite`
+   share a private `update(device, fields)` that restores the stored device with those fields;
+   same behavior as Step 2.
+2. **Environment** (note, no code): the generated Prisma client was stale after a `pnpm install`
+   at session start (typecheck failed in every module); `pnpm db:generate` fixed it.
+3. **`plans:scope`** against `main` also lists `006-…md` and `007-…md`: they come from the
+   plans commit on this branch, not from this plan's code.
+
+Run at the end: `pnpm check` green (api 838 passed / 5 skipped, contracts 259);
+`pnpm test:integration` 15 files / 178 tests green. Existing tests unchanged.
 
 ## Test coverage
 

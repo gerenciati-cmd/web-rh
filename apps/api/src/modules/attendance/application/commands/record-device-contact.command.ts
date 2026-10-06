@@ -51,7 +51,7 @@ export class RecordDeviceContact implements Command<
     }
 
     // `lastSeenAt` es estado informativo: markSeen limita la escritura a una por minuto.
-    if (device.markSeen(clock.now())) await deviceRepository.save(device);
+    if (device.markSeen(clock.now())) await deviceRepository.saveActivity(device);
 
     const logged = { serialNumber, ...contact };
     // El equipo consulta comandos cada pocos segundos: a nivel info inundaría el log.

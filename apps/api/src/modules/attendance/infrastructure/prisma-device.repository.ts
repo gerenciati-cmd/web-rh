@@ -40,4 +40,19 @@ export class PrismaDeviceRepository implements DeviceRepository {
       throw error;
     }
   }
+
+  // Sin try/catch: el equipo se acaba de leer; si la fila no existe es inesperado y debe fallar.
+  async saveActivity(device: Device): Promise<void> {
+    await this.deps.database.client.attendanceDevice.update({
+      where: { id: device.id },
+      data: DeviceMapper.toActivity(device),
+    });
+  }
+
+  async saveSite(device: Device): Promise<void> {
+    await this.deps.database.client.attendanceDevice.update({
+      where: { id: device.id },
+      data: DeviceMapper.toSite(device),
+    });
+  }
 }
