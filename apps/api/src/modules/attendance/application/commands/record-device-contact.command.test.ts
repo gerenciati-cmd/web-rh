@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { FixedClock, RecordingLogger, SequentialIdGenerator } from '@/shared/testing/fakes';
 
@@ -201,6 +201,20 @@ describe('RecordDeviceContact', () => {
       expect.objectContaining({ level: 'warn', msg: 'zkteco: dispositivo no autorizado' }),
     ]);
     expect((await deviceRepository.findBySerialNumber('TESTSN001'))?.lastSeenAt).toBeNull();
+  });
+
+  // Reparación de revisión (hallazgo M1, plan 005): el repositorio en memoria devuelve la misma
+  // referencia guardada, así que un `save(device)` completo deja el mismo estado final que
+  // `saveActivity(device)` y ningún test por estado lo distingue. Se espía el método llamado.
+  it('guarda la actividad con saveActivity y nunca con save (hallazgo M1 de la revisión)', async () => {
+    const { command, deviceRepository } = await setUp(['TESTSN001']);
+    const saveActivitySpy = vi.spyOn(deviceRepository, 'saveActivity');
+    const saveSpy = vi.spyOn(deviceRepository, 'save');
+
+    await command.execute(baseInput);
+
+    expect(saveActivitySpy).toHaveBeenCalledTimes(1);
+    expect(saveSpy).not.toHaveBeenCalled();
   });
 
   it('anota el último contacto y solo lo reescribe cuando pasó la resolución', async () => {

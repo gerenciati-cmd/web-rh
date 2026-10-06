@@ -129,13 +129,16 @@ describe('PrismaDeviceRepository', () => {
   });
 
   describe('escritura dirigida (plan attendance-marcaciones/005)', () => {
+    // Reparación de revisión (hallazgo L1, plan 005): el snapshot "viejo" se carga ANTES de que
+    // el otro escritor guarde, para que de verdad desconozca sus columnas (si se cargara después,
+    // un `update` de la fila entera pasaría el test igual).
     it('saveActivity escribe lastSeenAt y el desfase, pero no toca siteId ni timeZone', async () => {
       const device = await savedDevice('TESTSN001');
-      device.assignSite('00000000-0000-4000-8000-0000000000b2', 'America/Mexico_City');
-      await devices.save(device);
-      // Snapshot cargado antes de la asignación de sede (desconoce siteId/timeZone nuevos).
+      // Snapshot cargado antes de que el admin asigne la sede: desconoce siteId/timeZone nuevos.
       const stalePush = await devices.findById(device.id);
       if (!stalePush) throw new Error('equipo no encontrado');
+      device.assignSite('00000000-0000-4000-8000-0000000000b2', 'America/Mexico_City');
+      await devices.saveSite(device);
       const seenAt = new Date('2026-09-29T10:00:00Z');
       stalePush.markSeen(seenAt);
       stalePush.recordClockOffset(5, seenAt);
@@ -151,13 +154,13 @@ describe('PrismaDeviceRepository', () => {
 
     it('saveSite escribe siteId y timeZone, pero no toca lastSeenAt ni el desfase', async () => {
       const device = await savedDevice('TESTSN001');
+      // Snapshot cargado antes de que el tráfico anote actividad: desconoce lastSeenAt/desfase nuevos.
+      const staleAdmin = await devices.findById(device.id);
+      if (!staleAdmin) throw new Error('equipo no encontrado');
       const seenAt = new Date('2026-09-29T10:00:00Z');
       device.markSeen(seenAt);
       device.recordClockOffset(5, seenAt);
-      await devices.save(device);
-      // Snapshot cargado antes del contacto (desconoce lastSeenAt/desfase nuevos).
-      const staleAdmin = await devices.findById(device.id);
-      if (!staleAdmin) throw new Error('equipo no encontrado');
+      await devices.saveActivity(device);
       staleAdmin.assignSite('00000000-0000-4000-8000-0000000000b2', 'America/Mexico_City');
 
       await devices.saveSite(staleAdmin);

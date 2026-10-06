@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { FixedClock, RecordingLogger, SequentialIdGenerator } from '@/shared/testing/fakes';
 
@@ -123,6 +123,24 @@ describe('RecordDevicePush', () => {
 
     expect(result.ok).toBe(true);
     expect(result.ok && result.value).toEqual({ accepted: 2 });
+  });
+
+  // Reparación de revisión (hallazgo M1, plan 005): el repositorio en memoria devuelve la misma
+  // referencia guardada, así que un `save(device)` completo deja el mismo estado final que
+  // `saveActivity(device)` y ningún test por estado lo distingue. Se espía el método llamado.
+  it('guarda la actividad con saveActivity y nunca con save (hallazgo M1 de la revisión)', async () => {
+    const { command, deviceRepository } = await setUp(['TESTSN001']);
+    const saveActivitySpy = vi.spyOn(deviceRepository, 'saveActivity');
+    const saveSpy = vi.spyOn(deviceRepository, 'save');
+
+    await command.execute({
+      serialNumber: 'TESTSN001',
+      table: 'ATTLOG',
+      records: [attendanceRecord],
+    });
+
+    expect(saveActivitySpy).toHaveBeenCalledTimes(1);
+    expect(saveSpy).not.toHaveBeenCalled();
   });
 
   it('registra un resumen a nivel info con el conteo por tipo (kind)', async () => {

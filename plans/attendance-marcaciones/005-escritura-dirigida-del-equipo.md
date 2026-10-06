@@ -140,9 +140,9 @@ Run at the end: `pnpm check` green (api 838 passed / 5 skipped, contracts 259);
 | `InMemoryDeviceRepository.saveActivity`/`saveSite` escriben solo sus columnas (mismo contrato que Prisma)                         | `in-memory-attendance.store.ts:107-141`                                         | application        | `in-memory-attendance.store.test.ts › escritura dirigida`                                                                                                       | CONFIRMED |
 | La carrera se resuelve igual en el store en memoria, en cualquier orden                                                           | `in-memory-attendance.store.ts:123-141`                                         | application        | `in-memory-attendance.store.test.ts › la carrera se resuelve igual en cualquier orden…`                                                                         | CONFIRMED |
 | `saveActivity`/`saveSite` en memoria rechazan sobre un equipo inexistente                                                         | `in-memory-attendance.store.ts:125`                                             | application        | `in-memory-attendance.store.test.ts › saveActivity y saveSite rechazan…`                                                                                        | CONFIRMED |
-| `RecordDevicePush` llama `saveActivity` (no `save`) al marcar visto / medir desfase                                               | `record-device-push.command.ts:112-113`                                         | application        | `record-device-push.command.test.ts` (existente, sin cambios; confirmado por recon de código)                                                                   | CONFIRMED |
-| `RecordDeviceContact` llama `saveActivity` al marcar visto                                                                        | `record-device-contact.command.ts:53-54`                                        | application        | `record-device-contact.command.test.ts` (existente)                                                                                                             | CONFIRMED |
-| `AssignDeviceSite` llama `saveSite` y ya no revisa `saved.ok`                                                                     | `assign-device-site.command.ts:34-35`                                           | application        | `assign-device-site.command.test.ts` (existente)                                                                                                                | CONFIRMED |
+| `RecordDevicePush` llama `saveActivity` y nunca `save` al marcar visto / medir desfase                                            | `record-device-push.command.ts:112-113`                                         | application        | `record-device-push.command.test.ts › guarda la actividad con saveActivity y nunca con save (hallazgo M1 de la revisión)` (nuevo, espía el repositorio)         | CONFIRMED |
+| `RecordDeviceContact` llama `saveActivity` y nunca `save` al marcar visto                                                         | `record-device-contact.command.ts:53-54`                                        | application        | `record-device-contact.command.test.ts › guarda la actividad con saveActivity y nunca con save (hallazgo M1 de la revisión)` (nuevo, espía el repositorio)      | CONFIRMED |
+| `AssignDeviceSite` llama `saveSite` (nunca `save`) y ya no revisa `saved.ok`                                                      | `assign-device-site.command.ts:34-35`                                           | application        | `assign-device-site.command.test.ts › guarda la sede con saveSite y nunca con save (hallazgo M1 de la revisión)` (nuevo, espía el repositorio)                  | CONFIRMED |
 | `PUT …/site` → 204 y `GET /attendance/devices` refleja la sede/zona nuevas                                                        | `attendance.router.ts`, `assign-device-site.command.ts`                         | http               | `attendance.test.ts › PUT …/site › equipo sin sede…` (existente)                                                                                                | CONFIRMED |
 | Un push tras el cambio de sede conserva la sede nueva y actualiza `lastSeenAt` (criterio de aceptación 2)                         | `record-device-push.command.ts:112-113` + `assign-device-site.command.ts:34-35` | http               | `attendance.test.ts › PUT …/site › un push tras el cambio de sede…` (nuevo)                                                                                     | CONFIRMED |
 | `GET /iclock/getrequest` actualiza `lastSeenAt` como máximo cada minuto (criterio de aceptación 3)                                | `device.ts:156-163`                                                             | application        | `record-device-contact.command.test.ts › anota el último contacto…` (existente; wiring http ya cubierto por las suites de `attendance-device-commands.test.ts`) | CONFIRMED |
@@ -155,6 +155,29 @@ rompió el comportamiento anterior.
 
 Cierre: `pnpm check` verde (api y contracts); `pnpm test:integration` verde. Ejecutado completo dos
 veces (baseline y cierre), solo lo tocado en medio, según el presupuesto del rol.
+
+**Reparación 2026-10-06** (tester, tras la revisión del commit `51351d6`, hallazgos M1 y L1 de
+`## Review findings`):
+
+- **M1**: las tres filas de `RecordDevicePush`/`RecordDeviceContact`/`AssignDeviceSite` decían
+  CONFIRMED apoyadas en tests que solo miraban el estado final a través de
+  `InMemoryDeviceRepository`, cuyo `findById` devuelve la misma referencia guardada — un `save`
+  completo deja el mismo estado que `saveActivity`/`saveSite`, así que esos tests no distinguían
+  el método llamado. Se agregó un test por caso de uso que espía el repositorio
+  (`vi.spyOn(deviceRepository, 'save' | 'saveActivity' | 'saveSite')`) y confirma que se llama el
+  método dirigido y **nunca** `save`: `record-device-push.command.test.ts`,
+  `record-device-contact.command.test.ts`, `assign-device-site.command.test.ts`. Las tres filas de
+  la tabla se corrigieron para citar estos tests nuevos.
+- **L1**: en `prisma-attendance.int.test.ts`, los tests `saveActivity escribe…` y `saveSite
+escribe…` leían la instancia "vieja" con `findById` **después** de que el otro escritor ya había
+  guardado su cambio, así que esa instancia no era vieja de verdad (un `update` de la fila entera
+  habría pasado el test igual). Se corrigió el orden: la instancia stale ahora se carga antes de
+  que el otro escritor guarde. Las filas de la tabla no cambiaron de test porque ahora prueban lo
+  que decían probar.
+
+Solo se tocaron tests y esta sección; el `status` sigue en `review`. Cierre de la reparación:
+`pnpm check` verde (api 846 passed / 5 skipped, +3 por M1; contracts 259); `pnpm test:integration`
+verde (15 archivos / 183 tests, sin cambio de conteo: L1 corrigió tests existentes, no agregó).
 
 ## Review findings
 
