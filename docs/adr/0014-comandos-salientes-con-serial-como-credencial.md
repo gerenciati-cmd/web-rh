@@ -36,7 +36,10 @@ adicional.
 ## Consecuencias
 
 - Mientras se cumpla la condición, el riesgo es el de cualquier dispositivo en la LAN.
-- Si alguien roba un comando con el serial, la bitácora lo muestra como `SENT` sin resultado del
-  equipo (plan 006): es la señal para investigar y repetir la sincronización.
+- Quien roba un comando con el serial también puede responder `POST /iclock/devicecmd?SN=<serial>`
+  con `ID=<n>&Return=0` (o cualquier otro código) y cerrar ese mismo comando, o cualquier otro
+  `SENT` de ese equipo, como `DONE`/`FAILED` (plan 006, hallazgo L1 de su revisión): la bitácora no
+  es evidencia confiable de entrega mientras el serial sea la única credencial, porque el mismo
+  atacante que robó el comando puede falsificar su resultado.
 - Señal para revisar: cualquier plan de despliegue que haga `/iclock` alcanzable desde fuera de
   la red controlada.

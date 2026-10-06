@@ -120,8 +120,11 @@ número de `C:<n>:`, `Return=0` es éxito y `CMD` es solo el verbo). `DELETE` si
   el `ID` cierra el comando de ese número.
 - Bitácora: `GET /api/v1/attendance/devices/:deviceId/commands` lista cada comando con su
   `number` y su estado: `QUEUED` (en cola), `SENT` (entregado), `DONE` (el equipo respondió
-  `Return=0`) o `FAILED` (otro código, en `returnCode`). Un comando que queda en `SENT` sin
-  respuesta merece revisarse (ver [ADR 0014](../adr/0014-comandos-salientes-con-serial-como-credencial.md)).
+  `Return=0`) o `FAILED` (otro código, en `returnCode`). `POST /iclock/devicecmd` solo se
+  autentica con el serial, así que quien lo conozca puede falsificar ese resultado (`ID=<n>&
+Return=0` u otro código) para cualquier comando `SENT` del equipo: la bitácora no es evidencia
+  confiable de entrega mientras el serial sea la única credencial (ver
+  [ADR 0014](../adr/0014-comandos-salientes-con-serial-como-credencial.md)).
   El texto del comando no se escribe en el log (puede traer un PIN o un nombre).
 
 ## Qué buscar en el log

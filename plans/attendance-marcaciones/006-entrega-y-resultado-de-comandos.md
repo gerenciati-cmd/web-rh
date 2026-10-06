@@ -1,5 +1,5 @@
 ---
-status: review
+status: testing
 module: attendance
 min_implementer: mid
 depends_on: ['004']
@@ -234,6 +234,16 @@ PIN=1` moved from "accepted" to "rejected".
    - `queue-device-command.command.test.ts` / `take-device-command.command.test.ts`: logs carry
      `number`.
 6. **Lint** (cosmetic): `result.ID` / `result.Return` in dot notation (`dot-notation` rule).
+7. **2026-10-06 — Reparación del hallazgo L1 de la revisión** (docs only): el ADR 0014
+   (Consecuencias) y el runbook `docs/integraciones/zkteco-senseface-2a.md` afirmaban que un
+   comando robado con el serial queda en la bitácora como `SENT` sin resultado, una señal para
+   investigar. Eso es falso: `POST /iclock/devicecmd` solo se autentica con el serial
+   (`zkteco-adms.router.ts:100-106` → `CompleteDeviceCommands`), así que quien robó el comando
+   también puede responder `ID=<n>&Return=0` (u otro código) y cerrarlo — o cualquier otro `SENT`
+   de ese equipo — como `DONE`/`FAILED`, borrando la señal. Se corrigió el texto de ambos
+   documentos para decir que la bitácora no es evidencia confiable de entrega mientras el serial
+   sea la única credencial. Sin cambios de código (la barrera de red queda fuera de alcance,
+   decisión 12 del plan); el hallazgo L2 (caso HTTP de AC1 faltante) queda para el tester.
 
 Run at the end: `pnpm check` green (api 838 passed / 5 skipped, contracts 259);
 `pnpm test:integration` 15 files / 178 tests green.
@@ -345,5 +355,8 @@ Revisión 2026-10-06 (reviewer, subagente). Alcance: commits `6e5f411` (código)
 
 Resultado: 0 High, 0 Medium, 2 Low (L1 docs del implementer, L2 test del tester), 2 Info.
 El status sigue en `review`.
+
+**Reparación (sesión principal, 2026-10-06):** review → `implementing` para L1 (solo docs:
+ADR 0014 y runbook); después L2 va al tester (testing → review) y vuelve a revisión.
 
 ## Verification
