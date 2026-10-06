@@ -14,13 +14,15 @@ each company see its own people's marcaciones. Shifts, jornadas, overtime and Me
 
 ## Plans
 
-| Plan                                                   | Title                               | Depends on              | Purpose                                                                                                                                                |
-| ------------------------------------------------------ | ----------------------------------- | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| [001](001-registro-de-equipos-y-marcaciones-crudas.md) | Device registry and raw marcaciones | —                       | `attendance` schema: devices (serial, name, time zone) replace the env allowlist; ATTLOG stored deduplicated; device status and punch query endpoints. |
-| [002](002-atribucion-de-marcaciones-por-rfc.md)        | Attribution of marcaciones by RFC   | 001, employees-rfc/001  | Each punch whose PIN is a colaborador's RFC is attributed to them (resolved at read time); HR reads its companies' punches.                            |
-| [003](003-checador-por-sede-y-desfase.md)              | Checador per sede and clock offset  | organization-sedes/001  | Device tied to a sede (zone copied from it, no free text); clock-offset measured on real-time pushes, flagged over 5 min.                              |
-| [004](004-sonda-de-comandos-adms.md)                   | ADMS command probe                  | 003                     | Admin queues a raw `USERINFO` command; the next poll delivers it; replies logged. Confirms the protocol with the real device.                          |
-| 005 (not written yet)                                  | Sync colaboradores to checadores    | 004, employees-sede/001 | Automatic + manual push of the sede's colaboradores (PIN = RFC), removal on termination, command bitácora. Written once 004 confirms the format.       |
+| Plan                                                   | Title                               | Depends on             | Purpose                                                                                                                                                |
+| ------------------------------------------------------ | ----------------------------------- | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| [001](001-registro-de-equipos-y-marcaciones-crudas.md) | Device registry and raw marcaciones | —                      | `attendance` schema: devices (serial, name, time zone) replace the env allowlist; ATTLOG stored deduplicated; device status and punch query endpoints. |
+| [002](002-atribucion-de-marcaciones-por-rfc.md)        | Attribution of marcaciones by RFC   | 001, employees-rfc/001 | Each punch whose PIN is a colaborador's RFC is attributed to them (resolved at read time); HR reads its companies' punches.                            |
+| [003](003-checador-por-sede-y-desfase.md)              | Checador per sede and clock offset  | organization-sedes/001 | Device tied to a sede (zone copied from it, no free text); clock-offset measured on real-time pushes, flagged over 5 min.                              |
+| [004](004-sonda-de-comandos-adms.md)                   | ADMS command probe                  | 003                    | Admin queues a raw `USERINFO` command; the next poll delivers it; replies logged. Confirms the protocol with the real device.                          |
+| [005](005-escritura-dirigida-del-equipo.md)            | Targeted writes of the device row   | —                      | Device traffic writes only `lastSeenAt`/offset, the admin only sede/zone: a push no longer undoes a site change (finding, decision 11).                |
+| [006](006-entrega-y-resultado-de-comandos.md)          | Reliable command delivery + results | 004                    | API-assigned `C:<n>:`, atomic take, results close commands DONE/FAILED, several results per body; ADR 0014 on M1 (decisions 12, 14).                   |
+| [007](007-sincronizacion-de-colaboradores.md)          | Sync colaboradores to checadores    | 005, 006               | Automatic (employees and device events) + manual sync of the sede's colaboradores, PIN = RFC, removal on leave; skips those without RFC (decision 13). |
 
 ## Dependency notes
 
@@ -33,10 +35,12 @@ needs the colaborador's sede and the change events from `employees-sede/001`. No
 of `employees-sede/001`): a site change on a TERMINATED colaborador also publishes
 `site-assigned`, so the sync must check `EmployeeSummary.active` before pushing a user.
 
-Before writing 005 (review of 004): **the user must decide the barrier for outgoing commands**
+Before writing the sync (review of 004): **the user must decide the barrier for outgoing commands**
 (M1: anyone who knows a serial number can poll `getrequest` and take a queued command with a PIN
-and a name); 005 must take the next command atomically (L2) and handle several results per
-`devicecmd` body (L3).
+and a name); the sync must take the next command atomically (L2) and handle several results per
+`devicecmd` body (L3). Settled on 2026-10-06: M1 by decision 12; L2 and L3 in plan 006, which
+the sync (007) builds on. 005 is independent but goes first because 007 changes the same
+`AssignDeviceSite`.
 
 ## Decisions with the user
 
@@ -69,6 +73,16 @@ and a name); 005 must take the next command atomically (L2) and handle several r
     manually; on termination the user is removed from the device and the record kept; the test
     device's users "1" and "2" stay; the time zone comes from the sede (closed list); clock offset
     over 5 minutes is detected. Full wording: `organization-sedes` README decisions 1–4, 8–9.
+11. (2026-10-06) Finding `attendance-escritura-completa-del-equipo`: fixed with **targeted
+    writes** per use case (device traffic vs. admin), not with optimistic versioning (plan 005).
+12. (2026-10-06) Review M1 of 004: the serial as the only device credential is **accepted while
+    `/iclock` is reachable only from a controlled network**; exposing it to the internet first
+    needs a barrier (proxy with IP allowlist or mTLS). Documented in ADR 0014 (plan 006).
+13. (2026-10-06) Colaboradores **without RFC are not sent** to the checador; the sync reports them.
+    The PIN for DO/CO colaboradores is decided when there are checadores there.
+14. (2026-10-06) The command bitácora **keeps the device's result** (`Return` code → DONE/FAILED),
+    so it shows whether a colaborador was loaded. The sync is split in two plans: command
+    channel (006) and sync (007).
 
 ## Delivered
 
