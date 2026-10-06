@@ -70,14 +70,18 @@ describe('sonda de comandos ADMS (HTTP)', () => {
       expect(response.body.id).toMatch(/^[0-9a-f-]{36}$/);
     });
 
-    it.each(['CLEAR DATA', 'REBOOT', 'DATA UPDATE BIODATA Pin=1'])(
-      'el comando %j: 400 VALIDATION_ERROR',
-      async (command) => {
-        const response = await queue(command).expect(400);
+    it.each([
+      'CLEAR DATA',
+      'REBOOT',
+      'DATA UPDATE BIODATA Pin=1',
+      // Reparación L2 de la revisión (plan 006, 2026-10-06): el prefijo C:<n>: lo asigna el API;
+      // escrito a mano se rechaza. Antes solo lo probaban las capas de contrato y dominio.
+      'C:9:DATA QUERY USERINFO PIN=X',
+    ])('el comando %j: 400 VALIDATION_ERROR', async (command) => {
+      const response = await queue(command).expect(400);
 
-        expect(response.body.code).toBe('VALIDATION_ERROR');
-      },
-    );
+      expect(response.body.code).toBe('VALIDATION_ERROR');
+    });
 
     it('sin command: 400 VALIDATION_ERROR; deviceId que no es UUID: 400', async () => {
       const empty = await api(adminToken)
