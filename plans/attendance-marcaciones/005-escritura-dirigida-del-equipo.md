@@ -1,5 +1,5 @@
 ---
-status: review
+status: verify
 module: attendance
 min_implementer: mid
 depends_on: []
@@ -156,7 +156,7 @@ rompió el comportamiento anterior.
 Cierre: `pnpm check` verde (api y contracts); `pnpm test:integration` verde. Ejecutado completo dos
 veces (baseline y cierre), solo lo tocado en medio, según el presupuesto del rol.
 
-**Reparación 2026-10-06** (tester, tras la revisión del commit `51351d6`, hallazgos M1 y L1 de
+**Reparación 2026-10-06** (tester, tras la revisión del commit `51351d5`, hallazgos M1 y L1 de
 `## Review findings`):
 
 - **M1**: las tres filas de `RecordDevicePush`/`RecordDeviceContact`/`AssignDeviceSite` decían
@@ -240,5 +240,32 @@ Medium pide tests nuevos (solo tests, va al tester).
 
 Fuera de alcance, sin hallazgo nuevo: dos pushes concurrentes pueden dejar el `lastSeenAt` del más
 viejo; ya pasaba con `save` y es informativo (paso de un minuto), no lo toca este plan.
+
+### Re-revisión 2026-10-06 (commit `5b9a0ad`, reparación del tester)
+
+Limitada al plan 005 (`d7f595c`, `d9dd4b7`, `5b9a0ad`; `6e5f411` es del 006). La reparación
+solo toca tests y la sección Test coverage (5 archivos: los 3 tests de commands, el de
+integración y este plan). Sin cambios de producto, así que la checklist anterior (13/13) sigue
+valiendo. Se volvió a correr: `pnpm check` verde (19/19 tareas turbo); los 4 archivos unitarios
+afectados, 53 tests verdes; `tests/integration/attendance`, 3 archivos / 38 tests verdes.
+
+- **M1 — RESUELTO.** Hay un test nuevo con espía por caso de uso:
+  `record-device-push.command.test.ts:131`, `record-device-contact.command.test.ts:209` y
+  `assign-device-site.command.test.ts:63`. Cada uno espía el repositorio **después** del alta
+  hecha con `save` en `setUp`, y comprueba que el método dirigido se llama 1 vez y `save` 0 veces.
+  Fallarían en los dos casos: si el command volviera a `save` (el espía de `save` lo detecta) y si
+  no guardara nada (el método dirigido tendría 0 llamadas). Esto lo comprobé leyendo el código; no
+  muté el producto, porque el reviewer no edita código. Los escenarios sí escriben: el push trae
+  una marcación con un equipo nunca visto (`markSeen` → `true`), el contact es el primer contacto,
+  y assign usa una sede activa. Las tres filas del Test coverage citan ahora estos tests.
+- **L1 — RESUELTO.** En `prisma-attendance.int.test.ts`, `stalePush` (`saveActivity escribe…`) y
+  `staleAdmin` (`saveSite escribe…`) se leen con `findById` **antes** de que el otro escritor
+  guarde (ahora con `saveSite`/`saveActivity`). Prisma devuelve un objeto nuevo en cada lectura,
+  así que la copia sí es vieja. Si el método bajo prueba escribiera la fila entera, sobrescribiría
+  la sede (o la actividad) del otro escritor y el test fallaría.
+- Nota sin impacto: la nota de reparación del Test coverage cita la revisión como commit
+  `51351d6`; el hash real es `51351d5`.
+
+Sin hallazgos abiertos. Plan 005 a `verify`.
 
 ## Verification
