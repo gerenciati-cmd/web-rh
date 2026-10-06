@@ -158,4 +158,64 @@ veces (baseline y cierre), solo lo tocado en medio, según el presupuesto del ro
 
 ## Review findings
 
+Revisión 2026-10-06 (reviewer, base del diff `cbff30c`, limitada a los commits `d7f595c` y
+`d9dd4b7`; `6e5f411` es del plan 006 y quedó fuera). `status` sigue en `review`: un hallazgo
+Medium pide tests nuevos (solo tests, va al tester).
+
+**Checklist: 13/13.**
+
+- [x] `pnpm plans:scope … --base cbff30c` sale con 1 porque HEAD incluye el 006 (37 archivos). Si se
+      limita a `d7f595c` + `d9dd4b7`: los 7 archivos de producto y el hallazgo están declarados en
+      los `Files:`; quedan fuera solo los 3 archivos de test del tester
+      (`in-memory-attendance.store.test.ts`, `tests/attendance.test.ts`,
+      `prisma-attendance.int.test.ts`), aceptados como en el plan 004. Sin hot files.
+- [x] `pnpm check` verde (19/19 tareas turbo; api 74 archivos de test; arch, plans, harness OK).
+- [x] `pnpm test:integration`: 15 archivos / 183 tests verdes (HEAD, incluye el 006).
+- [x] Reglas en `domain/`: el agregado no cambia; mapper y adaptadores solo copian columnas.
+- [x] CQRS ligero: los commands siguen agregado → `DeviceRepository`; los métodos nuevos son de
+      escritura por agregado, no "para pantallas".
+- [x] Sin cambios de contrato.
+- [x] Errores esperados: `save` conserva `DEVICE_ALREADY_REGISTERED`; `saveActivity`/`saveSite`
+      rechazan solo ante lo inesperado (fila ausente), como pide el paso 2.
+- [x] Sin dinero; fechas sin cambio; `Clock` sigue en los commands.
+- [x] Sin cambio de esquema ni migración (como prometía el plan).
+- [x] Sin registros DI nuevos; `container.test.ts` verde.
+- [x] Sin secretos ni datos reales (seriales `TESTSN001`, UUIDs sintéticos).
+- [x] Deviations honestas: verificada la 1 (`update(device, fields)` privado en
+      `in-memory-attendance.store.ts:123`, mismo comportamiento que el paso 2).
+- [x] Docs: ninguna describía el workaround de la carrera fuera del hallazgo, que quedó `resolved`.
+
+### Medium
+
+- **M1 — Ningún test falla si un caso de uso vuelve a llamar `save` (o no guarda nada).**
+  `record-device-push.command.ts:113`, `record-device-contact.command.ts:54`,
+  `assign-device-site.command.ts:35`. La capa application del plan pide "push/contact/assign
+  call the targeted method", y el Test coverage lo da por CONFIRMED con los tests existentes. Pero
+  esos tests usan `InMemoryDeviceRepository`, cuyo `findById` (`in-memory-attendance.store.ts:88`)
+  devuelve la misma referencia guardada, y `save` también guarda la referencia: el estado mutado
+  se ve igual con `save`, con `saveActivity` o sin guardar. El test HTTP nuevo tampoco lo detecta
+  (PUT y push van en secuencia, el push carga el equipo ya con la sede nueva; un `save` completo
+  daría el mismo resultado). Los tests de integración prueban el repositorio, no los commands.
+  Escenario: un refactor futuro devuelve `RecordDevicePush` a `deviceRepository.save(device)`;
+  `pnpm check` y `test:integration` siguen verdes y la carrera del hallazgo vuelve en producción.
+  Arreglo (solo tests, tester): un test por command que lo demuestre, p. ej. un doble de
+  `DeviceRepository` que registre qué método se llamó, o un repositorio cuyo `findById` devuelva
+  una copia vieja y comprobar que la sede/actividad escrita por el otro no se pierde. Corregir las
+  tres filas del Test coverage que hoy dicen CONFIRMED.
+
+### Low
+
+- **L1 — Los dos primeros tests de integración no usan una instancia vieja.**
+  `prisma-attendance.int.test.ts:132-150` y `:152-170`. El comentario dice "Snapshot cargado
+  antes de la asignación de sede", pero `stalePush` se lee con `findById` **después** de
+  `devices.save(device)` con la sede nueva (y en el segundo, `staleAdmin` después de guardar la
+  actividad): la instancia ya trae las columnas del otro escritor. Con un `update` de la fila
+  entera ambos pasarían igual, así que no prueban "solo sus columnas". La propiedad sí queda
+  probada por el `it.each` de la carrera (`:172-201`, dos instancias cargadas antes de escribir),
+  por eso es Low. Arreglo (tester): cargar la instancia antes del `save` del otro escritor, o
+  corregir el comentario y el Test coverage para que esas filas citen el test de la carrera.
+
+Fuera de alcance, sin hallazgo nuevo: dos pushes concurrentes pueden dejar el `lastSeenAt` del más
+viejo; ya pasaba con `save` y es informativo (paso de un minuto), no lo toca este plan.
+
 ## Verification
