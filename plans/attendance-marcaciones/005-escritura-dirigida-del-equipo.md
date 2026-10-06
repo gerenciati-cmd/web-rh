@@ -1,5 +1,5 @@
 ---
-status: testing
+status: review
 module: attendance
 min_implementer: mid
 depends_on: []
@@ -130,6 +130,31 @@ Run at the end: `pnpm check` green (api 838 passed / 5 skipped, contracts 259);
 `pnpm test:integration` 15 files / 178 tests green. Existing tests unchanged.
 
 ## Test coverage
+
+| Behavior (from plan / code)                                                                                                       | Source (`file:line`)                                                            | Layer              | Test                                                                                                                                                            | State     |
+| --------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- | ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
+| `saveActivity` (Prisma) escribe solo `lastSeenAt`/`clockOffsetSeconds`/`clockOffsetMeasuredAt`, sin tocar `siteId`/`timeZone`     | `attendance.mapper.ts:53-58`, `prisma-device.repository.ts:45-49`               | integration        | `prisma-attendance.int.test.ts › escritura dirigida › saveActivity escribe…`                                                                                    | CONFIRMED |
+| `saveSite` (Prisma) escribe solo `siteId`/`timeZone`, sin tocar `lastSeenAt`/el desfase                                           | `attendance.mapper.ts:62-63`, `prisma-device.repository.ts:52-56`               | integration        | `prisma-attendance.int.test.ts › escritura dirigida › saveSite escribe…`                                                                                        | CONFIRMED |
+| La carrera entre asignar sede y tráfico del equipo no pierde ningún cambio, en cualquier orden (criterio de aceptación 1, Prisma) | `prisma-device.repository.ts:45-56`                                             | integration        | `prisma-attendance.int.test.ts › escritura dirigida › la carrera… (sede-primero / actividad-primero)`                                                           | CONFIRMED |
+| `saveActivity`/`saveSite` (Prisma) rechazan sobre un equipo que no existe (sin try/catch)                                         | `prisma-device.repository.ts:44-56`                                             | integration        | `prisma-attendance.int.test.ts › escritura dirigida › saveActivity y saveSite rechazan…`                                                                        | CONFIRMED |
+| `InMemoryDeviceRepository.saveActivity`/`saveSite` escriben solo sus columnas (mismo contrato que Prisma)                         | `in-memory-attendance.store.ts:107-141`                                         | application        | `in-memory-attendance.store.test.ts › escritura dirigida`                                                                                                       | CONFIRMED |
+| La carrera se resuelve igual en el store en memoria, en cualquier orden                                                           | `in-memory-attendance.store.ts:123-141`                                         | application        | `in-memory-attendance.store.test.ts › la carrera se resuelve igual en cualquier orden…`                                                                         | CONFIRMED |
+| `saveActivity`/`saveSite` en memoria rechazan sobre un equipo inexistente                                                         | `in-memory-attendance.store.ts:125`                                             | application        | `in-memory-attendance.store.test.ts › saveActivity y saveSite rechazan…`                                                                                        | CONFIRMED |
+| `RecordDevicePush` llama `saveActivity` (no `save`) al marcar visto / medir desfase                                               | `record-device-push.command.ts:112-113`                                         | application        | `record-device-push.command.test.ts` (existente, sin cambios; confirmado por recon de código)                                                                   | CONFIRMED |
+| `RecordDeviceContact` llama `saveActivity` al marcar visto                                                                        | `record-device-contact.command.ts:53-54`                                        | application        | `record-device-contact.command.test.ts` (existente)                                                                                                             | CONFIRMED |
+| `AssignDeviceSite` llama `saveSite` y ya no revisa `saved.ok`                                                                     | `assign-device-site.command.ts:34-35`                                           | application        | `assign-device-site.command.test.ts` (existente)                                                                                                                | CONFIRMED |
+| `PUT …/site` → 204 y `GET /attendance/devices` refleja la sede/zona nuevas                                                        | `attendance.router.ts`, `assign-device-site.command.ts`                         | http               | `attendance.test.ts › PUT …/site › equipo sin sede…` (existente)                                                                                                | CONFIRMED |
+| Un push tras el cambio de sede conserva la sede nueva y actualiza `lastSeenAt` (criterio de aceptación 2)                         | `record-device-push.command.ts:112-113` + `assign-device-site.command.ts:34-35` | http               | `attendance.test.ts › PUT …/site › un push tras el cambio de sede…` (nuevo)                                                                                     | CONFIRMED |
+| `GET /iclock/getrequest` actualiza `lastSeenAt` como máximo cada minuto (criterio de aceptación 3)                                | `device.ts:156-163`                                                             | application        | `record-device-contact.command.test.ts › anota el último contacto…` (existente; wiring http ya cubierto por las suites de `attendance-device-commands.test.ts`) | CONFIRMED |
+| `POST /attendance/devices` → 201 y serial repetido → 409 `DEVICE_ALREADY_REGISTERED` (criterio de aceptación 4)                   | `register-device.command.ts`, `prisma-device.repository.ts:27-42`               | http + integration | `attendance.test.ts` (existente) + `prisma-attendance.int.test.ts › un segundo equipo…` (existente)                                                             | CONFIRMED |
+
+Nuevo: `in-memory-attendance.store.test.ts` (application), 5 casos nuevos en `prisma-attendance.int.test.ts`
+(integration), 1 caso nuevo en `attendance.test.ts` (http). El resto de las suites existentes del módulo
+(application/http/integration) queda sin cambios y en verde: confirman que la escritura dirigida no
+rompió el comportamiento anterior.
+
+Cierre: `pnpm check` verde (api y contracts); `pnpm test:integration` verde. Ejecutado completo dos
+veces (baseline y cierre), solo lo tocado en medio, según el presupuesto del rol.
 
 ## Review findings
 
