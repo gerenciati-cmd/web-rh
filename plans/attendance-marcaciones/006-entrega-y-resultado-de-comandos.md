@@ -179,15 +179,15 @@ deps.completeDeviceCommands.execute({ deviceId, body }); return 'OK'; })` — ex
 
 ## Acceptance criteria
 
-- [ ] `POST …/devices/:id/commands` with `DATA QUERY USERINFO PIN=X` → 201; the bitácora shows
+- [x] `POST …/devices/:id/commands` with `DATA QUERY USERINFO PIN=X` → 201; the bitácora shows
       it `QUEUED` with a `number`; with a `C:9:DATA QUERY USERINFO PIN=X` text → 400.
-- [ ] The next `GET /iclock/getrequest` answers exactly `C:<number>:DATA QUERY USERINFO PIN=X`;
+- [x] The next `GET /iclock/getrequest` answers exactly `C:<number>:DATA QUERY USERINFO PIN=X`;
       the bitácora shows it `SENT`.
-- [ ] `POST /iclock/devicecmd` with `ID=<number>&Return=0&CMD=DATA` → `OK`; the bitácora shows
+- [x] `POST /iclock/devicecmd` with `ID=<number>&Return=0&CMD=DATA` → `OK`; the bitácora shows
       `DONE`, `returnCode: "0"`, `completedAt`. With `Return=-1` on another command → `FAILED`.
       With an unknown `ID` → `OK` and a warn `zkteco: resultado sin comando`.
-- [ ] A body with two lines (`ID=a&Return=0&CMD=DATA\nID=b&Return=0&CMD=DATA`) closes both.
-- [ ] Integration: two concurrent takes of the same device with one QUEUED command → exactly one
+- [x] A body with two lines (`ID=a&Return=0&CMD=DATA\nID=b&Return=0&CMD=DATA`) closes both.
+- [x] Integration: two concurrent takes of the same device with one QUEUED command → exactly one
       gets it, the other gets `null`.
 - [ ] Rows created by plan 004 in the dev DB have a `number` after the migration and still list.
 - [ ] **Real device:** a queued `DATA QUERY USERINFO PIN=<existing PIN>` ends `DONE` with
@@ -383,3 +383,30 @@ Alcance: las reparaciones `7032c97` (L1, docs) y `34aebec` (L2, test) sobre `6e5
 Resultado: todo resuelto. Status → `verify`.
 
 ## Verification
+
+**PASS for criteria 1–5; criteria 6 and 7 NOT VERIFIED** — 2026-10-06, main session, at
+`1e7b31e`, against the dev API on `localhost:3001` (`pnpm dev:api`).
+
+- Suites: `pnpm check` green (api 876 passed / 5 skipped, contracts 261, domain 98);
+  `pnpm test:integration` 15 files / 188 tests green.
+- Migration: `db:deploy` on the dev DB → "No pending migrations to apply" (12 found).
+- Script over HTTP and `/iclock` (synthetic sede `Verificación 006 <suffix>`, devices
+  `VER006<suffix>` and `VER006B<suffix>`, suffix `MUX4KR96`), 15/15 PASS:
+  - [x] Criterion 1: `DATA QUERY USERINFO PIN=X` → 201, bitácora `QUEUED` with `number: 1`;
+        `C:9:DATA QUERY USERINFO PIN=X` → 400 `VALIDATION_ERROR`.
+  - [x] Criterion 2: next `getrequest` → exactly `C:1:DATA QUERY USERINFO PIN=X`; the next one
+        `OK`; bitácora `SENT` with `sentAt`.
+  - [x] Criterion 3: `ID=1&Return=0&CMD=DATA` → `OK`, bitácora `DONE`, `returnCode "0"`,
+        `completedAt`; `Return=-1` on command 2 → `FAILED`, `returnCode "-1"`; unknown
+        `ID=999999999` → `OK`.
+  - [x] Criterion 4: one body with two lines (commands 3 and 4) closes both as `DONE`.
+  - [x] Criterion 5: covered by the integration tests (green above) and, over HTTP, 10
+        simultaneous `getrequest` with one queued command → exactly 1 got `C:5:…`, 9 got `OK`.
+  - Unhappy path: device B posting `ID=6&Return=0` for device A command 6 → stays `SENT`.
+- API log: 2× `zkteco: resultado sin comando` (the unknown ID and the cross-device reply),
+  4× `zkteco: comando completado`, no error lines, and no command text (`USERINFO PIN`) at all.
+- **Criterion 6 NOT VERIFIED:** the dev DB had no plan-004 command rows (Deviation 2), so there
+  was nothing pre-existing to number. The column is `SERIAL NOT NULL`, so any such row gets one.
+- **Criterion 7 NOT VERIFIED:** needs the SenseFace 2A; to do by the user (queue
+  `DATA QUERY USERINFO PIN=<existing PIN>` and check `DONE` / `returnCode "0"` in the bitácora).
+- Data left in the dev DB: the sede and two devices above with six commands (numbers 1–6).
