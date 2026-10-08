@@ -2,7 +2,7 @@
 
 Runbook de la sonda del módulo `attendance`
 (plan `plans/attendance-sonda-zkteco/001-recepcion-adms-solo-log.md`, ADR 0008; autenticación por registro en BD:
-ADR 0013; barrera de red: ADR 0014).
+ADR 0013; comandos salientes: ADR 0014; barrera de red: ADR 0015).
 
 ## Qué hace y qué no
 
@@ -64,7 +64,7 @@ SenseFace 2A, firmware `ZAM70-NF24HA-Ver3.3.12`, PushVersion `Ver 3.1.2S-2025061
 ## Redes permitidas
 
 Cada equipo tiene una lista de redes IPv4 (IP o rango CIDR, hasta 10) desde las que puede
-conectarse a `/iclock` (ADR 0014).
+conectarse a `/iclock` (ADR 0015).
 
 1. Conecta el equipo y consulta `GET /api/v1/attendance/devices`: `lastSeenIp` es la IP desde la
    que llegó su último contacto.
@@ -137,19 +137,28 @@ creó al usuario con PIN alfanumérico (los `\t` son tabuladores reales; en JSON
 C:1:DATA UPDATE USERINFO PIN=GOMA850101AB1\tName=Ana Rojas\tPri=0\tPasswd=\tCard=\tGrp=1\tTZ=0000000100000000\tVerify=0
 ```
 
-`QUERY` y `DELETE` siguen sin probarse en el equipo.
+`QUERY` también se confirmó el 2026-10-03 (respuesta `ID=4&Return=0&CMD=DATA`: `ID` repite el
+número de `C:<n>:`, `Return=0` es éxito y `CMD` es solo el verbo). `DELETE` sigue sin probarse.
 
 - Encolar (HOLDING_ADMIN): `POST /api/v1/attendance/devices/:deviceId/commands` con
-  `{ "command": "DATA UPDATE USERINFO …" }`. Solo se aceptan comandos `USERINFO` (con prefijo
-  opcional `C:<n>:`); cualquier otro texto responde 400. El equipo debe tener redes permitidas
-  (ver "Redes permitidas"); si no, 422 `DEVICE_NETWORK_UNRESTRICTED`.
-- Entrega: el siguiente `GET /iclock/getrequest` de ese equipo responde exactamente el texto
-  encolado, una sola vez; los siguientes vuelven a `OK`.
-- Resultado: el equipo responde en `POST /iclock/devicecmd`; el log lo muestra como
-  `zkteco: resultado de comando` con los campos `ID`, `Return` y `CMD` (el resto, redactado).
-- Bitácora: `GET /api/v1/attendance/devices/:deviceId/commands` lista cada comando con su estado
-  (`QUEUED`/`SENT`) y cuándo se envió. El texto del comando no se escribe en el log (puede traer
-  un PIN o un nombre).
+  `{ "command": "DATA UPDATE USERINFO …" }`, **sin** prefijo `C:<n>:`: el API asigna el número
+  (plan 006). Solo se aceptan comandos `USERINFO`; cualquier otro texto, o uno con prefijo,
+  responde 400. El equipo debe tener redes permitidas (ver "Redes permitidas"); si no, 422
+  `DEVICE_NETWORK_UNRESTRICTED`.
+- Entrega: el siguiente `GET /iclock/getrequest` de ese equipo responde `C:<n>:<comando>`, una
+  sola vez aunque haya sondeos simultáneos; los siguientes vuelven a `OK`.
+- Resultado: el equipo responde en `POST /iclock/devicecmd`, un resultado por línea. El log lo
+  muestra como `zkteco: resultado de comando` con `ID`, `Return` y `CMD` (el resto, redactado), y
+  el `ID` cierra el comando de ese número.
+- Bitácora: `GET /api/v1/attendance/devices/:deviceId/commands` lista cada comando con su
+  `number` y su estado: `QUEUED` (en cola), `SENT` (entregado), `DONE` (el equipo respondió
+  `Return=0`) o `FAILED` (otro código, en `returnCode`). `POST /iclock/devicecmd` solo se
+  autentica con el serial y la red permitida, así que quien lo conozca desde esa red puede
+  falsificar ese resultado (`ID=<n>&Return=0` u otro código) para cualquier comando `SENT` del
+  equipo: la bitácora no es evidencia confiable de entrega frente a quien esté en la red del
+  equipo (ver [ADR 0014](../adr/0014-comandos-salientes-con-serial-como-credencial.md) y
+  [ADR 0015](../adr/0015-barrera-de-red-por-checador.md)).
+  El texto del comando no se escribe en el log (puede traer un PIN o un nombre).
 
 ## Qué buscar en el log
 
@@ -167,6 +176,9 @@ C:1:DATA UPDATE USERINFO PIN=GOMA850101AB1\tName=Ana Rojas\tPri=0\tPasswd=\tCard
 | `zkteco: comando encolado`              | info  | un administrador encoló un comando                 |
 | `zkteco: comando entregado`             | info  | el equipo recibió el comando en su consulta        |
 | `zkteco: resultado de comando`          | info  | respuesta del equipo en `devicecmd` (redactada)    |
+| `zkteco: comando completado`            | info  | la respuesta cerró el comando como `DONE`          |
+| `zkteco: comando completado`            | warn  | la respuesta cerró el comando como `FAILED`        |
+| `zkteco: resultado sin comando`         | warn  | respuesta con un `ID` que no es de ese equipo      |
 
 Si aparece un contacto `kind: 'unknown'`, el firmware usó una ruta que la sonda no conoce:
 anótala para el siguiente plan.

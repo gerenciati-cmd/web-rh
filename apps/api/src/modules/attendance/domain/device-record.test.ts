@@ -3,46 +3,49 @@ import { describe, expect, it } from 'vitest';
 import {
   isDeviceIdentifier,
   LOGGABLE_DEVICE_FIELDS,
-  parseCommandResult,
+  parseCommandResults,
   redactDeviceFields,
 } from './device-record';
 
-describe('parseCommandResult', () => {
+describe('parseCommandResults', () => {
   it('separa pares clave=valor por &', () => {
-    expect(parseCommandResult('ID=1&Return=0&CMD=DATA')).toEqual({
-      ID: '1',
-      Return: '0',
-      CMD: 'DATA',
-    });
+    expect(parseCommandResults('ID=1&Return=0&CMD=DATA')).toEqual([
+      { ID: '1', Return: '0', CMD: 'DATA' },
+    ]);
   });
 
-  it('también separa por salto de línea (LF y CRLF) y mezclado con &', () => {
-    expect(parseCommandResult('ID=7\r\nReturn=-1\nCMD=DATA&Extra=x')).toEqual({
-      ID: '7',
-      Return: '-1',
-      CMD: 'DATA',
-      Extra: 'x',
-    });
+  // Plan 006 (hallazgo L3 de la revisión del 004): cada línea es un resultado propio.
+  it('cada línea (LF, CRLF o CR) es un resultado aparte', () => {
+    expect(parseCommandResults('ID=7&Return=-1\r\nID=8&Return=0\nCMD=DATA&Extra=x')).toEqual([
+      { ID: '7', Return: '-1' },
+      { ID: '8', Return: '0' },
+      { CMD: 'DATA', Extra: 'x' },
+    ]);
   });
 
   it('el valor conserva los signos = posteriores al primero', () => {
-    expect(parseCommandResult('CMD=a=b')).toEqual({ CMD: 'a=b' });
+    expect(parseCommandResults('CMD=a=b')).toEqual([{ CMD: 'a=b' }]);
   });
 
   it('ignora lo que no es un par con clave identificadora', () => {
-    expect(parseCommandResult('=sinclave&sinigual&1mala=x&con espacio=y&ID=1')).toEqual({
-      ID: '1',
-    });
+    expect(parseCommandResults('=sinclave&sinigual&1mala=x&con espacio=y&ID=1')).toEqual([
+      { ID: '1' },
+    ]);
   });
 
-  it('un cuerpo vacío no produce campos', () => {
-    expect(parseCommandResult('')).toEqual({});
+  it('un cuerpo vacío no produce resultados', () => {
+    expect(parseCommandResults('')).toEqual([]);
   });
 
   it('con redactDeviceFields deja ID, Return y CMD y redacta el resto', () => {
-    const fields = redactDeviceFields(parseCommandResult('ID=1&Return=0&CMD=DATA&Name=Ana'));
+    const [fields] = parseCommandResults('ID=1&Return=0&CMD=DATA&Name=Ana');
 
-    expect(fields).toEqual({ ID: '1', Return: '0', CMD: 'DATA', Name: '[redactado:3]' });
+    expect(redactDeviceFields(fields ?? {})).toEqual({
+      ID: '1',
+      Return: '0',
+      CMD: 'DATA',
+      Name: '[redactado:3]',
+    });
   });
 });
 

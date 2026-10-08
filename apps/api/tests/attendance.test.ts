@@ -234,6 +234,32 @@ describe('attendance HTTP', () => {
 
       expect(forbidden.body.code).toBe('FORBIDDEN');
     });
+
+    // Criterio de aceptación 2 (plan attendance-marcaciones/005, escritura dirigida): un push
+    // después del cambio de sede actualiza lastSeenAt y conserva la sede nueva, no la de antes.
+    it('un push tras el cambio de sede conserva la sede nueva y actualiza lastSeenAt', async () => {
+      const id = await registerDevice();
+      const created = await container.cradle.createSite.execute({
+        name: 'Sede CDMX',
+        country: 'MX',
+        timeZone: 'America/Mexico_City',
+      });
+      if (!created.ok) throw created.error;
+
+      await api(adminToken)
+        .put(`/attendance/devices/${id}/site`)
+        .send({ siteId: created.value.id })
+        .expect(204);
+      await pushAttlog().expect(200);
+
+      const list = await api(adminToken).get('/attendance/devices').expect(200);
+      expect(list.body.items[0]).toMatchObject({
+        id,
+        siteId: created.value.id,
+        timeZone: 'America/Mexico_City',
+      });
+      expect(list.body.items[0].lastSeenAt).not.toBeNull();
+    });
   });
 
   describe('GET /attendance/devices', () => {

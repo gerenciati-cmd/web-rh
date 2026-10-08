@@ -5,7 +5,13 @@ min_implementer: mid
 depends_on: ['004']
 ---
 
-# 005 — Network barrier for /iclock and targeted device writes
+# 008 — Network barrier for /iclock and targeted device writes
+
+> **Renumbered 2026-10-08.** Written, implemented and verified as plan 005 on a branch parallel to
+> plans 005–007 of this series; renumbered when both lines were integrated (README, "Two parallel
+> lines"). The text below is kept as recorded: "plan 005" means this plan, "plan 006" means the
+> sync (now 007), "ADR 0014" means ADR 0015, and "decisions 11–13" mean README decisions 15–17.
+> In the integrated code the atomic take of plan 006 runs after this plan's network check.
 
 ## Context
 

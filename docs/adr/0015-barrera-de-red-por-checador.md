@@ -1,7 +1,13 @@
-# 0014 — Barrera de red por checador en `/iclock`
+# 0015 — Barrera de red por checador en `/iclock`
 
 - **Estado**: Aceptado
 - **Fecha**: 2026-10-05
+- **Reemplaza en parte**: [0014](0014-comandos-salientes-con-serial-como-credencial.md) (el punto
+  "no se agrega código de barrera en el API")
+
+> Se escribió como ADR 0014 en una rama paralela a la que creó el ADR 0014 vigente; se renumeró
+> al integrar ambas (2026-10-08). Aquí "plan 006" es la sincronización de colaboradores, hoy
+> `attendance-marcaciones/007`, y el plan que lo implementa es `attendance-marcaciones/008`.
 
 ## Contexto
 

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { FixedClock, RecordingLogger, SequentialIdGenerator } from '@/shared/testing/fakes';
 
@@ -157,16 +157,15 @@ describe('RecordDeviceContact', () => {
       expect(logged).not.toContain('1234');
     });
 
-    it('un cuerpo sin pares registra el resultado con campos vacíos', async () => {
+    // Plan 006: una línea sin pares no es un resultado (antes se registraba con campos vacíos).
+    it('un cuerpo sin pares no registra ningún resultado', async () => {
       const { logger, command } = await setUp(['TESTSN001']);
 
       await command.execute({ ...resultInput, body: 'OK', bodyLength: 2 });
 
-      expect(logger.entries).toContainEqual({
-        level: 'info',
-        obj: { serialNumber: 'TESTSN001', fields: {} },
-        msg: 'zkteco: resultado de comando',
-      });
+      expect(logger.entries.map((entry) => entry.msg)).not.toContain(
+        'zkteco: resultado de comando',
+      );
     });
 
     it('otros tipos de contacto no registran resultado de comando aunque traigan cuerpo', async () => {
@@ -205,6 +204,21 @@ describe('RecordDeviceContact', () => {
       expect.objectContaining({ level: 'warn', msg: 'zkteco: dispositivo no autorizado' }),
     ]);
     expect((await deviceRepository.findBySerialNumber('TESTSN001'))?.lastSeenAt).toBeNull();
+  });
+
+  // Reparación de revisión (hallazgo M1, plan 005): el repositorio en memoria devuelve la misma
+  // referencia guardada, así que una escritura completa deja el mismo estado final que
+  // `saveContact(device)` y ningún test por estado lo distingue. Se espía el método llamado. Al
+  // integrar con el plan 008 la escritura completa pasó a llamarse `add` (solo alta).
+  it('guarda la actividad con saveContact y nunca con add (hallazgo M1 de la revisión)', async () => {
+    const { command, deviceRepository } = await setUp(['TESTSN001']);
+    const saveContactSpy = vi.spyOn(deviceRepository, 'saveContact');
+    const addSpy = vi.spyOn(deviceRepository, 'add');
+
+    await command.execute(baseInput);
+
+    expect(saveContactSpy).toHaveBeenCalledTimes(1);
+    expect(addSpy).not.toHaveBeenCalled();
   });
 
   it('anota el último contacto y solo lo reescribe cuando pasó la resolución', async () => {

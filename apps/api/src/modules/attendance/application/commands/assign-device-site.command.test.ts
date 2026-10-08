@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { Device, type DeviceId } from '../../domain/device';
 import {
@@ -56,6 +56,21 @@ describe('AssignDeviceSite', () => {
     const saved = await deviceRepository.findById(DEVICE_ID);
     expect(saved?.siteId).toBe(SITE_ID);
     expect(saved?.timeZone).toBe('America/Mexico_City');
+  });
+
+  // Reparación de revisión (hallazgo M1, plan 005): el repositorio en memoria devuelve la misma
+  // referencia guardada, así que una escritura completa deja el mismo estado final que
+  // `saveSite(device)` y el test de arriba (que solo mira el estado) no lo distingue. Se espía el
+  // método llamado. Al integrar con el plan 008 la escritura completa pasó a llamarse `add`.
+  it('guarda la sede con saveSite y nunca con add (hallazgo M1 de la revisión)', async () => {
+    const { command, deviceRepository } = await setUp();
+    const saveSiteSpy = vi.spyOn(deviceRepository, 'saveSite');
+    const addSpy = vi.spyOn(deviceRepository, 'add');
+
+    await command.execute({ deviceId: DEVICE_ID, siteId: SITE_ID });
+
+    expect(saveSiteSpy).toHaveBeenCalledTimes(1);
+    expect(addSpy).not.toHaveBeenCalled();
   });
 
   it('un equipo inexistente da DEVICE_NOT_FOUND', async () => {

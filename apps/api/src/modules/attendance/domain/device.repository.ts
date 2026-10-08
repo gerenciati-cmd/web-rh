@@ -6,7 +6,8 @@ import type { DeviceAlreadyRegisteredError } from './errors';
 /**
  * Las escrituras son dirigidas por grupo de columnas: el equipo (contacto, desfase) y el
  * administrador (sede, redes) escriben en paralelo, y guardar la fila completa con un agregado
- * cargado antes haría que uno deshiciera en silencio el cambio del otro.
+ * cargado antes haría que uno deshiciera en silencio el cambio del otro (hallazgo
+ * `attendance-escritura-completa-del-equipo`).
  */
 export interface DeviceRepository {
   findById(id: DeviceId): Promise<Device | null>;

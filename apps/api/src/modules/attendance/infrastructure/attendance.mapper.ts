@@ -8,7 +8,11 @@ import type {
 
 import type { RawPunch } from '../application/queries/attendance.queries';
 import { Device, type DeviceId } from '../domain/device';
-import { DeviceCommand, type DeviceCommandId } from '../domain/device-command';
+import {
+  DeviceCommand,
+  type DeviceCommandId,
+  type DeviceCommandStatus,
+} from '../domain/device-command';
 import type { Punch } from '../domain/punch';
 
 /**
@@ -49,17 +53,51 @@ export const DeviceMapper = {
       lastSeenIp: device.lastSeenIp,
     };
   },
+
+  /** Columnas que escribe el tráfico del equipo. */
+  toContact(device: Device) {
+    return {
+      lastSeenAt: device.lastSeenAt,
+      lastSeenIp: device.lastSeenIp,
+      clockOffsetSeconds: device.clockOffsetSeconds,
+      clockOffsetMeasuredAt: device.clockOffsetMeasuredAt,
+    };
+  },
+
+  /** Columnas que escribe el administrador al asignar la sede. */
+  toSite(device: Device) {
+    return { siteId: device.siteId, timeZone: device.timeZone };
+  },
+
+  /** Columnas que escribe el administrador al definir la barrera de red. */
+  toAllowedNetworks(device: Device) {
+    return { allowedNetworks: [...device.allowedNetworks] };
+  },
 };
+
+const DEVICE_COMMAND_STATUSES: ReadonlySet<string> = new Set<DeviceCommandStatus>([
+  'QUEUED',
+  'SENT',
+  'DONE',
+  'FAILED',
+]);
+
+// La columna es texto libre: solo existen estos valores y los escribe esta app.
+function toCommandStatus(value: string): DeviceCommandStatus {
+  return DEVICE_COMMAND_STATUSES.has(value) ? (value as DeviceCommandStatus) : 'QUEUED';
+}
 
 export const DeviceCommandMapper = {
   toDomain(row: DeviceCommandRow): DeviceCommand {
     return DeviceCommand.restore(row.id as DeviceCommandId, {
       deviceId: row.deviceId as DeviceId,
+      number: row.number,
       command: row.command,
-      // La columna es texto libre: solo existen estos dos valores y los escribe esta app.
-      status: row.status === 'SENT' ? 'SENT' : 'QUEUED',
+      status: toCommandStatus(row.status),
       queuedAt: row.queuedAt,
       sentAt: row.sentAt,
+      returnCode: row.returnCode,
+      completedAt: row.completedAt,
       queuedBy: row.queuedBy,
     });
   },
@@ -68,10 +106,13 @@ export const DeviceCommandMapper = {
     return {
       id: command.id,
       deviceId: command.deviceId,
+      number: command.number,
       command: command.command,
       status: command.status,
       queuedAt: command.queuedAt,
       sentAt: command.sentAt,
+      returnCode: command.returnCode,
+      completedAt: command.completedAt,
       queuedBy: command.queuedBy,
     };
   },
@@ -79,10 +120,13 @@ export const DeviceCommandMapper = {
   toDto(row: DeviceCommandRow): DeviceCommandDto {
     return {
       id: row.id,
+      number: row.number,
       command: row.command,
-      status: row.status === 'SENT' ? 'SENT' : 'QUEUED',
+      status: toCommandStatus(row.status),
       queuedAt: row.queuedAt.toISOString(),
       sentAt: row.sentAt?.toISOString() ?? null,
+      returnCode: row.returnCode,
+      completedAt: row.completedAt?.toISOString() ?? null,
       queuedBy: row.queuedBy,
     };
   },
