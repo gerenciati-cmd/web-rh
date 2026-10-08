@@ -1,5 +1,5 @@
 ---
-status: review
+status: verify
 module: attendance
 min_implementer: mid
 depends_on: ['005', '006', '008']
@@ -447,5 +447,79 @@ prefix> } }]`, `status: 'QUEUED'`, `deviceId`, ordered `queuedAt desc, id desc`,
 - Finding 2 (Low): add the `zkteco: sincronización omitida` warn to the runbook log table
   (`docs/integraciones/zkteco-senseface-2a.md`).
 - Finding 3 (Low): accepted as is (idempotent UPDATE, longer queue only); no change.
+
+### Re-revisión (Reviewer, 2026-10-08, tras la reparación 4d748a5 y los tests 4ad3da7)
+
+Diff `main...HEAD`, worktree limpio. Revisé de nuevo todo lo que tocó la reparación:
+`device-user-sync.ts`, `device-command.repository.ts`, `device-user-commands.ts`, el store en
+memoria, `prisma-device-command.repository.ts`, el runbook y los tests nuevos.
+
+**Checklist: 13/13 pasan.**
+
+- [x] `pnpm plans:scope`: sale con código 1 por lo mismo que en la primera revisión. Hay un
+      "fuera de alcance" más, `in-memory-device-command.repository.test.ts`, que es un test nuevo
+      del tester (permitido). Los "declarados sin cambios" y los hot files siguen igual. La
+      reparación tocó un test de integración del tester (`prisma-device-user.int.test.ts`): es
+      la adaptación mecánica de `hasQueued` y está declarada en Deviations.
+- [x] `pnpm check` en verde (api 90 archivos / 1111 passed / 5 skipped; contracts 295; arch sin
+      violaciones, 314 módulos; plans, harness, hooks, bootstrap y quality en verde).
+- [x] `pnpm test:integration` en verde (17 archivos / 218 tests).
+- [x] Dominio: los textos y su matcher (`upsertUserPrefix`, `targetsPin`) viven juntos en
+      `domain/device-user-commands.ts`. Prisma y el store en memoria los importan, así que no
+      pueden separarse.
+- [x] CQRS: `lastQueuedForPin` es un método del puerto de escritura que solo usa el helper de
+      sincronización. No es un método para pantallas.
+- [x] Contratos: la reparación no los cambia.
+- [x] Errores: sin cambio.
+- [x] Tiempo e ids: sin cambio (`clock`, `idGenerator`).
+- [x] Esquema: la reparación no agrega migración ni la necesita.
+- [x] DI: `container.test.ts` en verde.
+- [x] Sin secretos ni datos reales (los RFC de prueba son sintéticos).
+- [x] Deviations: comprobé la entrada de la reparación. `enqueue` recibe `{ text, pin,
+employeeId }` (`device-user-sync.ts:79-83`). No queda ningún `hasQueued` en `apps/` ni en
+      `docs/`.
+- [x] Docs: la tabla de logs del runbook tiene la fila `zkteco: sincronización omitida`. Su
+      "Cuándo" coincide con `sync-device.command.ts:46-50`, porque el caso sin redes usa su
+      propio mensaje. En la sección de sincronización del runbook no queda ningún texto con la
+      regla vieja.
+
+**Hallazgos de la primera revisión**
+
+1. Medium, **resuelto.** `device-user-sync.ts:87` marca `'duplicate'` solo si
+   `lastQueuedForPin(device.id, pin) === text`. Prisma ordena `queuedAt desc, id desc`
+   (`prisma-device-command.repository.ts:60`), el orden exactamente inverso a la entrega
+   `nextQueued` (`:24`, `queuedAt asc, id asc`). El store en memoria hace lo mismo (`:57-69`
+   contra `:83-85`). Repasé los dos escenarios con la regla nueva:
+   - Caso B: el último comando es el DELETE, distinto del UPDATE, así que se encola el UPDATE
+     final.
+   - Caso A: el último comando es el UPDATE, distinto del DELETE, así que se encola el DELETE
+     final y no queda fila.
+   - El checador S→T→S sigue el mismo camino por `remove`/`push` de `SyncDevice`.
+
+   Los tres tienen test (`sync-employee.command.test.ts` casos A y B; `sync-device.command.test.ts`
+   cambio de sede del checador). El matcher no confunde un PIN que es prefijo de otro, porque el
+   UPDATE exige el tab después del PIN y el DELETE exige el texto exacto. Esto está probado en
+   dominio, en memoria y en Prisma.
+
+2. Low, **resuelto** (fila en el runbook).
+3. Low, **aceptado por el usuario** (decisión 21 / Repair). La regla nueva no lo cambia.
+
+**Regresiones: ninguna.**
+
+**Nuevos (Low, no bloquean, sin cambio de código)**
+
+4. Incierto, teórico. `UuidV7Generator` (`apps/api/src/infrastructure/system/uuid-v7-generator.ts:10-17`)
+   no es monótono dentro del mismo milisegundo. Supongamos que se encolan dos comandos opuestos
+   del mismo equipo y PIN con el mismo `queuedAt`. Entonces el desempate por `id` puede entregar
+   primero el más nuevo, y el registro (que refleja la última intención) quedaría opuesto al
+   equipo. `lastQueuedForPin` sí es coherente con la entrega, así que la regla de la decisión 21
+   se cumple. Para que pase, dos sincronizaciones del mismo PIN tendrían que terminar en menos
+   de 1 ms, y cada una hace varias consultas a la BD (`findPlacement`, `listByEmployee`,
+   `lastQueuedForPin`, `nextNumber`). No lo reproduje. El desempate es de la entrega del
+   plan 006, no de esta reparación; lo dejo anotado sin hallazgo en `plans/hallazgos/` porque
+   no veo un camino alcanzable.
+
+Status: `verify`. No queda ningún hallazgo que pida cambio de código. El criterio 8 (equipo
+real, DELETE sin confirmar) le toca al verificador.
 
 ## Verification
