@@ -557,11 +557,26 @@ apply` (`20261008204154_create_device_users` already on the dev DB).
     live**. The API that served the run writes to the user's terminal, which this session cannot
     read, and a second instance on another port could not be started (the Bash hook blocks env
     prefixes and wrapper scripts). Covered by the http/application tests (`Test coverage`).
-  - [ ] C8 **NOT VERIFIED**: needs the physical SenseFace 2A (users appear with their RFC, accented
-        name on screen, DELETE removes the user and ends `DONE`, users "1" and "2" stay;
-        `DATA DELETE USERINFO` is still unconfirmed on the device). For the user.
+  - [x] C8: real SenseFace 2A — see "Real device (2026-10-08)" below.
 - Synthetic rows left in the dev DB (as in earlier verifications): users
   `verif007-admin-pdck@example.com` / `verif007-hr-pdck@example.com`, sedes `Verif 007 S|T PDCK`,
   colaboradores `verif007-*-pdck@example.com` (Alba Uno, Beto Dos, José Peña), devices
   `VERIF007PDCKD1|D2|D3` and their `QUEUED` commands and `device_users` rows. The devices never
   poll, so nothing is delivered.
+
+### Real device (2026-10-08) — criterion 8 PASS (reported by the user)
+
+Run by the user on the physical SenseFace 2A against the API from
+`feat/attendance-sincronizacion` (`e9c5243`). The main session wrote the steps and did not see the
+API logs or the device; the user reported "confirmado" for all of them:
+
+1. The device keeps its allowed network (from plan 008) and its sede has colaboradores with RFC.
+2. `POST …/devices/<id>/sync` → the commands end `DONE` and the colaboradores appear on the device
+   with their RFC as user ID.
+3. A test colaborador with accents hired in that sede reaches the device on its own.
+4. Moving them to another sede (`PUT …/employees/<id>/site`) queues a DELETE that ends `DONE` and
+   removes the user: **`DATA DELETE USERINFO` is confirmed on the device.**
+5. Users "1", "2" and "Prueba Red" (plan 008), not created by the sync, stay on the device.
+
+**Overall: PASS on criteria 1–4, 6 and 8 live; 5 and 7 by tests.** Accepted by the user on
+2026-10-08 → `done`.
