@@ -13,7 +13,10 @@ export interface DeviceCommandRepository {
   claim(command: DeviceCommand): Promise<boolean>;
   /** Siguiente número `C:<n>:`, único entre todos los comandos. */
   nextNumber(): Promise<number>;
-  /** Si hay un comando idéntico (sin prefijo) todavía en cola para ese equipo. */
-  hasQueued(deviceId: DeviceId, command: string): Promise<boolean>;
+  /**
+   * Texto (sin prefijo) del comando en cola más reciente del equipo que apunta a ese PIN
+   * (alta o baja), o null. La entrega es FIFO, así que el último decide el estado final.
+   */
+  lastQueuedForPin(deviceId: DeviceId, pin: string): Promise<string | null>;
   findByNumber(deviceId: DeviceId, number: number): Promise<DeviceCommand | null>;
 }

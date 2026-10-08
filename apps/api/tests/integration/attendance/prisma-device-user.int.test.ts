@@ -10,7 +10,7 @@ import { SequentialIdGenerator } from '@/shared/testing/fakes';
 import { useTestDatabase } from '../support';
 
 /**
- * Plan attendance-marcaciones/007: registro `device_users`, `listActiveBySite`, `hasQueued` y
+ * Plan attendance-marcaciones/007: registro `device_users`, `listActiveBySite`, `lastQueuedForPin` y
  * `queued_by` nulo (migración `create_device_users`).
  */
 const database = useTestDatabase([
@@ -28,6 +28,7 @@ const SITE_A = '00000000-0000-4000-8000-0000000000a1';
 const SITE_B = '00000000-0000-4000-8000-0000000000a2';
 const EMPLOYEE_1 = '00000000-0000-4000-8000-0000000000e1';
 const EMPLOYEE_2 = '00000000-0000-4000-8000-0000000000e2';
+const PIN = 'GOMA850101AB1';
 const UPDATE_TEXT = 'DATA UPDATE USERINFO PIN=GOMA850101AB1\tName=Ana Rojas';
 
 async function savedDevice(
@@ -282,7 +283,7 @@ describe('PrismaDeviceRepository.listActiveBySite', () => {
   });
 });
 
-describe('PrismaDeviceCommandRepository: hasQueued y queued_by nulo', () => {
+describe('PrismaDeviceCommandRepository: lastQueuedForPin y queued_by nulo', () => {
   it('queuedBy null se guarda y se rehidrata como null', async () => {
     const device = await savedDevice('TESTSN001');
     await queue(device, UPDATE_TEXT, null);
@@ -292,23 +293,23 @@ describe('PrismaDeviceCommandRepository: hasQueued y queued_by nulo', () => {
     expect(next?.queuedBy).toBeNull();
   });
 
-  it('hasQueued es verdadero para un comando idéntico en cola de ese equipo', async () => {
+  it('lastQueuedForPin es verdadero para un comando idéntico en cola de ese equipo', async () => {
     const device = await savedDevice('TESTSN001');
     await queue(device, UPDATE_TEXT, null);
 
-    expect(await commands.hasQueued(device.id, UPDATE_TEXT)).toBe(true);
+    expect(await commands.lastQueuedForPin(device.id, PIN)).toBe(UPDATE_TEXT);
   });
 
-  it('hasQueued es falso para otro texto, otro equipo o un comando que ya salió de la cola', async () => {
+  it('lastQueuedForPin es falso para otro texto, otro equipo o un comando que ya salió de la cola', async () => {
     const one = await savedDevice('TESTSN001');
     const two = await savedDevice('TESTSN002');
     const sent = await queue(one, UPDATE_TEXT, null);
 
-    expect(await commands.hasQueued(one.id, 'DATA DELETE USERINFO PIN=GOMA850101AB1')).toBe(false);
-    expect(await commands.hasQueued(two.id, UPDATE_TEXT)).toBe(false);
+    expect(await commands.lastQueuedForPin(one.id, 'OTRO000000XX0')).toBeNull();
+    expect(await commands.lastQueuedForPin(two.id, PIN)).toBeNull();
 
     sent.markSent(NOW);
     expect(await commands.claim(sent)).toBe(true);
-    expect(await commands.hasQueued(one.id, UPDATE_TEXT)).toBe(false);
+    expect(await commands.lastQueuedForPin(one.id, PIN)).toBeNull();
   });
 });

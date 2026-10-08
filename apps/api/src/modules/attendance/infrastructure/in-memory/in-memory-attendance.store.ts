@@ -12,6 +12,7 @@ import { Device, type DeviceId, type DeviceProps } from '../../domain/device';
 import { DeviceCommand } from '../../domain/device-command';
 import type { DeviceCommandRepository } from '../../domain/device-command.repository';
 import type { DeviceUser } from '../../domain/device-user';
+import { targetsPin } from '../../domain/device-user-commands';
 import type { DeviceUserRepository } from '../../domain/device-user.repository';
 import type { DeviceRepository } from '../../domain/device.repository';
 import { DeviceAlreadyRegisteredError } from '../../domain/errors';
@@ -52,13 +53,20 @@ export class InMemoryDeviceCommandRepository implements DeviceCommandRepository 
     return Promise.resolve(this.#lastNumber);
   }
 
-  hasQueued(deviceId: DeviceId, command: string): Promise<boolean> {
-    return Promise.resolve(
-      [...this.store.commands.values()].some(
+  lastQueuedForPin(deviceId: DeviceId, pin: string): Promise<string | null> {
+    // Inverso del orden de entrega (`queuedAt asc, id asc`).
+    const [latest] = [...this.store.commands.values()]
+      .filter(
         (other) =>
-          other.deviceId === deviceId && other.command === command && other.status === 'QUEUED',
-      ),
-    );
+          other.deviceId === deviceId &&
+          other.status === 'QUEUED' &&
+          targetsPin(other.command, pin),
+      )
+      .sort(
+        (a, b) =>
+          b.queuedAt.getTime() - a.queuedAt.getTime() || (a.id < b.id ? 1 : a.id > b.id ? -1 : 0),
+      );
+    return Promise.resolve(latest ? latest.command : null);
   }
 
   findByNumber(deviceId: DeviceId, number: number): Promise<DeviceCommand | null> {

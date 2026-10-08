@@ -19,3 +19,13 @@ export function upsertUserCommand(pin: string, name: string): string {
 export function deleteUserCommand(pin: string): string {
   return `DATA DELETE USERINFO PIN=${pin}`;
 }
+
+/** Prefijo común de todo UPDATE de ese PIN (el texto sigue con un tab y los demás campos). */
+export function upsertUserPrefix(pin: string): string {
+  return `DATA UPDATE USERINFO PIN=${pin}\t`;
+}
+
+/** Si el comando (sin prefijo `C:<n>:`) es el alta o la baja de ese PIN. */
+export function targetsPin(command: string, pin: string): boolean {
+  return command === deleteUserCommand(pin) || command.startsWith(upsertUserPrefix(pin));
+}

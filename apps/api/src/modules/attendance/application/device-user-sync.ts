@@ -16,7 +16,7 @@ interface Deps {
 
 /**
  * - `queued`: se encoló un comando nuevo.
- * - `duplicate`: ya había uno idéntico en cola; no se repite.
+ * - `duplicate`: el último comando en cola de ese PIN ya es idéntico; no se repite.
  * - `invalid`: el dominio rechazó el texto (p. ej. largo); se omite.
  * - `unrestricted`: el equipo no tiene redes permitidas; no se encoló nada.
  */
@@ -40,8 +40,11 @@ export class DeviceUserSync {
     if (!device.receivesCommands) return 'unrestricted';
     const outcome = await this.enqueue(
       device,
-      upsertUserCommand(member.rfc, member.fullName),
-      member.employeeId,
+      {
+        text: upsertUserCommand(member.rfc, member.fullName),
+        pin: member.rfc,
+        employeeId: member.employeeId,
+      },
       queuedBy,
     );
     if (outcome === 'queued' || outcome === 'duplicate') {
@@ -64,8 +67,7 @@ export class DeviceUserSync {
     if (!device.receivesCommands) return 'unrestricted';
     const outcome = await this.enqueue(
       device,
-      deleteUserCommand(user.pin),
-      user.employeeId,
+      { text: deleteUserCommand(user.pin), pin: user.pin, employeeId: user.employeeId },
       queuedBy,
     );
     if (outcome === 'queued' || outcome === 'duplicate') {
@@ -76,12 +78,15 @@ export class DeviceUserSync {
 
   private async enqueue(
     device: Device,
-    text: string,
-    employeeId: string,
+    { text, pin, employeeId }: { text: string; pin: string; employeeId: string },
     queuedBy: string | null,
   ): Promise<SyncOutcome> {
     const { deviceCommandRepository, idGenerator, clock, logger } = this.deps;
-    if (await deviceCommandRepository.hasQueued(device.id, text)) return 'duplicate';
+    // Duplicado solo si el último comando en cola de ese PIN es idéntico: uno opuesto
+    // posterior (la entrega es FIFO) dejaría al equipo en el estado contrario.
+    if ((await deviceCommandRepository.lastQueuedForPin(device.id, pin)) === text) {
+      return 'duplicate';
+    }
 
     const command = DeviceCommand.queue({
       id: idGenerator.next() as DeviceCommandId,

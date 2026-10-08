@@ -1,5 +1,5 @@
 ---
-status: review
+status: testing
 module: attendance
 min_implementer: mid
 depends_on: ['005', '006', '008']
@@ -298,6 +298,7 @@ null })` (an `err` result is logged at warn with its `code`, not thrown; for
 - Step 5: la migración quedó como `20261008204154_create_device_users` (generada por `pnpm db:migrate`; no hubo placeholder que reemplazar). Solo contiene `ALTER COLUMN queued_by DROP NOT NULL`, `CREATE TABLE`, índice y FK.
 - Step 6: el warn de una sincronización automática rechazada (`DEVICE_NETWORK_UNRESTRICTED`, etc.) lo escribe `SyncDevice` cuando `queuedBy === null`, no el handler de `subscribe`: el cradle de `subscribe` no expone `logger` y agregarlo exigiría un registro nuevo. Mismo mensaje y nivel; el handler no lanza.
 - Step 8: `queue-device-command.command.ts` y `attendance-device-commands.test.ts` no necesitaron cambios. Los callers de `assignSite`/`setAllowedNetworks` pasan la fecha literal `new Date('2026-10-08T12:00:00Z')`. La suite de integración existente pasa (199 tests).
+- Reparación 2026-10-08 (decisión 21; reemplaza la regla "comando idéntico en cola no se repite" del Approach): `hasQueued` pasó a `lastQueuedForPin(deviceId, pin): Promise<string | null>` (Prisma `findFirst` con `OR` delete/`startsWith` prefijo UPDATE, `queuedAt desc, id desc`; en memoria, mismo orden). `domain/device-user-commands.ts` exporta `upsertUserPrefix` y `targetsPin`. `DeviceUserSync.enqueue` marca `'duplicate'` solo si el último comando en cola de ese PIN es idéntico; recibe `{ text, pin, employeeId }` como un objeto para no pasar de 4 parámetros (lint `max-params`). Tests adaptados mecánicamente: solo `tests/integration/attendance/prisma-device-user.int.test.ts` (las 3 aserciones de `hasQueued`, más la constante `PIN`); ningún test unitario llamaba `hasQueued`. Los casos nuevos (los dos escenarios del hallazgo 1 y S→T→S de un checador) son del tester. Hallazgo 2: warn `zkteco: sincronización omitida` agregado a la tabla de logs del runbook. Hallazgo 3: aceptado sin cambio. La evidencia previa de testing/review (arriba) queda superada por esta reparación y debe repetirse.
 - Step 4: `SyncEmployee` se partió en `findTarget`, `removeStale` y `addMissing` solo para bajar la complejidad ciclomática; sin cambio de comportamiento.
 
 ## Test coverage
@@ -409,5 +410,35 @@ Reviewer, 2026-10-08, diff `main...HEAD` (d6b18a1, 11170af, 373ec0f; worktree li
 
 Status: se queda en `review` (el hallazgo 1 pide cambio de código y probablemente una
 decisión sobre la regla de no duplicar).
+
+### Repair (main session, 2026-10-08)
+
+The user decided the rule (README decision 21): **a sync command is skipped only when the most
+recent QUEUED command for that device and that PIN is identical**; if the most recent one is
+the opposite (or an UPDATE with another text), the new command is queued. This replaces the
+Approach sentence "An identical command still QUEUED for the same device is not queued twice".
+Status `review` → `implementing` for the repair; after it, testing → review → verify again.
+
+Scope of the repair (implementer):
+
+- Finding 1 (Medium):
+  - `domain/device-command.repository.ts`: replace `hasQueued(deviceId, command)` with
+    `lastQueuedForPin(deviceId: DeviceId, pin: string): Promise<string | null>`, the text of the
+    most recent `QUEUED` command of the device that targets `pin`, in the reverse of the
+    delivery order (`queuedAt desc, id desc`; delivery is `asc`,
+    `infrastructure/prisma-device-command.repository.ts:24`); `null` if none.
+  - "Targets `pin`" = the text equals `deleteUserCommand(pin)` or starts with the UPDATE prefix
+    for that pin (`DATA UPDATE USERINFO PIN=<pin>` followed by a tab). Export both matchers from
+    `domain/device-user-commands.ts` so the texts and the matchers cannot drift apart.
+  - Prisma: `findFirst` with `OR: [{ command: <delete text> }, { command: { startsWith: <update
+prefix> } }]`, `status: 'QUEUED'`, `deviceId`, ordered `queuedAt desc, id desc`, selecting
+    `command`. In-memory: same rule over the store, same order.
+  - `application/device-user-sync.ts` `enqueue(device, text, pin, …)`: `'duplicate'` only when
+    `lastQueuedForPin(device.id, pin) === text`. `push`/`remove` pass the pin.
+  - Existing tests that call `hasQueued` are adapted mechanically (list them in Deviations);
+    the new cases (the two scenarios of finding 1, and the device S→T→S one) are the tester's.
+- Finding 2 (Low): add the `zkteco: sincronización omitida` warn to the runbook log table
+  (`docs/integraciones/zkteco-senseface-2a.md`).
+- Finding 3 (Low): accepted as is (idempotent UPDATE, longer queue only); no change.
 
 ## Verification

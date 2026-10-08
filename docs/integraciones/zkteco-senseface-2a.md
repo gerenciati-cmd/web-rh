@@ -181,26 +181,27 @@ Cada checador lleva a los colaboradores activos de su sede, con su RFC como PIN 
 
 ## Qué buscar en el log
 
-| Mensaje                                              | Nivel | Cuándo                                              |
-| ---------------------------------------------------- | ----- | --------------------------------------------------- |
-| `zkteco: contacto del dispositivo`                   | info  | handshake, resultado de comando, ruta desconocida   |
-| `zkteco: contacto del dispositivo`                   | debug | consulta de comandos (cada ~10 s)                   |
-| `zkteco: datos recibidos`                            | info  | cada envío: tabla, total y conteo por tipo          |
-| `zkteco: registro`                                   | debug | cada registro interpretado y redactado              |
-| `zkteco: marcaciones guardadas`                      | info  | tras un `ATTLOG`: recibidas, nuevas y duplicadas    |
-| `zkteco: marcación rechazada`                        | warn  | línea `ATTLOG` con PIN o fecha inválidos            |
-| `zkteco: dispositivo no autorizado`                  | warn  | SN no registrado o equipo inactivo                  |
-| `zkteco: IP no permitida`                            | warn  | request desde una IP fuera de las redes del equipo  |
-| `zkteco: redes del equipo actualizadas`              | info  | un administrador cambió las redes permitidas        |
-| `zkteco: comando encolado`                           | info  | un administrador encoló un comando                  |
-| `zkteco: comando entregado`                          | info  | el equipo recibió el comando en su consulta         |
-| `zkteco: resultado de comando`                       | info  | respuesta del equipo en `devicecmd` (redactada)     |
-| `zkteco: comando completado`                         | info  | la respuesta cerró el comando como `DONE`           |
-| `zkteco: comando completado`                         | warn  | la respuesta cerró el comando como `FAILED`         |
-| `zkteco: resultado sin comando`                      | warn  | respuesta con un `ID` que no es de ese equipo       |
-| `zkteco: sincronización de checador`                 | info  | se sincronizó un equipo: encolados, bajas, omitidos |
-| `zkteco: checador sin redes, sincronización omitida` | warn  | un equipo sin redes permitidas no recibió usuarios  |
-| `zkteco: comando de sincronización inválido`         | warn  | el texto de un usuario no pasó la validación        |
+| Mensaje                                              | Nivel | Cuándo                                                                      |
+| ---------------------------------------------------- | ----- | --------------------------------------------------------------------------- |
+| `zkteco: contacto del dispositivo`                   | info  | handshake, resultado de comando, ruta desconocida                           |
+| `zkteco: contacto del dispositivo`                   | debug | consulta de comandos (cada ~10 s)                                           |
+| `zkteco: datos recibidos`                            | info  | cada envío: tabla, total y conteo por tipo                                  |
+| `zkteco: registro`                                   | debug | cada registro interpretado y redactado                                      |
+| `zkteco: marcaciones guardadas`                      | info  | tras un `ATTLOG`: recibidas, nuevas y duplicadas                            |
+| `zkteco: marcación rechazada`                        | warn  | línea `ATTLOG` con PIN o fecha inválidos                                    |
+| `zkteco: dispositivo no autorizado`                  | warn  | SN no registrado o equipo inactivo                                          |
+| `zkteco: IP no permitida`                            | warn  | request desde una IP fuera de las redes del equipo                          |
+| `zkteco: redes del equipo actualizadas`              | info  | un administrador cambió las redes permitidas                                |
+| `zkteco: comando encolado`                           | info  | un administrador encoló un comando                                          |
+| `zkteco: comando entregado`                          | info  | el equipo recibió el comando en su consulta                                 |
+| `zkteco: resultado de comando`                       | info  | respuesta del equipo en `devicecmd` (redactada)                             |
+| `zkteco: comando completado`                         | info  | la respuesta cerró el comando como `DONE`                                   |
+| `zkteco: comando completado`                         | warn  | la respuesta cerró el comando como `FAILED`                                 |
+| `zkteco: resultado sin comando`                      | warn  | respuesta con un `ID` que no es de ese equipo                               |
+| `zkteco: sincronización de checador`                 | info  | se sincronizó un equipo: encolados, bajas, omitidos                         |
+| `zkteco: checador sin redes, sincronización omitida` | warn  | un equipo sin redes permitidas no recibió usuarios                          |
+| `zkteco: comando de sincronización inválido`         | warn  | el texto de un usuario no pasó la validación                                |
+| `zkteco: sincronización omitida`                     | warn  | una sincronización automática fue rechazada (equipo inexistente o sin sede) |
 
 Si aparece un contacto `kind: 'unknown'`, el firmware usó una ruta que la sonda no conoce:
 anótala para el siguiente plan.
