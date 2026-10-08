@@ -505,8 +505,7 @@ no autorizado`, 0 punches stored, log `WARN zkteco: IP no permitida` with `seria
         `lastSeenIp: "10.9.9.5"`; `:3091` with the same header → 403 (header ignored).
   - [x] Review L1: `:3092` with an 80-character junk `X-Forwarded-For` on a device without
         networks → 200 and `lastSeenIp: null` (no 500).
-  - [ ] C7 **NOT VERIFIED**: needs the physical SenseFace 2A (set its IP from `lastSeenIp`, keep
-        marking, receive a queued `USERINFO`). For the user.
+  - [x] C7: real SenseFace 2A — see "Real device (2026-10-08)" below.
 - Logs: the queued command text (`PIN=VERIF005`) appears 0 times in either API log; 0 errors/500.
 - Observations (not defects of this plan's criteria):
   - A client on IPv6 loopback (`fetch('http://localhost…')` resolved to `::1` in a first run) is
@@ -519,3 +518,23 @@ no autorizado`, 0 punches stored, log `WARN zkteco: IP no permitida` with `seria
   `verif005-*-muvt4a9u|muvt4j9l@example.com`, sedes `Verificación 005 MUVT4A9U|MUVT4J9L`, devices
   `VERIF005MUVT4A9U|VERIF005MUVT4J9L` and their punches/commands. The first run (`…4A9U`) is the
   IPv6 one from the observation.
+
+### Real device (2026-10-08) — criterion 7 PASS (reported by the user)
+
+Run by the user on the physical SenseFace 2A against the API from
+`chore/attendance-integrar-barrera` (`cade503`, this plan integrated with 005–006: the delivered
+text carries `C:<n>:` and the result closes the command). The main session wrote the steps and
+did not see the API logs or the device; the user reported "todo verificado, correcto" for all of
+them:
+
+1. `pnpm --filter @rrhh/api db:deploy` (applies `20261005165911_add_device_networks`, missing on
+   the dev DB after the parallel line) and `GET …/devices` → the device's `lastSeenIp`.
+2. `PUT …/devices/<id>/networks` with that IP → 204.
+3. Marking on the device → `zkteco: marcaciones guardadas`, no `IP no permitida`.
+4. `POST …/devices/<id>/commands` with a test `DATA UPDATE USERINFO` (synthetic RFC-like PIN,
+   no prefix) → 201; `comando entregado` and `comando completado`; the bitácora shows `DONE`; the
+   test user appears on the device.
+5. Networks replaced by `["10.9.9.0/24"]` → `IP no permitida`, marcaciones stop; the correct IP
+   set back → pending marcaciones arrive on the next contact.
+
+**Overall: PASS on criteria 1–7.** Accepted by the user on 2026-10-08 → `done`.
