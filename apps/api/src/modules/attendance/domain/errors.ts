@@ -47,3 +47,11 @@ export class DeviceNetworkUnrestrictedError extends BusinessRuleViolationError {
     super('El checador no tiene redes permitidas: no puede recibir comandos', { deviceId });
   }
 }
+
+export class DeviceWithoutSiteError extends BusinessRuleViolationError {
+  override readonly code = 'DEVICE_WITHOUT_SITE';
+
+  constructor(deviceId: string) {
+    super('El checador no tiene sede asignada', { deviceId });
+  }
+}

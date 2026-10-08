@@ -3,6 +3,7 @@ import type { PrismaDatabase } from '@/infrastructure/database/prisma-database';
 import type { DeviceId } from '../domain/device';
 import type { DeviceCommand } from '../domain/device-command';
 import type { DeviceCommandRepository } from '../domain/device-command.repository';
+import { deleteUserCommand, upsertUserPrefix } from '../domain/device-user-commands';
 
 import { DeviceCommandMapper } from './attendance.mapper';
 
@@ -43,6 +44,22 @@ export class PrismaDeviceCommandRepository implements DeviceCommandRepository {
     const [row] = rows;
     if (!row) throw new Error('La secuencia de números de comando no devolvió valor');
     return row.n;
+  }
+
+  async lastQueuedForPin(deviceId: DeviceId, pin: string): Promise<string | null> {
+    const row = await this.deps.database.client.attendanceDeviceCommand.findFirst({
+      where: {
+        deviceId,
+        status: 'QUEUED',
+        OR: [
+          { command: deleteUserCommand(pin) },
+          { command: { startsWith: upsertUserPrefix(pin) } },
+        ],
+      },
+      orderBy: [{ queuedAt: 'desc' }, { id: 'desc' }],
+      select: { command: true },
+    });
+    return row ? row.command : null;
   }
 
   async findByNumber(deviceId: DeviceId, number: number): Promise<DeviceCommand | null> {

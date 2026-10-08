@@ -76,6 +76,10 @@ describe('DeviceCommandSchema', () => {
     queuedBy: '00000000-0000-4000-8000-0000000000a1',
   };
 
+  it('acepta queuedBy null (lo encoló la sincronización automática)', () => {
+    expect(DeviceCommandSchema.safeParse({ ...valid, queuedBy: null }).success).toBe(true);
+  });
+
   it('acepta QUEUED sin sentAt y SENT con sentAt', () => {
     expect(DeviceCommandSchema.safeParse(valid).success).toBe(true);
     expect(

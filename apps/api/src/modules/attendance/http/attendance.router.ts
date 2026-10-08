@@ -12,6 +12,7 @@ import type { AssignDeviceSite } from '../application/commands/assign-device-sit
 import type { QueueDeviceCommand } from '../application/commands/queue-device-command.command';
 import type { RegisterDevice } from '../application/commands/register-device.command';
 import type { SetDeviceNetworks } from '../application/commands/set-device-networks.command';
+import type { SyncDevice } from '../application/commands/sync-device.command';
 import type { ListDeviceCommands } from '../application/queries/list-device-commands.query';
 import type { ListDevices } from '../application/queries/list-devices.query';
 import type { ListPunches } from '../application/queries/list-punches.query';
@@ -22,6 +23,7 @@ export function createAttendanceRouter(deps: {
   registerDevice: RegisterDevice;
   assignDeviceSite: AssignDeviceSite;
   setDeviceNetworks: SetDeviceNetworks;
+  syncDevice: SyncDevice;
   listPunches: ListPunches;
   queueDeviceCommand: QueueDeviceCommand;
   listDeviceCommands: ListDeviceCommands;
@@ -50,6 +52,15 @@ export function createAttendanceRouter(deps: {
     );
     return undefined;
   });
+
+  bindRoute(router, attendanceDeviceRoutes.syncDevice, async ({ params }, ctx) =>
+    unwrap(
+      await deps.syncDevice.execute({
+        deviceId: params.deviceId,
+        queuedBy: requireActor(ctx).userId,
+      }),
+    ),
+  );
 
   bindRoute(
     router,

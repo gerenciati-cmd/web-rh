@@ -23,7 +23,7 @@
       "name": "attendance",
       "status": "active",
       "path": "apps/api/src/modules/attendance",
-      "summary": "Marcaciones, turnos, jornadas, horas extra. Legal requirements apply. Today: device registry and raw marcaciones from ZKTeco ADMS. Punches attributed by RFC."
+      "summary": "Marcaciones, turnos, jornadas, horas extra. Legal requirements apply. Today: device registry and raw marcaciones from ZKTeco ADMS. Punches attributed by RFC. Syncs sede colaboradores to devices."
     },
     {
       "name": "leave",

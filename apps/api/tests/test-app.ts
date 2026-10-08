@@ -10,6 +10,7 @@ import {
   InMemoryAttendanceStore,
   InMemoryDeviceCommandRepository,
   InMemoryDeviceRepository,
+  InMemoryDeviceUserRepository,
   InMemoryPunchRepository,
 } from '@/modules/attendance/infrastructure/in-memory/in-memory-attendance.store';
 import type { EmployeeQueries } from '@/modules/employees/application/queries/employee.queries';
@@ -157,6 +158,7 @@ export function buildTestContainer(env: Env = testEnv) {
     deviceRepository: asValue(new InMemoryDeviceRepository(attendance)),
     punchRepository: asValue(new InMemoryPunchRepository(attendance)),
     deviceCommandRepository: asValue(new InMemoryDeviceCommandRepository(attendance)),
+    deviceUserRepository: asValue(new InMemoryDeviceUserRepository(attendance)),
     attendanceQueries: asValue(new InMemoryAttendanceQueries(attendance)),
     userRepository: asValue(users),
     sessionRepository: asValue(new InMemorySessionRepository()),

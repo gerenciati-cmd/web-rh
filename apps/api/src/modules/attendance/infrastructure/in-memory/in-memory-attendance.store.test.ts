@@ -72,7 +72,11 @@ describe('InMemoryDeviceRepository — escritura dirigida', () => {
       }),
     );
     const staleAdmin = Device.restore(DEVICE_ID, BASE_PROPS);
-    staleAdmin.assignSite('00000000-0000-4000-8000-0000000000a1', 'America/Cancun');
+    staleAdmin.assignSite(
+      '00000000-0000-4000-8000-0000000000a1',
+      'America/Cancun',
+      new Date('2026-10-08T12:00:00Z'),
+    );
 
     await repository.saveSite(staleAdmin);
 
@@ -88,7 +92,11 @@ describe('InMemoryDeviceRepository — escritura dirigida', () => {
       const { store, repository } = setUp();
       const a = Device.restore(DEVICE_ID, BASE_PROPS);
       const b = Device.restore(DEVICE_ID, BASE_PROPS);
-      a.assignSite('00000000-0000-4000-8000-0000000000a1', 'America/Mexico_City');
+      a.assignSite(
+        '00000000-0000-4000-8000-0000000000a1',
+        'America/Mexico_City',
+        new Date('2026-10-08T12:00:00Z'),
+      );
       const seenAt = new Date('2026-01-15T12:05:00Z');
       b.markSeen(seenAt, null);
       b.recordClockOffset(3, seenAt);

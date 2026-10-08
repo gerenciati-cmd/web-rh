@@ -119,6 +119,10 @@ now depends on 008, which is `done` (same day, real device verified by the user)
     no registry row) and **logs a warn** with its `deviceId`; giving it networks catches it up
     (decision 19). A manual sync of such a device answers 422 `DEVICE_NETWORK_UNRESTRICTED`, like
     queuing a command (decision 16). Plan 007.
+21. (2026-10-08, review of 007) A sync command is skipped as a duplicate **only when the most
+    recent QUEUED command for that device and PIN is identical**. The device runs commands in
+    queue order, so the last one decides; skipping because an identical one exists earlier
+    could leave the device opposite to the `device_users` registry. Plan 007 (repair).
 
 ## Delivered
 

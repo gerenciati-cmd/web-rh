@@ -1,6 +1,6 @@
 import { err, ok, type DomainError } from '@rrhh/domain';
 
-import type { Logger } from '@/shared/application/ports';
+import type { Clock, EventBus, Logger } from '@/shared/application/ports';
 import type { Command } from '@/shared/application/use-case';
 
 import type { DeviceId } from '../../domain/device';
@@ -14,6 +14,8 @@ export interface SetDeviceNetworksInput {
 
 interface Deps {
   deviceRepository: DeviceRepository;
+  eventBus: EventBus;
+  clock: Clock;
   logger: Logger;
 }
 
@@ -25,15 +27,16 @@ export class SetDeviceNetworks implements Command<SetDeviceNetworksInput, void> 
   constructor(private readonly deps: Deps) {}
 
   async execute(input: SetDeviceNetworksInput) {
-    const { deviceRepository, logger } = this.deps;
+    const { deviceRepository, eventBus, clock, logger } = this.deps;
 
     const device = await deviceRepository.findById(input.deviceId as DeviceId);
     if (!device) return err<DomainError>(new DeviceNotFoundError(input.deviceId));
 
-    const set = device.setAllowedNetworks(input.allowedNetworks);
+    const set = device.setAllowedNetworks(input.allowedNetworks, clock.now());
     if (!set.ok) return set;
 
     await deviceRepository.saveAllowedNetworks(device);
+    await eventBus.publish(device.pullEvents());
     logger.info(
       { serialNumber: device.serialNumber, allowedNetworks: device.allowedNetworks },
       'zkteco: redes del equipo actualizadas',

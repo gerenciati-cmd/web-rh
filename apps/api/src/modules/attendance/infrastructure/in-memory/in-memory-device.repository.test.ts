@@ -51,8 +51,8 @@ describe('InMemoryDeviceRepository: escrituras dirigidas', () => {
     const { repository, device } = await setUp();
     const stale = await load(repository, device.id);
     const admin = await load(repository, device.id);
-    admin.assignSite(SITE_B, 'America/Mexico_City');
-    admin.setAllowedNetworks(['10.0.0.0/8']);
+    admin.assignSite(SITE_B, 'America/Mexico_City', new Date('2026-10-08T12:00:00Z'));
+    admin.setAllowedNetworks(['10.0.0.0/8'], new Date('2026-10-08T12:00:00Z'));
     await repository.saveSite(admin);
     await repository.saveAllowedNetworks(admin);
 
@@ -75,11 +75,11 @@ describe('InMemoryDeviceRepository: escrituras dirigidas', () => {
     const stale = await load(repository, device.id);
     const other = await load(repository, device.id);
     other.markSeen(NOW, '10.0.0.5');
-    other.setAllowedNetworks(['10.0.0.0/8']);
+    other.setAllowedNetworks(['10.0.0.0/8'], new Date('2026-10-08T12:00:00Z'));
     await repository.saveContact(other);
     await repository.saveAllowedNetworks(other);
 
-    stale.assignSite(SITE_B, 'America/Mexico_City');
+    stale.assignSite(SITE_B, 'America/Mexico_City', new Date('2026-10-08T12:00:00Z'));
     await repository.saveSite(stale);
 
     const stored = await load(repository, device.id);
@@ -94,11 +94,11 @@ describe('InMemoryDeviceRepository: escrituras dirigidas', () => {
     const stale = await load(repository, device.id);
     const other = await load(repository, device.id);
     other.markSeen(NOW, '10.0.0.5');
-    other.assignSite(SITE_B, 'America/Mexico_City');
+    other.assignSite(SITE_B, 'America/Mexico_City', new Date('2026-10-08T12:00:00Z'));
     await repository.saveContact(other);
     await repository.saveSite(other);
 
-    stale.setAllowedNetworks(['192.168.0.0/16']);
+    stale.setAllowedNetworks(['192.168.0.0/16'], new Date('2026-10-08T12:00:00Z'));
     await repository.saveAllowedNetworks(stale);
 
     const stored = await load(repository, device.id);
@@ -111,7 +111,7 @@ describe('InMemoryDeviceRepository: escrituras dirigidas', () => {
     const { repository, device } = await setUp();
     const loaded = await load(repository, device.id);
 
-    loaded.setAllowedNetworks(['10.0.0.0/8']);
+    loaded.setAllowedNetworks(['10.0.0.0/8'], new Date('2026-10-08T12:00:00Z'));
 
     expect((await load(repository, device.id)).allowedNetworks).toEqual([]);
   });

@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import { FixedClock, RecordingLogger, SequentialIdGenerator } from '@/shared/testing/fakes';
+import {
+  FixedClock,
+  RecordingEventBus,
+  RecordingLogger,
+  SequentialIdGenerator,
+} from '@/shared/testing/fakes';
 
 import { Device, type DeviceId } from '../../domain/device';
 import { DeviceCommand, type DeviceCommandId } from '../../domain/device-command';
@@ -59,7 +64,7 @@ async function setUp(networks: readonly string[] = []) {
     now: clock.now(),
   });
   if (!registered.ok) throw registered.error;
-  const set = registered.value.setAllowedNetworks(networks);
+  const set = registered.value.setAllowedNetworks(networks, new Date('2026-10-08T12:00:00Z'));
   if (!set.ok) throw set.error;
   await deviceRepository.add(registered.value);
   const device = registered.value;
@@ -80,7 +85,12 @@ async function setUp(networks: readonly string[] = []) {
       idGenerator,
       clock,
     }),
-    setNetworks: new SetDeviceNetworks({ deviceRepository, logger }),
+    setNetworks: new SetDeviceNetworks({
+      deviceRepository,
+      eventBus: new RecordingEventBus(),
+      clock,
+      logger,
+    }),
     queue: new QueueDeviceCommand({
       deviceRepository,
       deviceCommandRepository,
@@ -90,6 +100,8 @@ async function setUp(networks: readonly string[] = []) {
     }),
     take: new TakeDeviceCommand({ deviceRepository, deviceCommandRepository, clock, logger }),
     assignSite: new AssignDeviceSite({
+      eventBus: new RecordingEventBus(),
+      clock,
       deviceRepository,
       deviceSiteDirectory: {
         find: (id: string) =>
@@ -395,7 +407,7 @@ describe('SetDeviceNetworks', () => {
     const stale = await setup.deviceRepository.findById(setup.device.id);
     await setup.contact.execute(contactInput('10.0.0.1'));
     await setup.assignSite.execute({ deviceId: setup.device.id, siteId: SITE_ID });
-    stale?.setAllowedNetworks(['10.0.0.0/8']);
+    stale?.setAllowedNetworks(['10.0.0.0/8'], new Date('2026-10-08T12:00:00Z'));
     if (stale) await setup.deviceRepository.saveAllowedNetworks(stale);
 
     const stored = await setup.deviceRepository.findById(setup.device.id);
@@ -511,6 +523,8 @@ describe('AssignDeviceSite: escritura dirigida', () => {
     const assign = new AssignDeviceSite({
       deviceRepository: setup.deviceRepository,
       deviceSiteDirectory: racingSites,
+      eventBus: new RecordingEventBus(),
+      clock: new FixedClock(),
     });
 
     const result = await assign.execute({ deviceId: setup.device.id, siteId: SITE_ID });

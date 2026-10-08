@@ -3,6 +3,7 @@ import type { DeviceCommandDto } from '@rrhh/contracts';
 import type {
   AttendanceDevice as DeviceRow,
   AttendanceDeviceCommand as DeviceCommandRow,
+  AttendanceDeviceUser as DeviceUserRow,
   AttendancePunch as PunchRow,
 } from '@/infrastructure/database/generated/client';
 
@@ -13,6 +14,7 @@ import {
   type DeviceCommandId,
   type DeviceCommandStatus,
 } from '../domain/device-command';
+import type { DeviceUser } from '../domain/device-user';
 import type { Punch } from '../domain/punch';
 
 /**
@@ -128,6 +130,26 @@ export const DeviceCommandMapper = {
       returnCode: row.returnCode,
       completedAt: row.completedAt?.toISOString() ?? null,
       queuedBy: row.queuedBy,
+    };
+  },
+};
+
+export const DeviceUserMapper = {
+  toDomain(row: DeviceUserRow): DeviceUser {
+    return {
+      deviceId: row.deviceId as DeviceId,
+      pin: row.pin,
+      employeeId: row.employeeId,
+      syncedAt: row.syncedAt,
+    };
+  },
+
+  toPersistence(user: DeviceUser) {
+    return {
+      deviceId: user.deviceId,
+      pin: user.pin,
+      employeeId: user.employeeId,
+      syncedAt: user.syncedAt,
     };
   },
 };

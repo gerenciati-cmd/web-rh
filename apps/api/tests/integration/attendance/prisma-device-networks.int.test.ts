@@ -84,7 +84,7 @@ describe('migración add_device_networks', () => {
 describe('PrismaDeviceRepository: escrituras dirigidas', () => {
   it('saveAllowedNetworks guarda las redes canónicas y listDevices las expone', async () => {
     const device = await savedDevice();
-    device.setAllowedNetworks(['127.0.0.1', '10.1.2.3/24']);
+    device.setAllowedNetworks(['127.0.0.1', '10.1.2.3/24'], new Date('2026-10-08T12:00:00Z'));
 
     await devices.saveAllowedNetworks(device);
 
@@ -95,9 +95,9 @@ describe('PrismaDeviceRepository: escrituras dirigidas', () => {
 
   it('saveAllowedNetworks con lista vacía quita la restricción', async () => {
     const device = await savedDevice();
-    device.setAllowedNetworks(['10.0.0.0/8']);
+    device.setAllowedNetworks(['10.0.0.0/8'], new Date('2026-10-08T12:00:00Z'));
     await devices.saveAllowedNetworks(device);
-    device.setAllowedNetworks([]);
+    device.setAllowedNetworks([], new Date('2026-10-08T12:00:00Z'));
 
     await devices.saveAllowedNetworks(device);
 
@@ -126,7 +126,7 @@ describe('PrismaDeviceRepository: escrituras dirigidas', () => {
     const device = await savedDevice();
     const stale = await reload(device.id);
     const admin = await reload(device.id);
-    admin.assignSite(SITE_B, 'America/Mexico_City');
+    admin.assignSite(SITE_B, 'America/Mexico_City', new Date('2026-10-08T12:00:00Z'));
     await devices.saveSite(admin);
 
     stale.markSeen(NOW, '10.0.0.5');
@@ -144,7 +144,7 @@ describe('PrismaDeviceRepository: escrituras dirigidas', () => {
     const device = await savedDevice();
     const stale = await reload(device.id);
     const admin = await reload(device.id);
-    admin.setAllowedNetworks(['10.0.0.0/8']);
+    admin.setAllowedNetworks(['10.0.0.0/8'], new Date('2026-10-08T12:00:00Z'));
     await devices.saveAllowedNetworks(admin);
 
     stale.markSeen(NOW, '10.0.0.5');
@@ -160,11 +160,11 @@ describe('PrismaDeviceRepository: escrituras dirigidas', () => {
     const stale = await reload(device.id);
     const other = await reload(device.id);
     other.markSeen(NOW, '10.0.0.5');
-    other.setAllowedNetworks(['10.0.0.0/8']);
+    other.setAllowedNetworks(['10.0.0.0/8'], new Date('2026-10-08T12:00:00Z'));
     await devices.saveContact(other);
     await devices.saveAllowedNetworks(other);
 
-    stale.assignSite(SITE_B, 'America/Mexico_City');
+    stale.assignSite(SITE_B, 'America/Mexico_City', new Date('2026-10-08T12:00:00Z'));
     await devices.saveSite(stale);
 
     const stored = await reload(device.id);
@@ -178,11 +178,11 @@ describe('PrismaDeviceRepository: escrituras dirigidas', () => {
     const stale = await reload(device.id);
     const other = await reload(device.id);
     other.markSeen(NOW, '10.0.0.5');
-    other.assignSite(SITE_B, 'America/Mexico_City');
+    other.assignSite(SITE_B, 'America/Mexico_City', new Date('2026-10-08T12:00:00Z'));
     await devices.saveContact(other);
     await devices.saveSite(other);
 
-    stale.setAllowedNetworks(['192.168.0.0/16']);
+    stale.setAllowedNetworks(['192.168.0.0/16'], new Date('2026-10-08T12:00:00Z'));
     await devices.saveAllowedNetworks(stale);
 
     const stored = await reload(device.id);

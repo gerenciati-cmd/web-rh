@@ -31,7 +31,10 @@ async function setUp() {
   });
   if (!registered.ok) throw registered.error;
   // Solo un equipo con redes permitidas recibe comandos (plan 008).
-  const networks = registered.value.setAllowedNetworks(['127.0.0.1']);
+  const networks = registered.value.setAllowedNetworks(
+    ['127.0.0.1'],
+    new Date('2026-10-08T12:00:00Z'),
+  );
   if (!networks.ok) throw networks.error;
   await deviceRepository.add(registered.value);
   return {

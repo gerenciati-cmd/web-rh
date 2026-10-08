@@ -11,6 +11,9 @@ import type { AttendanceQueries, RawPunch } from '../../application/queries/atte
 import { Device, type DeviceId, type DeviceProps } from '../../domain/device';
 import { DeviceCommand } from '../../domain/device-command';
 import type { DeviceCommandRepository } from '../../domain/device-command.repository';
+import type { DeviceUser } from '../../domain/device-user';
+import { targetsPin } from '../../domain/device-user-commands';
+import type { DeviceUserRepository } from '../../domain/device-user.repository';
 import type { DeviceRepository } from '../../domain/device.repository';
 import { DeviceAlreadyRegisteredError } from '../../domain/errors';
 import type { Punch } from '../../domain/punch';
@@ -24,6 +27,8 @@ export class InMemoryAttendanceStore {
   readonly devices = new Map<string, Device>();
   readonly punches = new Map<string, Punch>();
   readonly commands = new Map<string, DeviceCommand>();
+  /** Clave `deviceId|pin`. */
+  readonly deviceUsers = new Map<string, DeviceUser>();
 }
 
 export class InMemoryDeviceCommandRepository implements DeviceCommandRepository {
@@ -46,6 +51,22 @@ export class InMemoryDeviceCommandRepository implements DeviceCommandRepository 
   nextNumber(): Promise<number> {
     this.#lastNumber += 1;
     return Promise.resolve(this.#lastNumber);
+  }
+
+  lastQueuedForPin(deviceId: DeviceId, pin: string): Promise<string | null> {
+    // Inverso del orden de entrega (`queuedAt asc, id asc`).
+    const [latest] = [...this.store.commands.values()]
+      .filter(
+        (other) =>
+          other.deviceId === deviceId &&
+          other.status === 'QUEUED' &&
+          targetsPin(other.command, pin),
+      )
+      .sort(
+        (a, b) =>
+          b.queuedAt.getTime() - a.queuedAt.getTime() || (a.id < b.id ? 1 : a.id > b.id ? -1 : 0),
+      );
+    return Promise.resolve(latest ? latest.command : null);
   }
 
   findByNumber(deviceId: DeviceId, number: number): Promise<DeviceCommand | null> {
@@ -100,6 +121,13 @@ export class InMemoryDeviceRepository implements DeviceRepository {
     return Promise.resolve(device ? copyDevice(device) : null);
   }
 
+  listActiveBySite(siteId: string): Promise<Device[]> {
+    const devices = [...this.store.devices.values()]
+      .filter((device) => device.siteId === siteId && device.active)
+      .sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
+    return Promise.resolve(devices.map((device) => copyDevice(device)));
+  }
+
   add(device: Device): Promise<Result<void, DeviceAlreadyRegisteredError>> {
     const duplicate = [...this.store.devices.values()].some(
       (other) => other.id === device.id || other.serialNumber === device.serialNumber,
@@ -151,6 +179,34 @@ function copyDevice(device: Device, fields: Partial<DeviceProps> = {}): Device {
     lastSeenIp: device.lastSeenIp,
     ...fields,
   });
+}
+
+export class InMemoryDeviceUserRepository implements DeviceUserRepository {
+  constructor(private readonly store: InMemoryAttendanceStore) {}
+
+  listByDevice(deviceId: DeviceId): Promise<DeviceUser[]> {
+    const users = [...this.store.deviceUsers.values()]
+      .filter((user) => user.deviceId === deviceId)
+      .sort((a, b) => a.pin.localeCompare(b.pin));
+    return Promise.resolve(users.map((user) => ({ ...user })));
+  }
+
+  listByEmployee(employeeId: string): Promise<DeviceUser[]> {
+    const users = [...this.store.deviceUsers.values()]
+      .filter((user) => user.employeeId === employeeId)
+      .sort((a, b) => a.deviceId.localeCompare(b.deviceId) || a.pin.localeCompare(b.pin));
+    return Promise.resolve(users.map((user) => ({ ...user })));
+  }
+
+  put(user: DeviceUser): Promise<void> {
+    this.store.deviceUsers.set(`${user.deviceId}|${user.pin}`, { ...user });
+    return Promise.resolve();
+  }
+
+  remove(deviceId: DeviceId, pin: string): Promise<void> {
+    this.store.deviceUsers.delete(`${deviceId}|${pin}`);
+    return Promise.resolve();
+  }
 }
 
 export class InMemoryPunchRepository implements PunchRepository {

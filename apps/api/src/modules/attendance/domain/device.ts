@@ -35,6 +35,8 @@ export interface DeviceProps {
 }
 
 export const DEVICE_REGISTERED = 'attendance.device.registered';
+export const DEVICE_SITE_ASSIGNED = 'attendance.device.site-assigned';
+export const DEVICE_COMMANDS_ENABLED = 'attendance.device.commands-enabled';
 
 /**
  * Desfase máximo tolerado entre la hora recibida y la hora de la marcación antes de considerar
@@ -172,8 +174,14 @@ export class Device extends AggregateRoot<DeviceId> {
   }
 
   /** Asigna la sede; la zona horaria del equipo se copia de ella (el llamador la provee). */
-  assignSite(siteId: string, timeZone: string): void {
+  assignSite(siteId: string, timeZone: string, now: Date): void {
+    const previousSiteId = this.props.siteId;
     this.props = { ...this.props, siteId, timeZone };
+    if (previousSiteId !== siteId) {
+      this.record(
+        createEvent(DEVICE_SITE_ASSIGNED, { deviceId: this.id, siteId, previousSiteId }, now),
+      );
+    }
   }
 
   /** Guarda la última medición de desfase (hora recibida − hora de la marcación, en segundos). */
@@ -182,7 +190,7 @@ export class Device extends AggregateRoot<DeviceId> {
   }
 
   /** Reemplaza las redes permitidas (IP o CIDR IPv4); se guardan canónicas y sin repetir. */
-  setAllowedNetworks(networks: readonly string[]): Result<void, InvalidValueError> {
+  setAllowedNetworks(networks: readonly string[], now: Date): Result<void, InvalidValueError> {
     const canonical = new Set<string>();
     for (const text of networks) {
       const network = parseIpv4Network(text);
@@ -192,7 +200,12 @@ export class Device extends AggregateRoot<DeviceId> {
     if (canonical.size > MAX_ALLOWED_NETWORKS) {
       return err(new InvalidValueError(`Máximo ${MAX_ALLOWED_NETWORKS} redes por checador`));
     }
+    const couldReceive = this.props.allowedNetworks.length > 0;
     this.props = { ...this.props, allowedNetworks: [...canonical] };
+    // Solo al pasar de sin redes a con redes: es cuando el equipo puede empezar a recibir usuarios.
+    if (!couldReceive && canonical.size > 0) {
+      this.record(createEvent(DEVICE_COMMANDS_ENABLED, { deviceId: this.id }, now));
+    }
     return ok(undefined);
   }
 

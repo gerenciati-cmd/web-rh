@@ -1,5 +1,5 @@
 ---
-status: draft
+status: done
 module: attendance
 min_implementer: mid
 depends_on: ['005', '006', '008']
@@ -295,8 +295,288 @@ null })` (an `err` result is logged at warn with its `code`, not thrown; for
 
 ## Deviations
 
+- Step 5: la migración quedó como `20261008204154_create_device_users` (generada por `pnpm db:migrate`; no hubo placeholder que reemplazar). Solo contiene `ALTER COLUMN queued_by DROP NOT NULL`, `CREATE TABLE`, índice y FK.
+- Step 6: el warn de una sincronización automática rechazada (`DEVICE_NETWORK_UNRESTRICTED`, etc.) lo escribe `SyncDevice` cuando `queuedBy === null`, no el handler de `subscribe`: el cradle de `subscribe` no expone `logger` y agregarlo exigiría un registro nuevo. Mismo mensaje y nivel; el handler no lanza.
+- Step 8: `queue-device-command.command.ts` y `attendance-device-commands.test.ts` no necesitaron cambios. Los callers de `assignSite`/`setAllowedNetworks` pasan la fecha literal `new Date('2026-10-08T12:00:00Z')`. La suite de integración existente pasa (199 tests).
+- Reparación 2026-10-08 (decisión 21; reemplaza la regla "comando idéntico en cola no se repite" del Approach): `hasQueued` pasó a `lastQueuedForPin(deviceId, pin): Promise<string | null>` (Prisma `findFirst` con `OR` delete/`startsWith` prefijo UPDATE, `queuedAt desc, id desc`; en memoria, mismo orden). `domain/device-user-commands.ts` exporta `upsertUserPrefix` y `targetsPin`. `DeviceUserSync.enqueue` marca `'duplicate'` solo si el último comando en cola de ese PIN es idéntico; recibe `{ text, pin, employeeId }` como un objeto para no pasar de 4 parámetros (lint `max-params`). Tests adaptados mecánicamente: solo `tests/integration/attendance/prisma-device-user.int.test.ts` (las 3 aserciones de `hasQueued`, más la constante `PIN`); ningún test unitario llamaba `hasQueued`. Los casos nuevos (los dos escenarios del hallazgo 1 y S→T→S de un checador) son del tester. Hallazgo 2: warn `zkteco: sincronización omitida` agregado a la tabla de logs del runbook. Hallazgo 3: aceptado sin cambio. La evidencia previa de testing/review (arriba) queda superada por esta reparación y debe repetirse.
+- Step 4: `SyncEmployee` se partió en `findTarget`, `removeStale` y `addMissing` solo para bajar la complejidad ciclomática; sin cambio de comportamiento.
+
 ## Test coverage
+
+Tester, 2026-10-08, **segunda pasada tras la reparación de la revisión (commit 4d748a5, decisión 21)**. Baseline `pnpm check` verde (api 1096 passed | 5 skipped). Cierre: `pnpm check` verde (api 1111 passed | 5 skipped; contracts 295) y `pnpm test:integration` verde (218 passed, 17 archivos; antes 214). Sin GAP ni NOT CONFIRMED. La cobertura de la primera pasada (1096 tests api, 214 de integración; evidencia del 2026-10-08 anterior a la reparación) queda **superada** donde la tabla marca "REEMPLAZADO": la regla "comando idéntico en cola no se repite" (`hasQueued`) ya no existe. Los fixtures de los pasos 1-8 los dejó el implementer; aquí solo hay casos nuevos.
+
+| Comportamiento (plan / código)                                                                                                                                                        | Capa        | Test                                                                                                                         | Estado                                         |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------- | ---------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
+| UPDATE confirmado (texto exacto), nombre saneado (`\p{Cc}`, espacios), DELETE por PIN                                                                                                 | domain      | `domain/device-user-commands.test.ts`                                                                                        | CONFIRMED                                      |
+| `assignSite` registra `DEVICE_SITE_ASSIGNED` solo si cambia la sede; la zona se copia siempre                                                                                         | domain      | `domain/device-sync-events.test.ts`                                                                                          | CONFIRMED                                      |
+| `setAllowedNetworks` registra `DEVICE_COMMANDS_ENABLED` solo en vacío→no vacío (otra vez al rehabilitar)                                                                              | domain      | `domain/device-sync-events.test.ts`                                                                                          | CONFIRMED                                      |
+| `DeviceCommand.queue` acepta `queuedBy: null`; `DeviceWithoutSiteError`                                                                                                               | domain      | `domain/device-sync-events.test.ts`                                                                                          | CONFIRMED                                      |
+| `AssignDeviceSite` / `SetDeviceNetworks` publican los eventos (y nada si no hay cambio o es inválido)                                                                                 | application | `application/commands/device-sync-triggers.test.ts`                                                                          | CONFIRMED                                      |
+| Compuerta de la barrera en `push`/`remove` (sin cola ni registro), duplicado (solo si el último en cola del PIN es idéntico), invalid, `queued`                                       | application | `application/device-user-sync.test.ts`                                                                                       | CONFIRMED                                      |
+| `SyncDevice`: altas, NO_RFC, sin duplicar, bajas, no toca PIN ajenos, 404/422 sede/422 redes, inactivo, `queuedBy` null + warn, logs sin RFC/nombre, texto >500                       | application | `application/commands/sync-device.command.test.ts`                                                                           | CONFIRMED                                      |
+| `SyncEmployee`: alta, idempotencia, equipos inactivos, cambio de sede/RFC, baja, sin RFC/sede, equipo sin redes omitido (alta y baja) con un warn, equipo borrado                     | application | `application/commands/sync-employee.command.test.ts`                                                                         | CONFIRMED                                      |
+| Repositorio en memoria de `device_users` (mismo contrato que Prisma)                                                                                                                  | application | `infrastructure/in-memory/in-memory-device-user.repository.test.ts`                                                          | CONFIRMED                                      |
+| `DeviceSyncResultSchema`, ruta `syncDevice` (POST, permiso, errores), `DEVICE_WITHOUT_SITE` en el catálogo                                                                            | contract    | `packages/contracts/src/attendance/device-sync.contract.test.ts` (+ `queuedBy` null ya en `device-command.contract.test.ts`) | CONFIRMED                                      |
+| Criterio 1: registrar no encola; poner redes encola A y B (no C sin RFC, `queuedBy` null); cambiar redes no repite                                                                    | http        | `tests/attendance-device-sync.test.ts › criterio 1`                                                                          | CONFIRMED                                      |
+| Criterio 2: 200 + NO_RFC sin duplicar; encola faltantes y da de baja; HR 403, 401, 404, 400, 422 sin sede, 422 sin redes                                                              | http        | `tests/attendance-device-sync.test.ts › criterio 2`                                                                          | CONFIRMED                                      |
+| Criterio 3: equipo con redes y otro sin; warn con `deviceId`; sin fila en el registro; al habilitarlo recibe a la sede                                                                | http        | `tests/attendance-device-sync.test.ts › criterio 3`                                                                          | CONFIRMED                                      |
+| Criterio 4: alta, `PUT …/site`, `PUT …/rfc`                                                                                                                                           | http        | `tests/attendance-device-sync.test.ts › criterio 4`                                                                          | CONFIRMED                                      |
+| Criterio 5: `EMPLOYEE_TERMINATED` sintético → DELETE                                                                                                                                  | http        | `tests/attendance-device-sync.test.ts › criterio 5`                                                                          | CONFIRMED                                      |
+| Criterio 6: `PUT …/devices/:id/site` → DELETE de la sede vieja, UPDATE de la nueva; registro queda con la nueva                                                                       | http        | `tests/attendance-device-sync.test.ts › criterio 6`                                                                          | CONFIRMED                                      |
+| Criterio 7: ningún log de la sincronización lleva RFC ni nombre                                                                                                                       | http        | `tests/attendance-device-sync.test.ts › criterio 7`                                                                          | CONFIRMED                                      |
+| Payload malformado en las suscripciones no rompe al publicador ni encola                                                                                                              | http        | `tests/attendance-device-sync.test.ts › suscripciones`                                                                       | CONFIRMED                                      |
+| OpenAPI documenta el POST de sync con `attendance.devices:manage`                                                                                                                     | http        | `tests/attendance-device-sync.test.ts › OpenAPI`                                                                             | CONFIRMED                                      |
+| Migración: columnas de `device_users`, `queued_by` nullable, sin FK a employees (ADR 0010)                                                                                            | integration | `tests/integration/attendance/prisma-device-user.int.test.ts › migración`                                                    | CONFIRMED                                      |
+| `put` upsert, `listByDevice`/`listByEmployee`, `remove` idempotente, FK a devices                                                                                                     | integration | `prisma-device-user.int.test.ts › PrismaDeviceUserRepository`                                                                | CONFIRMED                                      |
+| `listActiveBySite` (solo activos, orden por nombre); `hasQueued` (REEMPLAZADO por `lastQueuedForPin`, filas nuevas abajo); `queuedBy` null persiste                                   | integration | `prisma-device-user.int.test.ts › listActiveBySite / hasQueued`                                                              | CONFIRMED                                      |
+| `targetsPin` / `upsertUserPrefix`: reconoce UPDATE y DELETE de ese PIN; no confunde un PIN que lo contiene como prefijo, otro PIN ni un QUERY                                         | domain      | `domain/device-user-commands.test.ts › upsertUserPrefix y targetsPin`                                                        | CONFIRMED                                      |
+| `DeviceUserSync`: duplicado solo si el ÚLTIMO en cola del PIN es idéntico; con el contrario después, se encola (UPDATE, DELETE, UPDATE; registro queda); DELETE repetido es duplicate | application | `application/device-user-sync.test.ts › si el último comando en cola…`, `› con el DELETE como último…`                       | CONFIRMED (reemplaza la regla `hasQueued`)     |
+| Caso B del hallazgo 1: S → T → S con la cola sin vaciar deja UPDATE final en los equipos de S y el registro de vuelta                                                                 | application | `sync-employee.command.test.ts › caso B…`                                                                                    | CONFIRMED                                      |
+| Caso A del hallazgo 1: alta entregada, sale, vuelve y sale otra vez antes de consultar: el DELETE final se encola y no queda fila en S                                                | application | `sync-employee.command.test.ts › caso A…`                                                                                    | CONFIRMED                                      |
+| Cambio de sede del checador S → T → S: baja y alta finales se encolan, el registro conserva al colaborador; DELETE como último en cola no se duplica                                  | application | `sync-device.command.test.ts › cambio de sede del checador…`, `› con el DELETE como último…`                                 | CONFIRMED                                      |
+| `lastQueuedForPin` en memoria: null sin comandos; el más reciente por `queuedAt`; desempate por id mayor; ignora otro equipo/PIN/prefijo/QUERY/no QUEUED                              | application | `infrastructure/in-memory/in-memory-device-command.repository.test.ts`                                                       | CONFIRMED                                      |
+| `lastQueuedForPin` Prisma (`OR` delete/`startsWith` + `queuedAt desc, id desc`): último gana, desempate por id, ignora otro PIN/prefijo/QUERY, un comando fuera de cola no cuenta     | integration | `prisma-device-user.int.test.ts › lastQueuedForPin: el último comando en cola del PIN decide`                                | CONFIRMED                                      |
+| Criterio 8: dispositivo real (usuarios aparecen, acentos, DELETE termina `DONE`, usuarios "1" y "2" intactos)                                                                         | e2e/real    | no aplica a tests automatizados                                                                                              | NOT VERIFIED (verificador, necesita el equipo) |
+
+Notas: (1) el texto del DELETE sigue sin confirmarse en el equipo; los tests fijan el texto del plan, no su efecto. (2) La bitácora (`GET …/commands`) no garantiza orden cronológico estable entre comandos del mismo instante: los tests http comparan por conjunto/ordenado. (3) Pase de cierre: el primer `pnpm check` falló por lint en mis tests (`no-unsafe-return`, `import-x/order`); se corrigió y el segundo pasó, así que fueron tres corridas completas de `check` en vez de dos. (4) Segunda pasada: `pnpm check` verde a la primera (sin la corrida extra de la primera pasada); el caso A se arma marcando el alta como entregada (`markSent`) antes de los cambios de sede. Los tests de `SyncDevice` y `DeviceUserSync` previos ("repetido no duplica", "idéntico en cola da duplicate") siguen válidos bajo la regla nueva (el último en cola es idéntico).
 
 ## Review findings
 
+Reviewer, 2026-10-08, diff `main...HEAD` (d6b18a1, 11170af, 373ec0f; worktree limpio).
+
+**Checklist: 13/13 pasan; queda un hallazgo de bug hunt que pide cambio de código.**
+
+- [x] `pnpm plans:scope`: sale con código 1, pero todo se explica. Los 10 "fuera de alcance" son
+      archivos de test nuevos del tester (permitido). En "declarados sin cambios" están la ruta
+      placeholder de la migración (la real es `20261008204154_create_device_users`, Deviations
+      paso 5), `queue-device-command.command.ts` y `attendance-device-commands.test.ts`
+      (Deviations paso 8). Hot files: `test-app.ts` (+2 líneas, solo agregadas),
+      `modules.json` (frase agregada al summary, paso 7), `schema.prisma` (modelo nuevo
+      agregado; la back-relation `users` y `queuedBy String?` son cambios declarados en el paso 5).
+- [x] `pnpm check` en verde (api 89 archivos / 1096 passed / 5 skipped; contracts 295; arch: sin
+      violaciones; plans lint, harness, hooks, bootstrap, quality).
+- [x] `pnpm test:integration` en verde (17 archivos / 214 tests).
+- [x] Las reglas de negocio están en el dominio (`assignSite`/`setAllowedNetworks` emiten los
+      eventos, textos de los comandos en `domain/device-user-commands.ts`). Router y mappers no
+      tienen lógica.
+- [x] CQRS: `SyncDevice` devuelve `Result`; los repositorios no tienen métodos para pantallas
+      (`listActiveBySite`/`hasQueued` los usan los commands).
+- [x] Los tipos vienen de contratos (`DeviceSyncResultDto`); `openapi.json` regenerado.
+- [x] Errores: `DeviceWithoutSiteError` con `DEVICE_WITHOUT_SITE` (422) está en el catálogo; no
+      se filtra nada interno.
+- [x] El tiempo pasa por `Clock` (`now` en `assignSite`/`setAllowedNetworks`/`syncedAt`) y los
+      ids por `IdGenerator`. No hay dinero.
+- [x] La migración es nueva: `DROP NOT NULL`, `CREATE TABLE`, índice y FK solo a
+      `attendance.devices` (mismo módulo). Ningún DROP inesperado y ninguna FK a employees.
+- [x] DI: `container.test.ts` en verde; el módulo se registra una sola vez.
+- [x] Sin secretos ni datos personales reales (RFC y nombres de prueba sintéticos).
+- [x] Deviations: comprobé el paso 6. `AppModule.subscribe` recibe `TCradle & { eventBus }`
+      (`apps/api/src/shared/app-module.ts:29`) y `AttendanceCradle` no expone `logger`, así que
+      la afirmación es cierta.
+- [x] Docs al día: runbook (sección nueva y tabla de logs) y `modules.json`.
+
+### Findings
+
+**Medium (requiere cambio de código)**
+
+1. **Saltarse un comando "idéntico ya en cola" no mira si después quedó en cola el comando
+   contrario para el mismo PIN, y el equipo puede terminar en el estado opuesto al registro.**
+   Está en `apps/api/src/modules/attendance/application/device-user-sync.ts:447` (`hasQueued` →
+   `'duplicate'`), y `push` (`:410-417`) y `remove` (`:434-436`) igual actualizan el registro
+   `device_users`. La entrega va en orden FIFO (`prisma-device-command.repository.ts:24`,
+   `queuedAt asc`), así que el estado final del equipo lo decide el **último** comando en cola
+   para ese PIN, no la existencia de uno idéntico. El código cumple el texto del plan ("An
+   identical command still QUEUED … is not queued twice"): la falla está en la regla misma.
+   - Caso B (dos cambios en la ventana): la sincronización inicial encola el UPDATE X de E (n1,
+     QUEUED) y pone la fila. RH mueve a E a la sede T por error: DELETE X (n2) y se borra la
+     fila. RH lo regresa a S: `hasQueued(UPDATE X)` da verdadero porque n1 sigue en cola →
+     `'duplicate'` → se pone la fila sin encolar nada. El equipo ejecuta n1 y luego n2, y **E
+     no queda en el checador aunque el registro diga que sí**. Ningún evento automático lo
+     corrige; solo una sincronización manual hecha cuando la cola ya se vació.
+   - Caso A (tres cambios): E está en dS (DONE). Se mueve a T: DELETE X (n1, QUEUED). Regresa
+     a S: UPDATE X (n2), se pone la fila. Se mueve a T otra vez antes de que dS consulte:
+     `hasQueued(DELETE X)` da verdadero por n1 → `'duplicate'` → se borra la fila. El equipo
+     ejecuta n1 y luego n2: **E sigue en dS sin fila en el registro**, así que ninguna
+     sincronización lo vuelve a borrar. Rompe las decisiones 9–10 (quien sale de la sede se
+     quita) y la persona puede seguir marcando.
+   - La ventana es real: una sede de 100 personas tarda ~17 min en vaciar la cola (runbook). El
+     cambio de sede de un checador S→T→S tiene el mismo problema, vía el bucle de bajas de
+     `SyncDevice` (`sync-device.command.ts:240-244`).
+   - Sugerencia (no aplicada): saltarse el comando solo si el **último** comando QUEUED para
+     ese equipo y PIN es idéntico. Esto cambia la regla del plan, así que va como deviation o
+     decisión del usuario. No hay test que lo cubra: los tests fijan la regla actual.
+
+**Low (no bloquean)**
+
+2. `sync-device.command.ts:204`: el warn `'zkteco: sincronización omitida'` (una sincronización
+   automática rechazada por `DEVICE_NOT_FOUND`/`DEVICE_WITHOUT_SITE`) no está en la tabla de
+   logs del runbook. Casi nunca se alcanza, porque `DEVICE_SITE_ASSIGNED` siempre trae sede.
+3. Dos sincronizaciones concurrentes (un evento y la manual) pueden pasar las dos `hasQueued` y
+   encolar UPDATE duplicados (`device-user-sync.ts:447-464`, sin lock). No hace daño porque el
+   UPDATE es idempotente; solo alarga la cola. No lo reproduje: sale de leer el código.
+
+Status: se queda en `review` (el hallazgo 1 pide cambio de código y probablemente una
+decisión sobre la regla de no duplicar).
+
+### Repair (main session, 2026-10-08)
+
+The user decided the rule (README decision 21): **a sync command is skipped only when the most
+recent QUEUED command for that device and that PIN is identical**; if the most recent one is
+the opposite (or an UPDATE with another text), the new command is queued. This replaces the
+Approach sentence "An identical command still QUEUED for the same device is not queued twice".
+Status `review` → `implementing` for the repair; after it, testing → review → verify again.
+
+Scope of the repair (implementer):
+
+- Finding 1 (Medium):
+  - `domain/device-command.repository.ts`: replace `hasQueued(deviceId, command)` with
+    `lastQueuedForPin(deviceId: DeviceId, pin: string): Promise<string | null>`, the text of the
+    most recent `QUEUED` command of the device that targets `pin`, in the reverse of the
+    delivery order (`queuedAt desc, id desc`; delivery is `asc`,
+    `infrastructure/prisma-device-command.repository.ts:24`); `null` if none.
+  - "Targets `pin`" = the text equals `deleteUserCommand(pin)` or starts with the UPDATE prefix
+    for that pin (`DATA UPDATE USERINFO PIN=<pin>` followed by a tab). Export both matchers from
+    `domain/device-user-commands.ts` so the texts and the matchers cannot drift apart.
+  - Prisma: `findFirst` with `OR: [{ command: <delete text> }, { command: { startsWith: <update
+prefix> } }]`, `status: 'QUEUED'`, `deviceId`, ordered `queuedAt desc, id desc`, selecting
+    `command`. In-memory: same rule over the store, same order.
+  - `application/device-user-sync.ts` `enqueue(device, text, pin, …)`: `'duplicate'` only when
+    `lastQueuedForPin(device.id, pin) === text`. `push`/`remove` pass the pin.
+  - Existing tests that call `hasQueued` are adapted mechanically (list them in Deviations);
+    the new cases (the two scenarios of finding 1, and the device S→T→S one) are the tester's.
+- Finding 2 (Low): add the `zkteco: sincronización omitida` warn to the runbook log table
+  (`docs/integraciones/zkteco-senseface-2a.md`).
+- Finding 3 (Low): accepted as is (idempotent UPDATE, longer queue only); no change.
+
+### Re-revisión (Reviewer, 2026-10-08, tras la reparación 4d748a5 y los tests 4ad3da7)
+
+Diff `main...HEAD`, worktree limpio. Revisé de nuevo todo lo que tocó la reparación:
+`device-user-sync.ts`, `device-command.repository.ts`, `device-user-commands.ts`, el store en
+memoria, `prisma-device-command.repository.ts`, el runbook y los tests nuevos.
+
+**Checklist: 13/13 pasan.**
+
+- [x] `pnpm plans:scope`: sale con código 1 por lo mismo que en la primera revisión. Hay un
+      "fuera de alcance" más, `in-memory-device-command.repository.test.ts`, que es un test nuevo
+      del tester (permitido). Los "declarados sin cambios" y los hot files siguen igual. La
+      reparación tocó un test de integración del tester (`prisma-device-user.int.test.ts`): es
+      la adaptación mecánica de `hasQueued` y está declarada en Deviations.
+- [x] `pnpm check` en verde (api 90 archivos / 1111 passed / 5 skipped; contracts 295; arch sin
+      violaciones, 314 módulos; plans, harness, hooks, bootstrap y quality en verde).
+- [x] `pnpm test:integration` en verde (17 archivos / 218 tests).
+- [x] Dominio: los textos y su matcher (`upsertUserPrefix`, `targetsPin`) viven juntos en
+      `domain/device-user-commands.ts`. Prisma y el store en memoria los importan, así que no
+      pueden separarse.
+- [x] CQRS: `lastQueuedForPin` es un método del puerto de escritura que solo usa el helper de
+      sincronización. No es un método para pantallas.
+- [x] Contratos: la reparación no los cambia.
+- [x] Errores: sin cambio.
+- [x] Tiempo e ids: sin cambio (`clock`, `idGenerator`).
+- [x] Esquema: la reparación no agrega migración ni la necesita.
+- [x] DI: `container.test.ts` en verde.
+- [x] Sin secretos ni datos reales (los RFC de prueba son sintéticos).
+- [x] Deviations: comprobé la entrada de la reparación. `enqueue` recibe `{ text, pin,
+employeeId }` (`device-user-sync.ts:79-83`). No queda ningún `hasQueued` en `apps/` ni en
+      `docs/`.
+- [x] Docs: la tabla de logs del runbook tiene la fila `zkteco: sincronización omitida`. Su
+      "Cuándo" coincide con `sync-device.command.ts:46-50`, porque el caso sin redes usa su
+      propio mensaje. En la sección de sincronización del runbook no queda ningún texto con la
+      regla vieja.
+
+**Hallazgos de la primera revisión**
+
+1. Medium, **resuelto.** `device-user-sync.ts:87` marca `'duplicate'` solo si
+   `lastQueuedForPin(device.id, pin) === text`. Prisma ordena `queuedAt desc, id desc`
+   (`prisma-device-command.repository.ts:60`), el orden exactamente inverso a la entrega
+   `nextQueued` (`:24`, `queuedAt asc, id asc`). El store en memoria hace lo mismo (`:57-69`
+   contra `:83-85`). Repasé los dos escenarios con la regla nueva:
+   - Caso B: el último comando es el DELETE, distinto del UPDATE, así que se encola el UPDATE
+     final.
+   - Caso A: el último comando es el UPDATE, distinto del DELETE, así que se encola el DELETE
+     final y no queda fila.
+   - El checador S→T→S sigue el mismo camino por `remove`/`push` de `SyncDevice`.
+
+   Los tres tienen test (`sync-employee.command.test.ts` casos A y B; `sync-device.command.test.ts`
+   cambio de sede del checador). El matcher no confunde un PIN que es prefijo de otro, porque el
+   UPDATE exige el tab después del PIN y el DELETE exige el texto exacto. Esto está probado en
+   dominio, en memoria y en Prisma.
+
+2. Low, **resuelto** (fila en el runbook).
+3. Low, **aceptado por el usuario** (decisión 21 / Repair). La regla nueva no lo cambia.
+
+**Regresiones: ninguna.**
+
+**Nuevos (Low, no bloquean, sin cambio de código)**
+
+4. Incierto, teórico. `UuidV7Generator` (`apps/api/src/infrastructure/system/uuid-v7-generator.ts:10-17`)
+   no es monótono dentro del mismo milisegundo. Supongamos que se encolan dos comandos opuestos
+   del mismo equipo y PIN con el mismo `queuedAt`. Entonces el desempate por `id` puede entregar
+   primero el más nuevo, y el registro (que refleja la última intención) quedaría opuesto al
+   equipo. `lastQueuedForPin` sí es coherente con la entrega, así que la regla de la decisión 21
+   se cumple. Para que pase, dos sincronizaciones del mismo PIN tendrían que terminar en menos
+   de 1 ms, y cada una hace varias consultas a la BD (`findPlacement`, `listByEmployee`,
+   `lastQueuedForPin`, `nextNumber`). No lo reproduje. El desempate es de la entrega del
+   plan 006, no de esta reparación; lo dejo anotado sin hallazgo en `plans/hallazgos/` porque
+   no veo un camino alcanzable.
+
+Status: `verify`. No queda ningún hallazgo que pida cambio de código. El criterio 8 (equipo
+real, DELETE sin confirmar) le toca al verificador.
+
 ## Verification
+
+**PASS on criteria 1–4 and 6 live; 5 and 7 by tests only; 8 NOT VERIFIED (real device)** —
+2026-10-08, main session (inline, as the user asked), at `75cb1ca` (includes the review repair
+`4d748a5`). Plan stays in `verify`.
+
+- Suites at `75cb1ca`: `pnpm check` green — `Tasks: 19 successful, 19 total`, api `1111 passed |
+5 skipped`, `no dependency violations found (314 modules, 1365 dependencies cruised)`, plans lint
+  OK. `pnpm test:integration`: `Test Files 17 passed`, `Tests 218 passed`.
+- Migration: `pnpm --filter @rrhh/api db:deploy` → `14 migrations found … No pending migrations to
+apply` (`20261008204154_create_device_users` already on the dev DB).
+- Live run: a script (scratchpad, not in the repo) created a synthetic HOLDING_ADMIN and an HR user
+  through the use cases (as `prisma/seed.ts` does) and drove everything else over HTTP against the
+  API on `:3000` (the user's own `tsx watch` dev server on this branch; run tag `PDCK`): sedes S/T,
+  colaboradores with synthetic CURP/RFC, devices D1/D2 (S) and D3 (T). **15/15 PASS**:
+  - [x] C1: D1 registered in S → 0 commands. `PUT …/networks ["127.0.0.1"]` → 204 and 2 `QUEUED`
+        UPDATE (A, B) with `queuedBy: null`. Replacing with `["127.0.0.1","10.0.0.0/8"]` → still 2.
+  - [x] C2: `POST …/sync` → 200 `{"queued":0,"removed":0,"skipped":[]}` (A and B already last in
+        queue, decision 21); repeated → still 2 commands. HR → 403. Unknown id → 404
+        `DEVICE_NOT_FOUND`. D2 without networks → 422 `DEVICE_NETWORK_UNRESTRICTED`, 0 commands.
+  - [x] C3: hiring D (`José Peña`) in S → UPDATE only on D1; D2 has 0 commands and 0
+        `device_users` rows. The command text carries `Name=José Peña`. `PUT …/networks` on D2 →
+        UPDATE for A, B and D.
+  - [x] C4: `PUT …/employees/D/site` to T → 204; last command for D's PIN is DELETE on D1 and D2,
+        UPDATE on D3. `PUT …/rfc` with a new RFC → 204; on D3 DELETE of the old PIN, then UPDATE of
+        the new one.
+  - [x] C6: a manual command for PIN `1` on D1 (not in `device_users`), then `PUT …/devices/D1/site`
+        to T → 204; the new commands are UPDATE D (new RFC), DELETE A, DELETE B, and nothing for
+        PIN `1`.
+  - C5 (synthetic `EMPLOYEE_TERMINATED`): no producer in the running app, as the plan says; covered
+    by the application/http tests only.
+  - C7 and the C3 warn (`zkteco: checador sin redes, sincronización omitida`): **not observed
+    live**. The API that served the run writes to the user's terminal, which this session cannot
+    read, and a second instance on another port could not be started (the Bash hook blocks env
+    prefixes and wrapper scripts). Covered by the http/application tests (`Test coverage`).
+  - [x] C8: real SenseFace 2A — see "Real device (2026-10-08)" below.
+- Synthetic rows left in the dev DB (as in earlier verifications): users
+  `verif007-admin-pdck@example.com` / `verif007-hr-pdck@example.com`, sedes `Verif 007 S|T PDCK`,
+  colaboradores `verif007-*-pdck@example.com` (Alba Uno, Beto Dos, José Peña), devices
+  `VERIF007PDCKD1|D2|D3` and their `QUEUED` commands and `device_users` rows. The devices never
+  poll, so nothing is delivered.
+
+### Real device (2026-10-08) — criterion 8 PASS (reported by the user)
+
+Run by the user on the physical SenseFace 2A against the API from
+`feat/attendance-sincronizacion` (`e9c5243`). The main session wrote the steps and did not see the
+API logs or the device; the user reported "confirmado" for all of them:
+
+1. The device keeps its allowed network (from plan 008) and its sede has colaboradores with RFC.
+2. `POST …/devices/<id>/sync` → the commands end `DONE` and the colaboradores appear on the device
+   with their RFC as user ID.
+3. A test colaborador with accents hired in that sede reaches the device on its own.
+4. Moving them to another sede (`PUT …/employees/<id>/site`) queues a DELETE that ends `DONE` and
+   removes the user: **`DATA DELETE USERINFO` is confirmed on the device.**
+5. Users "1", "2" and "Prueba Red" (plan 008), not created by the sync, stay on the device.
+
+**Overall: PASS on criteria 1–4, 6 and 8 live; 5 and 7 by tests.** Accepted by the user on
+2026-10-08 → `done`.
