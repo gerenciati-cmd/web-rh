@@ -1,5 +1,5 @@
 ---
-status: draft
+status: approved
 module: attendance
 min_implementer: mid
 depends_on: ['005', '006', '008']
