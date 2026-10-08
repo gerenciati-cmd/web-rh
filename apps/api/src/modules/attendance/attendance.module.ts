@@ -7,6 +7,7 @@ import { QueueDeviceCommand } from './application/commands/queue-device-command.
 import { RecordDeviceContact } from './application/commands/record-device-contact.command';
 import { RecordDevicePush } from './application/commands/record-device-push.command';
 import { RegisterDevice } from './application/commands/register-device.command';
+import { SetDeviceNetworks } from './application/commands/set-device-networks.command';
 import { TakeDeviceCommand } from './application/commands/take-device-command.command';
 import type { PunchOwnerDirectory } from './application/ports/punch-owner-directory';
 import type { SiteDirectory } from './application/ports/site-directory';
@@ -34,6 +35,7 @@ export interface AttendanceCradle {
   deviceSiteDirectory: SiteDirectory;
   registerDevice: RegisterDevice;
   assignDeviceSite: AssignDeviceSite;
+  setDeviceNetworks: SetDeviceNetworks;
   listDevices: ListDevices;
   listPunches: ListPunches;
   recordDeviceContact: RecordDeviceContact;
@@ -57,6 +59,7 @@ export const attendanceModule: AppModule<AttendanceCradle> = {
     // Casos de uso
     registerDevice: asClass(RegisterDevice).singleton(),
     assignDeviceSite: asClass(AssignDeviceSite).singleton(),
+    setDeviceNetworks: asClass(SetDeviceNetworks).singleton(),
     listDevices: asClass(ListDevices).singleton(),
     listPunches: asClass(ListPunches).singleton(),
     recordDeviceContact: asClass(RecordDeviceContact).singleton(),

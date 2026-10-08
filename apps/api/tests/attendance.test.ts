@@ -144,7 +144,7 @@ describe('attendance HTTP', () => {
     /** Equipo registrado antes del plan 003: sin sede y con una zona libre. */
     async function legacyDevice(): Promise<string> {
       const id = '00000000-0000-4000-8000-0000000000d1';
-      await container.cradle.deviceRepository.save(
+      await container.cradle.deviceRepository.add(
         Device.restore(id as DeviceId, {
           serialNumber: 'LEGACYSN1',
           name: 'Equipo anterior',
@@ -155,6 +155,8 @@ describe('attendance HTTP', () => {
           siteId: null,
           clockOffsetSeconds: null,
           clockOffsetMeasuredAt: null,
+          allowedNetworks: [],
+          lastSeenIp: null,
         }),
       );
       return id;

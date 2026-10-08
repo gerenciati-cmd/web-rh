@@ -49,6 +49,7 @@ export function createZktecoAdmsRouter(deps: {
         query: stringValues(query),
         bodyLength: body.length,
         body,
+        sourceIp: req.ip ?? null,
       });
       if (!result.ok) {
         sendNotAllowed(res);
@@ -75,6 +76,7 @@ export function createZktecoAdmsRouter(deps: {
       get records() {
         return parseAdmsBody(table, body);
       },
+      sourceIp: req.ip ?? null,
     });
     if (!result.ok) {
       sendNotAllowed(res);

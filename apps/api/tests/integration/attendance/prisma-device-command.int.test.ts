@@ -29,7 +29,7 @@ async function savedDevice(serialNumber: string): Promise<Device> {
     now: NOW,
   });
   if (!created.ok) throw created.error;
-  const saved = await devices.save(created.value);
+  const saved = await devices.add(created.value);
   if (!saved.ok) throw saved.error;
   return created.value;
 }

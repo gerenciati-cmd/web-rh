@@ -50,7 +50,7 @@ export class RegisterDevice implements Command<RegisterDeviceInput, { id: Device
     });
     if (!device.ok) return device;
 
-    const saved = await this.deps.deviceRepository.save(device.value);
+    const saved = await this.deps.deviceRepository.add(device.value);
     if (!saved.ok) return saved;
     await this.deps.eventBus.publish(device.value.pullEvents());
 

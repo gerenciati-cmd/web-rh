@@ -20,7 +20,8 @@ each company see its own people's marcaciones. Shifts, jornadas, overtime and Me
 | [002](002-atribucion-de-marcaciones-por-rfc.md)        | Attribution of marcaciones by RFC   | 001, employees-rfc/001  | Each punch whose PIN is a colaborador's RFC is attributed to them (resolved at read time); HR reads its companies' punches.                            |
 | [003](003-checador-por-sede-y-desfase.md)              | Checador per sede and clock offset  | organization-sedes/001  | Device tied to a sede (zone copied from it, no free text); clock-offset measured on real-time pushes, flagged over 5 min.                              |
 | [004](004-sonda-de-comandos-adms.md)                   | ADMS command probe                  | 003                     | Admin queues a raw `USERINFO` command; the next poll delivers it; replies logged. Confirms the protocol with the real device.                          |
-| 005 (not written yet)                                  | Sync colaboradores to checadores    | 004, employees-sede/001 | Automatic + manual push of the sede's colaboradores (PIN = RFC), removal on termination, command bitácora. Written once 004 confirms the format.       |
+| [005](005-barrera-de-red-y-escrituras-dirigidas.md)    | Network barrier and targeted writes | 004                     | Allowed IPv4 networks per device on `/iclock`; commands only for devices with networks; `TRUST_PROXY`; device writes no longer overwrite the sede.     |
+| 006 (not written yet)                                  | Sync colaboradores to checadores    | 005, employees-sede/001 | Automatic + manual push of the sede's colaboradores (PIN = RFC), removal on termination, command bitácora.                                             |
 
 ## Dependency notes
 
@@ -28,15 +29,16 @@ each company see its own people's marcaciones. Shifts, jornadas, overtime and Me
 the colaborador record, delivered by `employees-rfc/001` (another module, so another initiative).
 
 003 needs the sede catalog (`organization-sedes/001`). 004 runs on a device that already has its
-sede (003). 005 cannot be specified before 004 observes the real command and reply formats, and
-needs the colaborador's sede and the change events from `employees-sede/001`. Note for 005 (review L3
-of `employees-sede/001`): a site change on a TERMINATED colaborador also publishes
-`site-assigned`, so the sync must check `EmployeeSummary.active` before pushing a user.
+sede (003). The sync (006, numbered 005 before 2026-10-05) needed 004 to observe the real command
+and reply formats, and needs the colaborador's sede and the change events from
+`employees-sede/001`. Note for 006 (review L3 of `employees-sede/001`): a site change on a
+TERMINATED colaborador also publishes `site-assigned`, so the sync must check
+`EmployeeSummary.active` before pushing a user.
 
-Before writing 005 (review of 004): **the user must decide the barrier for outgoing commands**
-(M1: anyone who knows a serial number can poll `getrequest` and take a queued command with a PIN
-and a name); 005 must take the next command atomically (L2) and handle several results per
-`devicecmd` body (L3).
+Review M1 of 004 (anyone who knows a serial number can poll `getrequest` and take a queued command
+with a PIN and a name) is settled by decisions 11–13 and implemented in 005, which the sync
+depends on: the sync only sends users to devices with allowed networks. Still for 006: take the
+next command atomically (L2 of 004) and handle several results per `devicecmd` body (L3).
 
 ## Decisions with the user
 
@@ -69,6 +71,17 @@ and a name); 005 must take the next command atomically (L2) and handle several r
     manually; on termination the user is removed from the device and the record kept; the test
     device's users "1" and "2" stay; the time zone comes from the sede (closed list); clock offset
     over 5 minutes is detected. Full wording: `organization-sedes` README decisions 1–4, 8–9.
+11. (2026-10-05) **Barrier for `/iclock`: allowed IP networks per device, enforced by the app**
+    (not only by firewall/VPN). The production topology (public IP per sede, dynamic IP, VPN) is
+    not decided yet; the app must protect itself whichever it is. Plan 005.
+12. (2026-10-05) A device **without** allowed networks keeps sending marcaciones (nothing breaks
+    on deploy) but **never receives commands**: queuing is refused and pending ones are not
+    delivered. Commands carry RFC and name, so they only go to network-restricted devices.
+13. (2026-10-05, architect, accepted with plan 005) Networks are **IPv4 only** (address or CIDR,
+    up to 10 per device): the ADMS devices connect over IPv4 and a pure IPv4 matcher stays in
+    `domain/`. The fix for the sede overwrite (finding
+    `attendance-escritura-completa-del-equipo`) goes in the same plan: both touch the device
+    repository and the `/iclock` use cases.
 
 ## Delivered
 
@@ -82,5 +95,12 @@ and a name); 005 must take the next command atomically (L2) and handle several r
   redeploy and server config edits. Discarded by decision 3.
 - **Linking PIN → colaborador in plan 001**: bigger plan touching `employees`; deferred by
   decision 4 with no data loss, since the PIN is stored.
+- **Only a network barrier (firewall, proxy, VPN) for `/iclock`**: no code, but depends on a
+  topology not decided yet and leaves the app unprotected if the network is misconfigured.
+  Discarded by decision 11 (it can still be added on top).
+- **Accepting the M1 risk in an ADR**: RFC + name would go out to anyone with the serial number
+  printed on the device. Discarded by decision 11.
+- **Optimistic version column for the sede overwrite**: needs retries on the 10 s poll path;
+  targeted column writes remove the conflict instead (plan 005).
 - **Persisting OPLOG / USER / BIODATA records**: not needed for marcaciones; biometrics are
   excluded by decision 6. They stay log-only.

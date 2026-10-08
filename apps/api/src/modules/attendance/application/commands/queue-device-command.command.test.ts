@@ -30,7 +30,10 @@ async function setUp() {
     now: clock.now(),
   });
   if (!registered.ok) throw registered.error;
-  await deviceRepository.save(registered.value);
+  // Solo un equipo con redes permitidas recibe comandos (plan 005).
+  const networks = registered.value.setAllowedNetworks(['127.0.0.1']);
+  if (!networks.ok) throw networks.error;
+  await deviceRepository.add(registered.value);
   return {
     store,
     logger,

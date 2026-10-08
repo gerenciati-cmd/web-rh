@@ -30,7 +30,7 @@ async function setUp(registeredSerials: readonly string[]) {
       now: clock.now(),
     });
     if (!device.ok) throw device.error;
-    await deviceRepository.save(device.value);
+    await deviceRepository.add(device.value);
   }
   return {
     logger,
@@ -64,6 +64,7 @@ describe('RecordDevicePush', () => {
       serialNumber: 'TESTSN001',
       table: 'ATTLOG',
       records: [attendanceRecord],
+      sourceIp: null,
     });
 
     expect(result.ok).toBe(false);
@@ -71,7 +72,7 @@ describe('RecordDevicePush', () => {
     expect(logger.entries).toEqual([
       {
         level: 'warn',
-        obj: { serialNumber: 'TESTSN001', table: 'ATTLOG' },
+        obj: { serialNumber: 'TESTSN001', table: 'ATTLOG', sourceIp: null },
         msg: 'zkteco: dispositivo no autorizado',
       },
     ]);
@@ -90,6 +91,7 @@ describe('RecordDevicePush', () => {
         accessed = true;
         throw new Error('no debería leerse records de un equipo no autorizado');
       },
+      sourceIp: null,
     };
 
     const result = await command.execute(input);
@@ -106,6 +108,7 @@ describe('RecordDevicePush', () => {
       serialNumber: 'TESTSN001',
       table: 'ATTLOG',
       records: [],
+      sourceIp: null,
     });
 
     expect(result.ok).toBe(false);
@@ -119,6 +122,7 @@ describe('RecordDevicePush', () => {
       serialNumber: 'TESTSN001',
       table: 'ATTLOG',
       records: [attendanceRecord, attendanceRecord],
+      sourceIp: null,
     });
 
     expect(result.ok).toBe(true);
@@ -139,6 +143,7 @@ describe('RecordDevicePush', () => {
       serialNumber: 'TESTSN001',
       table: 'OPERLOG',
       records: [attendanceRecord, operationRecord, operationRecord],
+      sourceIp: null,
     });
 
     expect(logger.entries[0]).toEqual({
@@ -162,6 +167,7 @@ describe('RecordDevicePush', () => {
       serialNumber: 'TESTSN001',
       table: 'OPERLOG',
       records: [userEntry, biodataEntry],
+      sourceIp: null,
     });
 
     expect(logger.entries[0]).toMatchObject({
@@ -176,6 +182,7 @@ describe('RecordDevicePush', () => {
       serialNumber: 'TESTSN001',
       table: 'ATTLOG',
       records: [attendanceRecord],
+      sourceIp: null,
     });
 
     // ATTLOG también persiste y deja su propio log (`marcaciones guardadas`): aquí solo importa
@@ -197,6 +204,7 @@ describe('RecordDevicePush', () => {
       serialNumber: 'TESTSN001',
       table: 'ATTLOG',
       records: [],
+      sourceIp: null,
     });
 
     expect(result.ok && result.value).toEqual({ accepted: 0 });
@@ -218,6 +226,7 @@ describe('RecordDevicePush', () => {
         serialNumber: 'TESTSN001',
         table: 'ATTLOG',
         records: [attendanceRecord, second],
+        sourceIp: null,
       });
 
       const punches = [...store.punches.values()];
@@ -234,6 +243,7 @@ describe('RecordDevicePush', () => {
         serialNumber: 'TESTSN001',
         table: 'ATTLOG',
         records: [attendanceRecord, second],
+        sourceIp: null,
       };
 
       const first = await command.execute(input);
@@ -261,6 +271,7 @@ describe('RecordDevicePush', () => {
         serialNumber: 'TESTSN001',
         table: 'ATTLOG',
         records: [attendanceRecord, impossible],
+        sourceIp: null,
       });
 
       expect(result.ok && result.value).toEqual({ accepted: 2 });
@@ -291,6 +302,7 @@ describe('RecordDevicePush', () => {
         serialNumber: 'TESTSN001',
         table: 'attlog',
         records: [attendanceRecord],
+        sourceIp: null,
       });
 
       expect(store.punches.size).toBe(1);
@@ -304,6 +316,7 @@ describe('RecordDevicePush', () => {
         serialNumber: 'TESTSN001',
         table: 'ATTLOG',
         records: [attendanceRecord, userEntry],
+        sourceIp: null,
       });
 
       expect(result.ok && result.value).toEqual({ accepted: 2 });
@@ -320,6 +333,7 @@ describe('RecordDevicePush', () => {
           serialNumber: 'TESTSN001',
           table,
           records: [attendanceRecord],
+          sourceIp: null,
         });
 
         expect(result.ok && result.value).toEqual({ accepted: 1 });
@@ -330,12 +344,13 @@ describe('RecordDevicePush', () => {
 
     it('un equipo inactivo es rechazado y no guarda nada', async () => {
       const { command, store, deviceRepository, logger } = await setUp([]);
-      await deviceRepository.save(inactiveDevice('TESTSN001'));
+      await deviceRepository.add(inactiveDevice('TESTSN001'));
 
       const result = await command.execute({
         serialNumber: 'TESTSN001',
         table: 'ATTLOG',
         records: [attendanceRecord],
+        sourceIp: null,
       });
 
       expect(!result.ok && result.error.code).toBe('DEVICE_NOT_ALLOWED');
@@ -347,7 +362,12 @@ describe('RecordDevicePush', () => {
 
     it('anota el último contacto del equipo, y no lo reescribe dentro del minuto', async () => {
       const { command, clock, deviceRepository } = await setUp(['TESTSN001']);
-      const input = { serialNumber: 'TESTSN001', table: 'ATTLOG', records: [attendanceRecord] };
+      const input = {
+        serialNumber: 'TESTSN001',
+        table: 'ATTLOG',
+        records: [attendanceRecord],
+        sourceIp: null,
+      };
       const t0 = new Date('2026-01-15T12:00:00Z');
       clock.set(t0);
 
@@ -375,6 +395,7 @@ describe('RecordDevicePush', () => {
         serialNumber: 'TESTSN001',
         table,
         records,
+        sourceIp: null,
       });
 
       it('un envío de una sola línea sincronizada mide desfase 0 y no es sospechoso', async () => {
@@ -499,7 +520,7 @@ describe('RecordDevicePush', () => {
 
     it('la hora local se interpreta con la zona del equipo que empuja', async () => {
       const { command, store, deviceRepository } = await setUp([]);
-      await deviceRepository.save(
+      await deviceRepository.add(
         Device.restore('00000000-0000-4000-8000-0000000000aa' as DeviceId, {
           serialNumber: 'UTCDEVICE',
           name: 'Equipo UTC',
@@ -510,6 +531,8 @@ describe('RecordDevicePush', () => {
           siteId: null,
           clockOffsetSeconds: null,
           clockOffsetMeasuredAt: null,
+          allowedNetworks: [],
+          lastSeenIp: null,
         }),
       );
 
@@ -517,6 +540,7 @@ describe('RecordDevicePush', () => {
         serialNumber: 'UTCDEVICE',
         table: 'ATTLOG',
         records: [attendanceRecord],
+        sourceIp: null,
       });
 
       expect([...store.punches.values()][0]?.occurredAt.toISOString()).toBe(
@@ -537,5 +561,7 @@ function inactiveDevice(serialNumber: string): Device {
     siteId: null,
     clockOffsetSeconds: null,
     clockOffsetMeasuredAt: null,
+    allowedNetworks: [],
+    lastSeenIp: null,
   });
 }

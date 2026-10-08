@@ -15,7 +15,7 @@ const DEVICE_ID = '00000000-0000-4000-8000-0000000000d1' as DeviceId;
 async function setUp() {
   const deviceRepository = new InMemoryDeviceRepository(new InMemoryAttendanceStore());
   // Equipo registrado antes del plan: sin sede y con una zona libre.
-  await deviceRepository.save(
+  await deviceRepository.add(
     Device.restore(DEVICE_ID, {
       serialNumber: 'TESTSN001',
       name: 'Entrada',
@@ -26,6 +26,8 @@ async function setUp() {
       siteId: null,
       clockOffsetSeconds: null,
       clockOffsetMeasuredAt: null,
+      allowedNetworks: [],
+      lastSeenIp: null,
     }),
   );
   const command = new AssignDeviceSite({

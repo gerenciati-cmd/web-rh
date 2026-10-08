@@ -7,7 +7,7 @@ import type { DeviceId } from '../../domain/device';
 import { DeviceCommand, type DeviceCommandId } from '../../domain/device-command';
 import type { DeviceCommandRepository } from '../../domain/device-command.repository';
 import type { DeviceRepository } from '../../domain/device.repository';
-import { DeviceNotFoundError } from '../../domain/errors';
+import { DeviceNetworkUnrestrictedError, DeviceNotFoundError } from '../../domain/errors';
 
 export interface QueueDeviceCommandInput {
   deviceId: string;
@@ -32,6 +32,10 @@ export class QueueDeviceCommand implements Command<QueueDeviceCommandInput, { id
 
     const device = await deviceRepository.findById(input.deviceId as DeviceId);
     if (!device) return err<DomainError>(new DeviceNotFoundError(input.deviceId));
+    // Sin barrera de red, cualquiera con el serial se llevaría el RFC y el nombre (decisión 12).
+    if (!device.receivesCommands) {
+      return err<DomainError>(new DeviceNetworkUnrestrictedError(device.id));
+    }
 
     const command = DeviceCommand.queue({
       id: idGenerator.next() as DeviceCommandId,

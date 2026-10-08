@@ -56,6 +56,13 @@ describe('sonda de comandos ADMS (HTTP)', () => {
       .send({ serialNumber: SERIAL, name: 'Entrada', siteId })
       .expect(201);
     deviceId = device.body.id as string;
+    // Solo un equipo con redes permitidas recibe comandos (plan 005); supertest llega por loopback.
+    await withAuth(
+      request(app).put(`${API_PREFIX}/attendance/devices/${deviceId}/networks`),
+      adminToken,
+    )
+      .send({ allowedNetworks: ['127.0.0.1'] })
+      .expect(204);
     const company = await api(adminToken)
       .post('/companies')
       .send({ legalName: 'Alfa SA de CV', taxId: 'EKU9003173C9', country: 'MX' })

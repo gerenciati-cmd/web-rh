@@ -32,9 +32,7 @@ export class AssignDeviceSite implements Command<AssignDeviceSiteInput, void> {
     if (!site.active) return err<DomainError>(new InactiveSiteError(input.siteId));
 
     device.assignSite(site.id, site.timeZone);
-    const saved = await deviceRepository.save(device);
-    if (!saved.ok) return saved;
-
+    await deviceRepository.saveSite(device);
     return ok(undefined);
   }
 }

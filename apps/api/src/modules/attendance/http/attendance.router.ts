@@ -11,6 +11,7 @@ import { requireActor } from '@/http/request-context';
 import type { AssignDeviceSite } from '../application/commands/assign-device-site.command';
 import type { QueueDeviceCommand } from '../application/commands/queue-device-command.command';
 import type { RegisterDevice } from '../application/commands/register-device.command';
+import type { SetDeviceNetworks } from '../application/commands/set-device-networks.command';
 import type { ListDeviceCommands } from '../application/queries/list-device-commands.query';
 import type { ListDevices } from '../application/queries/list-devices.query';
 import type { ListPunches } from '../application/queries/list-punches.query';
@@ -20,6 +21,7 @@ export function createAttendanceRouter(deps: {
   listDevices: ListDevices;
   registerDevice: RegisterDevice;
   assignDeviceSite: AssignDeviceSite;
+  setDeviceNetworks: SetDeviceNetworks;
   listPunches: ListPunches;
   queueDeviceCommand: QueueDeviceCommand;
   listDeviceCommands: ListDeviceCommands;
@@ -36,6 +38,16 @@ export function createAttendanceRouter(deps: {
 
   bindRoute(router, attendanceDeviceRoutes.assignDeviceSite, async ({ params, body }) => {
     unwrap(await deps.assignDeviceSite.execute({ deviceId: params.deviceId, siteId: body.siteId }));
+    return undefined;
+  });
+
+  bindRoute(router, attendanceDeviceRoutes.setDeviceNetworks, async ({ params, body }) => {
+    unwrap(
+      await deps.setDeviceNetworks.execute({
+        deviceId: params.deviceId,
+        allowedNetworks: body.allowedNetworks,
+      }),
+    );
     return undefined;
   });
 

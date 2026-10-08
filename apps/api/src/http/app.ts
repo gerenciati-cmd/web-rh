@@ -21,6 +21,8 @@ export function createApp(container: AppContainer): Express {
   const app = express();
 
   app.disable('x-powered-by');
+  // `req.ip` debe ser la IP del cliente real detrás de un proxy (barrera de red de /iclock).
+  app.set('trust proxy', env.TRUST_PROXY);
   app.use(helmet());
   app.use(cors({ origin: env.CORS_ORIGINS, credentials: true }));
   // Los equipos sondean cada pocos segundos: sus peticiones exitosas van a debug.

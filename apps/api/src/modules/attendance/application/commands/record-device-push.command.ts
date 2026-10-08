@@ -18,6 +18,8 @@ export interface RecordDevicePushInput {
    * de autorizar, así el llamador puede pasarlo como getter y no parsear bodies ajenos.
    */
   readonly records: readonly DevicePushRecord[];
+  /** IP de origen del request (ya resuelta según `TRUST_PROXY`); null si no se conoce. */
+  sourceIp: string | null;
 }
 
 interface Deps {
@@ -47,11 +49,16 @@ export class RecordDevicePush implements Command<
 
   async execute(input: RecordDevicePushInput) {
     const { logger, deviceRepository, punchRepository, idGenerator, clock } = this.deps;
-    const { serialNumber, table } = input;
+    const { serialNumber, table, sourceIp } = input;
 
     const device = await deviceRepository.findBySerialNumber(serialNumber);
     if (!device?.active) {
-      logger.warn({ serialNumber, table }, 'zkteco: dispositivo no autorizado');
+      logger.warn({ serialNumber, table, sourceIp }, 'zkteco: dispositivo no autorizado');
+      return err(new DeviceNotAllowedError(serialNumber));
+    }
+    // Misma respuesta que un serial desconocido: desde afuera no se distingue el motivo.
+    if (!device.acceptsAddress(sourceIp)) {
+      logger.warn({ serialNumber, table, sourceIp }, 'zkteco: IP no permitida');
       return err(new DeviceNotAllowedError(serialNumber));
     }
 
@@ -109,8 +116,9 @@ export class RecordDevicePush implements Command<
       offsetRecorded = inserted === 1 && this.measureClockOffset(device, valid, receivedAt);
     }
 
-    const seen = device.markSeen(clock.now());
-    if (seen || offsetRecorded) await deviceRepository.save(device);
+    const seen = device.markSeen(clock.now(), sourceIp);
+    // Solo columnas del equipo: un cambio de sede hecho durante este envío no se pisa.
+    if (seen || offsetRecorded) await deviceRepository.saveContact(device);
 
     // `accepted` cuenta todo lo procesado, también lo rechazado: el equipo no debe reenviar esas líneas.
     return ok({ accepted: records.length });

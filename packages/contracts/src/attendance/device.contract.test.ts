@@ -93,6 +93,8 @@ describe('DeviceSchema (sede y desfase)', () => {
     clockOffsetSeconds: null,
     clockOffsetMeasuredAt: null,
     clockSuspect: false,
+    allowedNetworks: [],
+    lastSeenIp: null,
   };
 
   it('acepta un equipo sin sede ni medición (campos null)', () => {

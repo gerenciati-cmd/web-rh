@@ -28,7 +28,7 @@ async function savedDevice(serialNumber: string, name = `Equipo ${serialNumber}`
     now: NOW,
   });
   if (!created.ok) throw created.error;
-  const saved = await devices.save(created.value);
+  const saved = await devices.add(created.value);
   if (!saved.ok) throw saved.error;
   return created.value;
 }
@@ -69,14 +69,13 @@ describe('PrismaDeviceRepository', () => {
     expect(await devices.findById('00000000-0000-4000-8000-999999999999' as DeviceId)).toBeNull();
   });
 
-  it('guardar de nuevo el mismo agregado actualiza lastSeenAt (upsert)', async () => {
+  it('saveContact actualiza lastSeenAt', async () => {
     const device = await savedDevice('TESTSN001');
     const seenAt = new Date('2026-09-29T10:00:00Z');
-    device.markSeen(seenAt);
+    device.markSeen(seenAt, null);
 
-    const result = await devices.save(device);
+    await devices.saveContact(device);
 
-    expect(result.ok).toBe(true);
     expect((await devices.findBySerialNumber('TESTSN001'))?.lastSeenAt).toEqual(seenAt);
   });
 
@@ -87,7 +86,7 @@ describe('PrismaDeviceRepository', () => {
     );
     const measuredAt = new Date('2026-09-29T10:00:00Z');
     device.recordClockOffset(-3600, measuredAt);
-    await devices.save(device);
+    await devices.saveContact(device);
 
     const rehydrated = await devices.findById(device.id);
 
@@ -100,7 +99,7 @@ describe('PrismaDeviceRepository', () => {
     const device = await savedDevice('TESTSN001');
     device.assignSite('00000000-0000-4000-8000-0000000000b2', 'America/Mexico_City');
 
-    await devices.save(device);
+    await devices.saveSite(device);
 
     const rehydrated = await devices.findById(device.id);
     expect(rehydrated?.siteId).toBe('00000000-0000-4000-8000-0000000000b2');
@@ -140,7 +139,7 @@ describe('PrismaDeviceRepository', () => {
     });
     if (!duplicate.ok) throw duplicate.error;
 
-    const result = await devices.save(duplicate.value);
+    const result = await devices.add(duplicate.value);
 
     expect(!result.ok && result.error.code).toBe('DEVICE_ALREADY_REGISTERED');
   });
@@ -215,8 +214,8 @@ describe('PrismaAttendanceQueries', () => {
   it('listDevices expone lastSeenAt cuando el equipo se vio', async () => {
     const device = await savedDevice('TESTSN001');
     const seenAt = new Date('2026-09-29T10:00:00Z');
-    device.markSeen(seenAt);
-    await devices.save(device);
+    device.markSeen(seenAt, null);
+    await devices.saveContact(device);
 
     const page = await queries.listDevices({ page: 1, pageSize: 20 });
 
@@ -227,10 +226,10 @@ describe('PrismaAttendanceQueries', () => {
     const measuredAt = new Date('2026-09-29T10:00:00Z');
     const edge = await savedDevice('SNA', 'A borde');
     edge.recordClockOffset(300, measuredAt);
-    await devices.save(edge);
+    await devices.saveContact(edge);
     const over = await savedDevice('SNB', 'B excedido');
     over.recordClockOffset(-301, measuredAt);
-    await devices.save(over);
+    await devices.saveContact(over);
     await savedDevice('SNC', 'C sin medir');
 
     const page = await queries.listDevices({ page: 1, pageSize: 20 });

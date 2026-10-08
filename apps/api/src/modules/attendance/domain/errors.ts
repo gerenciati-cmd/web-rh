@@ -39,3 +39,11 @@ export class DeviceNotAllowedError extends BusinessRuleViolationError {
     super('El dispositivo no está autorizado', { serialNumber });
   }
 }
+
+export class DeviceNetworkUnrestrictedError extends BusinessRuleViolationError {
+  override readonly code = 'DEVICE_NETWORK_UNRESTRICTED';
+
+  constructor(deviceId: string) {
+    super('El checador no tiene redes permitidas: no puede recibir comandos', { deviceId });
+  }
+}
