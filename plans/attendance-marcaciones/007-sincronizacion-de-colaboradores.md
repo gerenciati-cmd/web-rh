@@ -523,3 +523,45 @@ Status: `verify`. No queda ningún hallazgo que pida cambio de código. El crite
 real, DELETE sin confirmar) le toca al verificador.
 
 ## Verification
+
+**PASS on criteria 1–4 and 6 live; 5 and 7 by tests only; 8 NOT VERIFIED (real device)** —
+2026-10-08, main session (inline, as the user asked), at `75cb1ca` (includes the review repair
+`4d748a5`). Plan stays in `verify`.
+
+- Suites at `75cb1ca`: `pnpm check` green — `Tasks: 19 successful, 19 total`, api `1111 passed |
+5 skipped`, `no dependency violations found (314 modules, 1365 dependencies cruised)`, plans lint
+  OK. `pnpm test:integration`: `Test Files 17 passed`, `Tests 218 passed`.
+- Migration: `pnpm --filter @rrhh/api db:deploy` → `14 migrations found … No pending migrations to
+apply` (`20261008204154_create_device_users` already on the dev DB).
+- Live run: a script (scratchpad, not in the repo) created a synthetic HOLDING_ADMIN and an HR user
+  through the use cases (as `prisma/seed.ts` does) and drove everything else over HTTP against the
+  API on `:3000` (the user's own `tsx watch` dev server on this branch; run tag `PDCK`): sedes S/T,
+  colaboradores with synthetic CURP/RFC, devices D1/D2 (S) and D3 (T). **15/15 PASS**:
+  - [x] C1: D1 registered in S → 0 commands. `PUT …/networks ["127.0.0.1"]` → 204 and 2 `QUEUED`
+        UPDATE (A, B) with `queuedBy: null`. Replacing with `["127.0.0.1","10.0.0.0/8"]` → still 2.
+  - [x] C2: `POST …/sync` → 200 `{"queued":0,"removed":0,"skipped":[]}` (A and B already last in
+        queue, decision 21); repeated → still 2 commands. HR → 403. Unknown id → 404
+        `DEVICE_NOT_FOUND`. D2 without networks → 422 `DEVICE_NETWORK_UNRESTRICTED`, 0 commands.
+  - [x] C3: hiring D (`José Peña`) in S → UPDATE only on D1; D2 has 0 commands and 0
+        `device_users` rows. The command text carries `Name=José Peña`. `PUT …/networks` on D2 →
+        UPDATE for A, B and D.
+  - [x] C4: `PUT …/employees/D/site` to T → 204; last command for D's PIN is DELETE on D1 and D2,
+        UPDATE on D3. `PUT …/rfc` with a new RFC → 204; on D3 DELETE of the old PIN, then UPDATE of
+        the new one.
+  - [x] C6: a manual command for PIN `1` on D1 (not in `device_users`), then `PUT …/devices/D1/site`
+        to T → 204; the new commands are UPDATE D (new RFC), DELETE A, DELETE B, and nothing for
+        PIN `1`.
+  - C5 (synthetic `EMPLOYEE_TERMINATED`): no producer in the running app, as the plan says; covered
+    by the application/http tests only.
+  - C7 and the C3 warn (`zkteco: checador sin redes, sincronización omitida`): **not observed
+    live**. The API that served the run writes to the user's terminal, which this session cannot
+    read, and a second instance on another port could not be started (the Bash hook blocks env
+    prefixes and wrapper scripts). Covered by the http/application tests (`Test coverage`).
+  - [ ] C8 **NOT VERIFIED**: needs the physical SenseFace 2A (users appear with their RFC, accented
+        name on screen, DELETE removes the user and ends `DONE`, users "1" and "2" stay;
+        `DATA DELETE USERINFO` is still unconfirmed on the device). For the user.
+- Synthetic rows left in the dev DB (as in earlier verifications): users
+  `verif007-admin-pdck@example.com` / `verif007-hr-pdck@example.com`, sedes `Verif 007 S|T PDCK`,
+  colaboradores `verif007-*-pdck@example.com` (Alba Uno, Beto Dos, José Peña), devices
+  `VERIF007PDCKD1|D2|D3` and their `QUEUED` commands and `device_users` rows. The devices never
+  poll, so nothing is delivered.
