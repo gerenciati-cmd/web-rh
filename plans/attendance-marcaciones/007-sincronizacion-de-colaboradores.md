@@ -334,4 +334,80 @@ Notas: (1) el texto del DELETE sigue sin confirmarse en el equipo; los tests fij
 
 ## Review findings
 
+Reviewer, 2026-10-08, diff `main...HEAD` (d6b18a1, 11170af, 373ec0f; worktree limpio).
+
+**Checklist: 13/13 pasan; queda un hallazgo de bug hunt que pide cambio de código.**
+
+- [x] `pnpm plans:scope`: sale con código 1, pero todo se explica. Los 10 "fuera de alcance" son
+      archivos de test nuevos del tester (permitido). En "declarados sin cambios" están la ruta
+      placeholder de la migración (la real es `20261008204154_create_device_users`, Deviations
+      paso 5), `queue-device-command.command.ts` y `attendance-device-commands.test.ts`
+      (Deviations paso 8). Hot files: `test-app.ts` (+2 líneas, solo agregadas),
+      `modules.json` (frase agregada al summary, paso 7), `schema.prisma` (modelo nuevo
+      agregado; la back-relation `users` y `queuedBy String?` son cambios declarados en el paso 5).
+- [x] `pnpm check` en verde (api 89 archivos / 1096 passed / 5 skipped; contracts 295; arch: sin
+      violaciones; plans lint, harness, hooks, bootstrap, quality).
+- [x] `pnpm test:integration` en verde (17 archivos / 214 tests).
+- [x] Las reglas de negocio están en el dominio (`assignSite`/`setAllowedNetworks` emiten los
+      eventos, textos de los comandos en `domain/device-user-commands.ts`). Router y mappers no
+      tienen lógica.
+- [x] CQRS: `SyncDevice` devuelve `Result`; los repositorios no tienen métodos para pantallas
+      (`listActiveBySite`/`hasQueued` los usan los commands).
+- [x] Los tipos vienen de contratos (`DeviceSyncResultDto`); `openapi.json` regenerado.
+- [x] Errores: `DeviceWithoutSiteError` con `DEVICE_WITHOUT_SITE` (422) está en el catálogo; no
+      se filtra nada interno.
+- [x] El tiempo pasa por `Clock` (`now` en `assignSite`/`setAllowedNetworks`/`syncedAt`) y los
+      ids por `IdGenerator`. No hay dinero.
+- [x] La migración es nueva: `DROP NOT NULL`, `CREATE TABLE`, índice y FK solo a
+      `attendance.devices` (mismo módulo). Ningún DROP inesperado y ninguna FK a employees.
+- [x] DI: `container.test.ts` en verde; el módulo se registra una sola vez.
+- [x] Sin secretos ni datos personales reales (RFC y nombres de prueba sintéticos).
+- [x] Deviations: comprobé el paso 6. `AppModule.subscribe` recibe `TCradle & { eventBus }`
+      (`apps/api/src/shared/app-module.ts:29`) y `AttendanceCradle` no expone `logger`, así que
+      la afirmación es cierta.
+- [x] Docs al día: runbook (sección nueva y tabla de logs) y `modules.json`.
+
+### Findings
+
+**Medium (requiere cambio de código)**
+
+1. **Saltarse un comando "idéntico ya en cola" no mira si después quedó en cola el comando
+   contrario para el mismo PIN, y el equipo puede terminar en el estado opuesto al registro.**
+   Está en `apps/api/src/modules/attendance/application/device-user-sync.ts:447` (`hasQueued` →
+   `'duplicate'`), y `push` (`:410-417`) y `remove` (`:434-436`) igual actualizan el registro
+   `device_users`. La entrega va en orden FIFO (`prisma-device-command.repository.ts:24`,
+   `queuedAt asc`), así que el estado final del equipo lo decide el **último** comando en cola
+   para ese PIN, no la existencia de uno idéntico. El código cumple el texto del plan ("An
+   identical command still QUEUED … is not queued twice"): la falla está en la regla misma.
+   - Caso B (dos cambios en la ventana): la sincronización inicial encola el UPDATE X de E (n1,
+     QUEUED) y pone la fila. RH mueve a E a la sede T por error: DELETE X (n2) y se borra la
+     fila. RH lo regresa a S: `hasQueued(UPDATE X)` da verdadero porque n1 sigue en cola →
+     `'duplicate'` → se pone la fila sin encolar nada. El equipo ejecuta n1 y luego n2, y **E
+     no queda en el checador aunque el registro diga que sí**. Ningún evento automático lo
+     corrige; solo una sincronización manual hecha cuando la cola ya se vació.
+   - Caso A (tres cambios): E está en dS (DONE). Se mueve a T: DELETE X (n1, QUEUED). Regresa
+     a S: UPDATE X (n2), se pone la fila. Se mueve a T otra vez antes de que dS consulte:
+     `hasQueued(DELETE X)` da verdadero por n1 → `'duplicate'` → se borra la fila. El equipo
+     ejecuta n1 y luego n2: **E sigue en dS sin fila en el registro**, así que ninguna
+     sincronización lo vuelve a borrar. Rompe las decisiones 9–10 (quien sale de la sede se
+     quita) y la persona puede seguir marcando.
+   - La ventana es real: una sede de 100 personas tarda ~17 min en vaciar la cola (runbook). El
+     cambio de sede de un checador S→T→S tiene el mismo problema, vía el bucle de bajas de
+     `SyncDevice` (`sync-device.command.ts:240-244`).
+   - Sugerencia (no aplicada): saltarse el comando solo si el **último** comando QUEUED para
+     ese equipo y PIN es idéntico. Esto cambia la regla del plan, así que va como deviation o
+     decisión del usuario. No hay test que lo cubra: los tests fijan la regla actual.
+
+**Low (no bloquean)**
+
+2. `sync-device.command.ts:204`: el warn `'zkteco: sincronización omitida'` (una sincronización
+   automática rechazada por `DEVICE_NOT_FOUND`/`DEVICE_WITHOUT_SITE`) no está en la tabla de
+   logs del runbook. Casi nunca se alcanza, porque `DEVICE_SITE_ASSIGNED` siempre trae sede.
+3. Dos sincronizaciones concurrentes (un evento y la manual) pueden pasar las dos `hasQueued` y
+   encolar UPDATE duplicados (`device-user-sync.ts:447-464`, sin lock). No hace daño porque el
+   UPDATE es idempotente; solo alarga la cola. No lo reproduje: sale de leer el código.
+
+Status: se queda en `review` (el hallazgo 1 pide cambio de código y probablemente una
+decisión sobre la regla de no duplicar).
+
 ## Verification
