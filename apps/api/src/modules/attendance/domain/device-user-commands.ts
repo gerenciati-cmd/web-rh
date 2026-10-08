@@ -1,7 +1,7 @@
 /**
  * Textos de los comandos que sincronizan colaboradores con el checador (sin prefijo `C:<n>:`).
- * UPDATE confirmado en el SenseFace 2A el 2026-10-03; DELETE sigue pendiente de confirmar en el
- * equipo (verificación del plan 007).
+ * Confirmados en el SenseFace 2A: UPDATE el 2026-10-03 y DELETE el 2026-10-08 (verificación del
+ * plan 007).
  */
 
 // Un tab o salto de línea en el nombre rompería el formato `clave=valor` separado por tabs.

@@ -138,7 +138,7 @@ C:1:DATA UPDATE USERINFO PIN=GOMA850101AB1\tName=Ana Rojas\tPri=0\tPasswd=\tCard
 ```
 
 `QUERY` también se confirmó el 2026-10-03 (respuesta `ID=4&Return=0&CMD=DATA`: `ID` repite el
-número de `C:<n>:`, `Return=0` es éxito y `CMD` es solo el verbo). `DELETE` sigue sin probarse.
+número de `C:<n>:`, `Return=0` es éxito y `CMD` es solo el verbo). `DELETE` se confirmó el 2026-10-08 (ver "Sincronización de colaboradores").
 
 - Encolar (HOLDING_ADMIN): `POST /api/v1/attendance/devices/:deviceId/commands` con
   `{ "command": "DATA UPDATE USERINFO …" }`, **sin** prefijo `C:<n>:`: el API asigna el número
@@ -176,8 +176,8 @@ Cada checador lleva a los colaboradores activos de su sede, con su RFC como PIN 
 - El equipo recibe un comando por sondeo (~10 s): una sede de 100 personas tarda ~17 min.
 - Cómo comprobarlo: la bitácora (`GET …/commands`) muestra cada comando en `DONE` o `FAILED`;
   los automáticos traen `queuedBy: null`.
-- `DELETE USERINFO` sigue **pendiente de confirmar** en el equipo real hasta la verificación del
-  plan 007.
+- `DATA DELETE USERINFO PIN=<pin>` se **confirmó el 2026-10-08** en el SenseFace 2A (verificación
+  del plan 007): quita al usuario y el comando termina en `DONE`.
 
 ## Qué buscar en el log
 
