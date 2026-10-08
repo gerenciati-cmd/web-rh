@@ -237,15 +237,19 @@ model AttendanceDevice {
 }
 
 model AttendanceDeviceCommand {
-  id       String           @id @db.Uuid
-  deviceId String           @map("device_id") @db.Uuid
+  id          String           @id @db.Uuid
+  deviceId    String           @map("device_id") @db.Uuid
   /// Mismo módulo: la FK al equipo está permitida.
-  device   AttendanceDevice @relation(fields: [deviceId], references: [id])
-  command  String           @db.VarChar(500)
-  status   String           @db.VarChar(8)
-  queuedAt DateTime         @map("queued_at") @db.Timestamptz(3)
-  sentAt   DateTime?        @map("sent_at") @db.Timestamptz(3)
-  queuedBy String           @map("queued_by") @db.Uuid
+  device      AttendanceDevice @relation(fields: [deviceId], references: [id])
+  /// Número C:<n>: con el que se entrega; el equipo lo devuelve como ID en su respuesta.
+  number      Int              @unique @default(autoincrement())
+  command     String           @db.VarChar(500)
+  status      String           @db.VarChar(8)
+  queuedAt    DateTime         @map("queued_at") @db.Timestamptz(3)
+  sentAt      DateTime?        @map("sent_at") @db.Timestamptz(3)
+  returnCode  String?          @map("return_code") @db.VarChar(16)
+  completedAt DateTime?        @map("completed_at") @db.Timestamptz(3)
+  queuedBy    String           @map("queued_by") @db.Uuid
 
   @@index([deviceId, status, queuedAt])
   @@map("device_commands")

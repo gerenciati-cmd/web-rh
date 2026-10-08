@@ -1,0 +1,412 @@
+---
+status: done
+module: attendance
+min_implementer: mid
+depends_on: ['004']
+---
+
+# 006 — Reliable command delivery and command results
+
+## Context
+
+Prepares the command channel of plan 004 for the real sync (007): review findings L2 and L3 of
+004, README decisions 12–13 (2026-10-06), and the barrier decision M1 (decision 12).
+
+**What exists today (plan 004, done):**
+
+- `DeviceCommand` entity: `id, deviceId, command, status 'QUEUED'|'SENT', queuedAt, sentAt,
+queuedBy`; `queue` validates the USERINFO pattern, optional `C:<n>:` prefix included
+  (`apps/api/src/modules/attendance/domain/device-command.ts:7-16`, `:21`, `:33-56`); `markSent`
+  (`:88-91`). The same pattern lives in the contract
+  (`packages/contracts/src/attendance/device-command.contract.ts:12-13`).
+- Delivery is not atomic (review L2): `TakeDeviceCommand` does `nextQueued` then `save`
+  (`application/commands/take-device-command.command.ts:20-29`); Prisma `nextQueued` is a
+  `findFirst` and `save` an upsert (`infrastructure/prisma-device-command.repository.ts:12-27`).
+  Two concurrent `getrequest` of the same SN get the same command.
+- Results are only logged: `RecordDeviceContact` parses the `devicecmd` body with
+  `parseCommandResult`, which merges every pair of every line into one object (review L3,
+  `domain/device-record.ts:71-80`), and logs it redacted
+  (`application/commands/record-device-contact.command.ts:61-66`).
+- **Observed on the real device** (004 Verification, SenseFace 2A, 2026-10-03): the reply is
+  `ID=4&Return=0&CMD=DATA` in one line; `ID` echoes the `n` of `C:<n>:`; `Return=0` is success;
+  `CMD` is only the verb. `DATA UPDATE USERINFO` and `DATA QUERY USERINFO` were accepted;
+  `DATA DELETE USERINFO` is not tested yet.
+- The ADMS router answers `getrequest` with `takeDeviceCommand`'s text or `OK`, and `devicecmd`
+  with `OK` after the contact use case (`http/zkteco-adms.router.ts:35-58` `contact` helper,
+  `:87-97` the two routes).
+- Table `attendance.device_commands` (`apps/api/prisma/schema.prisma:236-250`), DTO mapping
+  (`infrastructure/attendance.mapper.ts:49-84`), bitácora query newest first
+  (`infrastructure/prisma-attendance.queries.ts:59-74`).
+- Conditional claim pattern to copy: `updateMany` with the expected state in the `where` and a
+  `count` check (`apps/api/src/modules/identity/infrastructure/prisma-password-reset.repository.ts:27-33`).
+
+**Approach.**
+
+1. **The API numbers every command.** A new `number` column (`SERIAL`, unique) gives each
+   command its `C:<n>:`; the stored `command` is the text **without** prefix and the device gets
+   `C:<number>:<command>`. Operators can no longer type the prefix (pattern without
+   `(C:\d+:)?`), so a reply's `ID` always identifies one command. Alternative: keep
+   operator-typed prefixes and match by text — ambiguous (the 004 probe used `C:1:` twice).
+2. **Atomic take**: the use case marks the oldest QUEUED command sent and the repository
+   **claims** it with `updateMany where { id, status: 'QUEUED' }`; a lost race retries with the
+   next one (bounded). Alternative: one raw `UPDATE … FOR UPDATE SKIP LOCKED RETURNING` — fewer
+   round trips, but raw rows bypass the mapper; the poll is every ~10 s, so the claim loop is
+   enough.
+3. **Results close the command**: `devicecmd` bodies are split **per line**, each line its own
+   `key=value&…` result (L3); each `ID` + `Return` found closes the matching command of that device:
+   `Return=0` → `DONE`, anything else → `FAILED`, code stored. Unknown `ID` → warn, ignored.
+   Multi-line bodies are a hypothesis (only one-line replies were observed); one line still works.
+4. **M1 accepted in a controlled network** (decision 12): documented in ADR 0014, no code.
+
+## Out of scope
+
+- Sync of colaboradores, users pushed automatically, `device_users` (plan 007).
+- More than one command per `getrequest` answer (faster bulk delivery): unconfirmed protocol;
+  007 may revisit with evidence.
+- Retrying FAILED commands or timeouts for SENT commands without a reply.
+- Any barrier code for `/iclock` (decision 12). Web/mobile screens.
+
+## Dependencies
+
+- `004` (done) — `DeviceCommand`, `DeviceCommandRepository`, `TakeDeviceCommand`,
+  `QueueDeviceCommand`, the bitácora routes and the ADMS router wiring cited above.
+
+## Steps
+
+1. **Contract**
+   - Files: `packages/contracts/src/attendance/device-command.contract.ts` (modify), `packages/contracts/openapi.json` (modify)
+   - Do: `DEVICE_COMMAND_PATTERN = /^DATA (UPDATE|QUERY|DELETE) USERINFO (?:\t|[^\p{Cc}])*$/u`
+     (docblock: the API adds `C:<n>:`; `UPDATE` and `QUERY` confirmed on the SenseFace 2A on
+     2026-10-03, `DELETE` not yet). `DeviceCommandSchema` gains `number: z.number().int().positive()`
+     (`'Número con el que se envió (C:<n>:); el equipo lo devuelve como ID'`), status
+     `z.enum(['QUEUED', 'SENT', 'DONE', 'FAILED'])` (describe: DONE = the device answered
+     `Return=0`; FAILED = another code), `returnCode: z.string().nullable()`,
+     `completedAt: z.iso.datetime().nullable()`; `command` describe: text without the prefix.
+     `QueueDeviceCommandSchema` describe: without `C:<n>:`, the API assigns it. Route
+     descriptions: the bitácora shows the device's result. Regenerate `openapi.json`
+     (operation count unchanged).
+   - Observable result: contracts typecheck passes.
+
+2. **Domain**
+   - Files: `apps/api/src/modules/attendance/domain/device-command.ts` (modify), `apps/api/src/modules/attendance/domain/device-command.repository.ts` (modify), `apps/api/src/modules/attendance/domain/device-record.ts` (modify)
+   - Do, entity: `DeviceCommandStatus = 'QUEUED' | 'SENT' | 'DONE' | 'FAILED'`; props add
+     `number: number`, `returnCode: string | null`, `completedAt: Date | null`. `queue` input adds
+     `number`; invalid (`!Number.isSafeInteger(n) || n < 1`) → `InvalidValueError('Número de
+comando inválido')`. `COMMAND_PATTERN` mirrors the contract (comment updated). Getters for
+     the new props and `get wireText(): string` = `` `C:${number}:${command}` ``.
+     `complete(returnCode: string, now: Date): boolean`: only from `SENT` and only when
+     `returnCode` matches `/^-?\d{1,15}$/`; sets `DONE` if `'0'` else `FAILED`, `returnCode`,
+     `completedAt`; returns whether it changed (a repeated reply returns `false`).
+   - Do, repository port: keep `save` and `nextQueued(deviceId)`; add
+     `claim(command: DeviceCommand): Promise<boolean>` (persists a command just marked SENT only
+     if the row is still QUEUED) + `nextNumber(): Promise<number>` +
+     `findByNumber(deviceId: DeviceId, number: number): Promise<DeviceCommand | null>`. `save`
+     keeps serving new commands and completions.
+   - Do, `device-record.ts`: replace `parseCommandResult` with
+     `parseCommandResults(body: string): Record<string, string>[]` — split on `/\r?\n|\r/`, each
+     non-empty line split on `&`, same key rules as today; lines without any valid pair are
+     dropped. Docblock: one result per line is a hypothesis; one line observed.
+   - Observable result: typecheck lists the adapters and use cases to update.
+
+3. **Persistence**
+   - Files: `apps/api/prisma/schema.prisma` (modify), `apps/api/prisma/migrations/YYYYMMDDHHMMSS_add_device_command_result/migration.sql` (create), `apps/api/src/modules/attendance/infrastructure/attendance.mapper.ts` (modify), `apps/api/src/modules/attendance/infrastructure/prisma-device-command.repository.ts` (modify), `apps/api/src/modules/attendance/infrastructure/in-memory/in-memory-attendance.store.ts` (modify), `apps/api/src/modules/attendance/infrastructure/prisma-attendance.queries.ts` (modify)
+   - Do, schema (`AttendanceDeviceCommand`): `number Int @unique @default(autoincrement())`,
+     `returnCode String? @map("return_code") @db.VarChar(16)`,
+     `completedAt DateTime? @map("completed_at") @db.Timestamptz(3)`. Generate with
+     `pnpm db:migrate --name add_device_command_result`; the SQL must only `ADD COLUMN` (existing
+     rows get numbers from the sequence) + the unique index — no `DROP`, no data rewrite. Replace
+     the placeholder folder name with the real one; note it in Deviations.
+   - Do, mapper: status mapping through a closed set (`QUEUED|SENT|DONE|FAILED`, unknown →
+     `QUEUED` as today); the three new fields both ways and in `toDto`.
+   - Do, Prisma repository: `nextNumber` =
+     `$queryRaw<{ n: number }[]>` `SELECT nextval(pg_get_serial_sequence('attendance.device_commands', 'number'))::int AS n`;
+     `claim` = `updateMany({ where: { id, status: 'QUEUED' }, data: { status, sentAt } })` →
+     `count === 1`; `findByNumber` = `findFirst({ where: { deviceId, number } })`; `save` passes
+     `number` explicitly.
+   - Do, in-memory: a counter for `nextNumber`; `claim` stores only if the stored command is
+     still `QUEUED`; `findByNumber`; `listDeviceCommands` DTO gets the new fields.
+   - Do, queries: nothing beyond the mapper (`toDto` already used, `:73`).
+   - Observable result: migration applied; typecheck passes.
+
+4. **Application**
+   - Files: `apps/api/src/modules/attendance/application/commands/queue-device-command.command.ts` (modify), `apps/api/src/modules/attendance/application/commands/take-device-command.command.ts` (modify), `apps/api/src/modules/attendance/application/commands/record-device-contact.command.ts` (modify), `apps/api/src/modules/attendance/application/commands/complete-device-commands.command.ts` (create)
+   - Do, `QueueDeviceCommand`: `number: await deviceCommandRepository.nextNumber()` passed to
+     `queue`; log keeps only ids, adds `number`.
+   - Do, `TakeDeviceCommand`: up to 3 attempts: `nextQueued` → null ⇒ `null`; `markSent(now)`;
+     `claim` → true ⇒ log `'zkteco: comando entregado'` `{ deviceId, commandId, number }` and
+     return `wireText`; false ⇒ next attempt. After 3 lost claims return `null` (the device asks
+     again in ~10 s).
+   - Do, `RecordDeviceContact`: log one `'zkteco: resultado de comando'` per element of
+     `parseCommandResults(body)` (same redaction).
+   - Do, `CompleteDeviceCommands` (`UseCase<{ deviceId: string; body: string }, void>`; deps
+     `deviceCommandRepository, clock, logger`): for each parsed result with `ID` matching
+     `/^\d{1,9}$/` and a `Return`: `findByNumber(deviceId, Number(ID))`; missing → warn
+     `'zkteco: resultado sin comando'` `{ deviceId, number }`; else `complete(Return, now)` and,
+     if it changed, `save` + info `'zkteco: comando completado'`
+     `{ deviceId, commandId, number, status, returnCode }` (FAILED at warn level). Never logs the
+     command text.
+   - Observable result: typecheck passes.
+
+5. **ADMS router and module**
+   - Files: `apps/api/src/modules/attendance/http/zkteco-adms.router.ts` (modify), `apps/api/src/modules/attendance/attendance.module.ts` (modify)
+   - Do: router deps add `completeDeviceCommands`; `devicecmd` becomes
+     `contact('command-result', async ({ deviceId }, body) => { await
+deps.completeDeviceCommands.execute({ deviceId, body }); return 'OK'; })` — extend the
+     `contact` helper so `onOk` also receives the body it already read. Register
+     `completeDeviceCommands` in the cradle and registrations.
+   - Observable result: `tests/container.test.ts` resolves it; `pnpm check` passes.
+
+6. **ADR and docs**
+   - Files: `docs/adr/0014-comandos-salientes-con-serial-como-credencial.md` (create), `docs/adr/README.md` (modify), `docs/integraciones/zkteco-senseface-2a.md` (modify)
+   - Do, ADR 0014 (from `docs/adr/0000-plantilla.md`, Spanish, Aceptado, 2026-10-06): context =
+     review M1 of plan 004 (the queued command carries RFC and name and is handed to whoever
+     polls with the serial; ADR 0013 already flags exposure); decision = accepted while `/iclock`
+     is reachable only from a controlled network (office LAN/VPN); exposing it to the internet
+     requires first a barrier (proxy with source-IP allowlist or mTLS) and a new ADR;
+     consequences = a stolen-serial poll can steal and consume one command (visible in the
+     bitácora as SENT without result). Add it to the ADR index.
+   - Do, runbook: section "Sonda de comandos" → the API assigns `C:<n>:`; statuses
+     QUEUED/SENT/DONE/FAILED with `returnCode`; `QUERY` confirmed on 2026-10-03; new log lines
+     (`comando completado`, `resultado sin comando`); link to ADR 0014.
+   - Observable result: `pnpm check` passes (docs tests included).
+
+7. **Existing tests forced by the change** (fixtures only, no new cases: the tester adds them)
+   - Files: `apps/api/src/modules/attendance/domain/device-command.test.ts` (modify), `apps/api/src/modules/attendance/domain/device-record.test.ts` (modify), `apps/api/src/modules/attendance/application/commands/take-device-command.command.test.ts` (modify), `apps/api/src/modules/attendance/application/commands/queue-device-command.command.test.ts` (modify), `apps/api/src/modules/attendance/application/commands/record-device-contact.command.test.ts` (modify), `packages/contracts/src/attendance/device-command.contract.test.ts` (modify), `apps/api/tests/attendance-device-commands.test.ts` (modify), `apps/api/tests/integration/attendance/prisma-device-command.int.test.ts` (modify)
+   - Do: pass `number` to `queue`; expected delivered text becomes `C:<n>:…`; cases that typed a
+     `C:n:` prefix now expect rejection (400 / `INVALID_VALUE`) — note each changed assertion in
+     Deviations; `parseCommandResult` → `parseCommandResults`.
+   - Observable result: `pnpm check` and `pnpm test:integration` pass.
+
+## Acceptance criteria
+
+- [x] `POST …/devices/:id/commands` with `DATA QUERY USERINFO PIN=X` → 201; the bitácora shows
+      it `QUEUED` with a `number`; with a `C:9:DATA QUERY USERINFO PIN=X` text → 400.
+- [x] The next `GET /iclock/getrequest` answers exactly `C:<number>:DATA QUERY USERINFO PIN=X`;
+      the bitácora shows it `SENT`.
+- [x] `POST /iclock/devicecmd` with `ID=<number>&Return=0&CMD=DATA` → `OK`; the bitácora shows
+      `DONE`, `returnCode: "0"`, `completedAt`. With `Return=-1` on another command → `FAILED`.
+      With an unknown `ID` → `OK` and a warn `zkteco: resultado sin comando`.
+- [x] A body with two lines (`ID=a&Return=0&CMD=DATA\nID=b&Return=0&CMD=DATA`) closes both.
+- [x] Integration: two concurrent takes of the same device with one QUEUED command → exactly one
+      gets it, the other gets `null`.
+- [ ] Rows created by plan 004 in the dev DB have a `number` after the migration and still list.
+- [ ] **Real device:** a queued `DATA QUERY USERINFO PIN=<existing PIN>` ends `DONE` with
+      `returnCode "0"` in the bitácora. NOT VERIFIED without the device.
+
+## Test layers required
+
+| Layer       | Applies | Focus                                                                                     |
+| ----------- | ------- | ----------------------------------------------------------------------------------------- |
+| domain      | yes     | `queue` number rule, pattern without prefix, `wireText`, `complete` transitions, parser   |
+| application | yes     | take retries on a lost claim; complete (DONE/FAILED/unknown/repeat); queue assigns number |
+| contract    | yes     | pattern rejects the prefix; new DTO fields and statuses                                   |
+| http        | yes     | acceptance criteria 1–4 over supertest                                                    |
+| integration | yes     | migration on existing rows, `nextNumber`, `claim` race, `findByNumber`, DTO fields        |
+| e2e         | no      | (no e2e infrastructure yet)                                                               |
+
+## Deviations
+
+1. **Migration written from `prisma migrate diff`** (cosmetic): `pnpm db:migrate` stops in a
+   non-interactive shell because of the unique-index warning. The SQL came from
+   `prisma migrate diff --from-config-datasource --to-schema` (only `ADD COLUMN` ×3 + unique
+   index, no `DROP`), saved as `20261006120000_add_device_command_result/migration.sql` and
+   applied with `db:deploy`.
+2. **Dev DB was behind** (note): before this migration, `migrate dev` applied 9 existing
+   migrations (`create_role_assignments` … `create_device_commands`) that the local `rrhh` DB
+   lacked. Nothing was dropped. So the dev DB had **no** plan-004 command rows, and acceptance
+   criterion 6 (existing rows get a `number`) cannot be checked there; the `SERIAL` column fills
+   existing rows by Postgres semantics; for the verifier.
+3. **In-memory reads return copies** (cosmetic, needed by the plan): `nextQueued` and
+   `findByNumber` return a copy, as a DB read would; otherwise `markSent` on the returned object
+   mutated the stored one and `claim` always lost.
+4. **`markSent` guard** (cosmetic): it now acts only from `QUEUED` (was "not SENT"), so a DONE or
+   FAILED command never goes back to SENT.
+5. **Assertions changed in Step 7 files** (forced by the plan's behavior):
+   - `device-command.test.ts` and `device-command.contract.test.ts`: `C:12:DATA UPDATE USERINFO
+PIN=1` moved from "accepted" to "rejected".
+   - `device-command.contract.test.ts`: the "unknown status" case used `FAILED`, now valid;
+     it uses `CANCELLED`.
+   - `device-record.test.ts`: the multi-line case now expects one result per line.
+   - `record-device-contact.command.test.ts`: a body without pairs no longer logs an empty
+     result ("no registra ningún resultado").
+   - `tests/attendance-device-commands.test.ts`: delivered texts carry `C:<n>:`; the multi-line
+     `devicecmd` case sends two one-line results and expects two log lines.
+   - `queue-device-command.command.test.ts` / `take-device-command.command.test.ts`: logs carry
+     `number`.
+6. **Lint** (cosmetic): `result.ID` / `result.Return` in dot notation (`dot-notation` rule).
+7. **2026-10-06 — Reparación del hallazgo L1 de la revisión** (docs only): el ADR 0014
+   (Consecuencias) y el runbook `docs/integraciones/zkteco-senseface-2a.md` afirmaban que un
+   comando robado con el serial queda en la bitácora como `SENT` sin resultado, una señal para
+   investigar. Eso es falso: `POST /iclock/devicecmd` solo se autentica con el serial
+   (`zkteco-adms.router.ts:100-106` → `CompleteDeviceCommands`), así que quien robó el comando
+   también puede responder `ID=<n>&Return=0` (u otro código) y cerrarlo — o cualquier otro `SENT`
+   de ese equipo — como `DONE`/`FAILED`, borrando la señal. Se corrigió el texto de ambos
+   documentos para decir que la bitácora no es evidencia confiable de entrega mientras el serial
+   sea la única credencial. Sin cambios de código (la barrera de red queda fuera de alcance,
+   decisión 12 del plan); el hallazgo L2 (caso HTTP de AC1 faltante) queda para el tester.
+
+Run at the end: `pnpm check` green (api 838 passed / 5 skipped, contracts 259);
+`pnpm test:integration` 15 files / 178 tests green.
+
+## Test coverage
+
+| Behavior (from plan / code)                                                                                                                          | Source (`file:line`)                                                   | Layer       | Test                                                                                                                                                                                                                                           | State                                                                                                                                                                                                                                                                                                      |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- | ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `queue` rechaza `number` inválido (0, negativo, no entero/NaN)                                                                                       | `device-command.ts:49-51`                                              | domain      | `device-command.test.ts › rechaza el número %j con INVALID_VALUE`                                                                                                                                                                              | CONFIRMED                                                                                                                                                                                                                                                                                                  |
+| `queue` acepta un número válido y `wireText` = `C:<n>:<command>`                                                                                     | `device-command.ts:91-93`                                              | domain      | `device-command.test.ts › acepta el número 1 y lo expone en wireText…`                                                                                                                                                                         | CONFIRMED                                                                                                                                                                                                                                                                                                  |
+| `markSent` solo actúa desde QUEUED: un comando DONE no vuelve a SENT                                                                                 | `device-command.ts:120-123` (deviación 4)                              | domain      | `device-command.test.ts › un comando DONE no vuelve a SENT al marcarlo de nuevo`                                                                                                                                                               | CONFIRMED                                                                                                                                                                                                                                                                                                  |
+| `complete`: Return=0 → DONE con returnCode y completedAt                                                                                             | `device-command.ts:129-138`                                            | domain      | `device-command.test.ts › DeviceCommand.complete › Return=0 cierra DONE…`                                                                                                                                                                      | CONFIRMED                                                                                                                                                                                                                                                                                                  |
+| `complete`: Return≠0 (incl. negativo) → FAILED                                                                                                       | `device-command.ts:129-138`                                            | domain      | `device-command.test.ts › un Return distinto de 0 (incluso negativo) cierra FAILED`                                                                                                                                                            | CONFIRMED                                                                                                                                                                                                                                                                                                  |
+| `complete`: solo actúa desde SENT (QUEUED no cierra)                                                                                                 | `device-command.ts:130`                                                | domain      | `device-command.test.ts › un comando QUEUED (nunca entregado) no se puede completar`                                                                                                                                                           | CONFIRMED                                                                                                                                                                                                                                                                                                  |
+| `complete`: una respuesta repetida sobre un comando ya cerrado no cambia nada                                                                        | `device-command.ts:130`                                                | domain      | `device-command.test.ts › una respuesta repetida sobre un comando ya cerrado no cambia nada`                                                                                                                                                   | CONFIRMED                                                                                                                                                                                                                                                                                                  |
+| `complete`: un `returnCode` con forma inválida no cierra el comando                                                                                  | `device-command.ts:29,130`                                             | domain      | `device-command.test.ts › un returnCode con forma inválida (%j) no cierra el comando`                                                                                                                                                          | CONFIRMED                                                                                                                                                                                                                                                                                                  |
+| `QueueDeviceCommand` asigna el `number` vía `nextNumber()` y es consecutivo                                                                          | `queue-device-command.command.ts:39`                                   | application | `queue-device-command.command.test.ts › encola…` + `› asigna números consecutivos…`                                                                                                                                                            | CONFIRMED                                                                                                                                                                                                                                                                                                  |
+| `TakeDeviceCommand` reintenta cuando `claim` pierde la carrera (otro sondeo ganó)                                                                    | `take-device-command.command.ts:29-41`                                 | application | `take-device-command.command.test.ts › si otro sondeo gana el reclamo (claim), reintenta…`                                                                                                                                                     | CONFIRMED                                                                                                                                                                                                                                                                                                  |
+| `TakeDeviceCommand` tras `MAX_CLAIM_ATTEMPTS` (3) perdidos devuelve `null`                                                                           | `take-device-command.command.ts:17,29-42`                              | application | `take-device-command.command.test.ts › tras perder el reclamo en cada intento (3)…`                                                                                                                                                            | CONFIRMED                                                                                                                                                                                                                                                                                                  |
+| `CompleteDeviceCommands`: Return=0 → DONE, guarda y registra info sin el texto del comando                                                           | `complete-device-commands.command.ts:35-52`                            | application | `complete-device-commands.command.test.ts › Return=0 deja el comando DONE…`                                                                                                                                                                    | CONFIRMED                                                                                                                                                                                                                                                                                                  |
+| `CompleteDeviceCommands`: Return≠0 → FAILED y registra warn                                                                                          | `complete-device-commands.command.ts:51`                               | application | `complete-device-commands.command.test.ts › un Return distinto de 0 deja el comando FAILED…`                                                                                                                                                   | CONFIRMED                                                                                                                                                                                                                                                                                                  |
+| `CompleteDeviceCommands`: `ID` sin comando (equipo o número) → warn "resultado sin comando", nada se guarda                                          | `complete-device-commands.command.ts:37-40`                            | application | `complete-device-commands.command.test.ts › un ID sin comando conocido…` + `› … de otro equipo cuenta como desconocido`                                                                                                                        | CONFIRMED                                                                                                                                                                                                                                                                                                  |
+| `CompleteDeviceCommands`: respuesta repetida no vuelve a guardar ni a registrar                                                                      | `complete-device-commands.command.ts:41`                               | application | `complete-device-commands.command.test.ts › una respuesta repetida sobre un comando ya cerrado…`                                                                                                                                               | CONFIRMED                                                                                                                                                                                                                                                                                                  |
+| `CompleteDeviceCommands`: un cuerpo de dos líneas cierra cada comando de su línea                                                                    | `complete-device-commands.command.ts:28` + `parseCommandResults`       | application | `complete-device-commands.command.test.ts › un cuerpo con dos líneas cierra cada comando…`                                                                                                                                                     | CONFIRMED                                                                                                                                                                                                                                                                                                  |
+| `CompleteDeviceCommands`: un `ID` con forma inválida (no numérico o >9 dígitos) se ignora                                                            | `complete-device-commands.command.ts:15,31`                            | application | `complete-device-commands.command.test.ts › un ID con forma inválida… se ignora`                                                                                                                                                               | CONFIRMED                                                                                                                                                                                                                                                                                                  |
+| `DeviceCommandSchema` acepta DONE/FAILED con `returnCode`/`completedAt`, rechaza tipos inválidos                                                     | `device-command.contract.ts:15-41`                                     | contract    | `device-command.contract.test.ts › acepta DONE y FAILED…` + `› rechaza returnCode o completedAt…`                                                                                                                                              | CONFIRMED                                                                                                                                                                                                                                                                                                  |
+| AC1: `POST …/commands` con USERINFO → 201, bitácora QUEUED con `number`; con `C:9:…` → 400                                                           | `zkteco-adms.router.ts`, `queue-device-command.command.ts`             | http        | `attendance-device-commands.test.ts › el comando "C:9:DATA QUERY USERINFO PIN=X": 400 VALIDATION_ERROR` (reparación L2 de la revisión, 2026-10-06: el `it.each` de 400 no traía el prefijo escrito a mano, solo lo cubrían contrato y dominio) | CONFIRMED                                                                                                                                                                                                                                                                                                  |
+| AC2: el siguiente `getrequest` responde `C:<number>:<command>`; bitácora SENT                                                                        | `take-device-command.command.ts`, `zkteco-adms.router.ts:92-98`        | http        | `attendance-device-commands.test.ts › entrega por GET /iclock/getrequest` (ya existente)                                                                                                                                                       | CONFIRMED                                                                                                                                                                                                                                                                                                  |
+| AC3: `devicecmd` con `ID`+`Return=0` → bitácora DONE con `returnCode`/`completedAt`; `Return=-1` en otro → FAILED; `ID` desconocido → OK sin cambios | `complete-device-commands.command.ts`, `zkteco-adms.router.ts:100-106` | http        | `attendance-device-commands.test.ts › Return=0 deja el comando DONE…` + `› un Return distinto de 0 en otro comando lo deja FAILED` + `› un ID desconocido responde OK y no cambia ningún comando…`                                             | CONFIRMED                                                                                                                                                                                                                                                                                                  |
+| AC4: un cuerpo con dos líneas cierra ambos comandos                                                                                                  | `device-record.ts:73-86`, `complete-device-commands.command.ts:28`     | http        | `attendance-device-commands.test.ts › un cuerpo con dos líneas cierra cada comando de su propia línea`                                                                                                                                         | CONFIRMED                                                                                                                                                                                                                                                                                                  |
+| `nextNumber()` devuelve enteros crecientes y únicos (también entre equipos)                                                                          | `prisma-device-command.repository.ts:39-46`                            | integration | `prisma-device-command.int.test.ts › nextNumber devuelve enteros crecientes y únicos…`                                                                                                                                                         | CONFIRMED                                                                                                                                                                                                                                                                                                  |
+| `findByNumber()` encuentra por equipo+número; null si no existe o es de otro equipo                                                                  | `prisma-device-command.repository.ts:48-53`                            | integration | `prisma-device-command.int.test.ts › findByNumber encuentra el comando…`                                                                                                                                                                       | CONFIRMED                                                                                                                                                                                                                                                                                                  |
+| `claim()`: de dos reclamos concurrentes del mismo comando QUEUED, solo uno gana                                                                      | `prisma-device-command.repository.ts:29-37`                            | integration | `prisma-device-command.int.test.ts › claim: de dos reclamos concurrentes…`                                                                                                                                                                     | CONFIRMED                                                                                                                                                                                                                                                                                                  |
+| AC5: `TakeDeviceCommand` con dos tomas concurrentes y un único comando en cola, solo una se entrega                                                  | `take-device-command.command.ts` + Prisma real                         | integration | `prisma-device-command.int.test.ts › TakeDeviceCommand: dos tomas concurrentes…`                                                                                                                                                               | CONFIRMED                                                                                                                                                                                                                                                                                                  |
+| DTO: un comando completado trae `returnCode`/`completedAt` no nulos                                                                                  | `attendance.mapper.ts:109-121`                                         | integration | `prisma-device-command.int.test.ts › un comando completado trae returnCode y completedAt…`                                                                                                                                                     | CONFIRMED                                                                                                                                                                                                                                                                                                  |
+| AC6: filas existentes (plan 004) obtienen `number` tras la migración                                                                                 | migración `20261006120000_add_device_command_result`                   | integration | —                                                                                                                                                                                                                                              | NOT CONFIRMED: la deviación 2 del plan deja la BD de dev sin filas previas a este cambio; no hay forma de reproducir "filas ya existentes antes de la migración" sin aplicar una migración a una BD con datos, fuera del alcance de un test automatizado. Queda para el verificador sobre el entorno real. |
+| AC7: comando real en el SenseFace 2A termina DONE con `returnCode "0"`                                                                               | —                                                                      | e2e         | —                                                                                                                                                                                                                                              | NOT CONFIRMED: requiere el equipo físico (ya anotado como "NOT VERIFIED without the device" en el plan); sin infraestructura e2e.                                                                                                                                                                          |
+
+## Review findings
+
+Revisión 2026-10-06 (reviewer, subagente). Alcance: commits `6e5f411` (código) y `08cac26`
+(tests); los commits del plan 005 en la rama quedan fuera.
+
+### Checklist — 13/13
+
+- [x] `plans:scope`: sale con código 1, pero cada entrada se explica. Los "fuera de alcance" son
+      archivos del plan 005 (`d7f595c`, `d9dd4b7`, `5b9a0ad`, …), que no son de esta revisión,
+      más `complete-device-commands.command.test.ts`, un archivo de test nuevo del tester
+      (permitido). "Declarados sin cambios": la ruta placeholder de la migración (la reemplazó
+      `20261006120000_add_device_command_result`, anotada en la deviación 1) y
+      `prisma-attendance.queries.ts` (el plan dice "nothing beyond the mapper"). Hot file
+      `schema.prisma`: con `git diff -w` solo tiene 4 inserciones; el resto es la realineación de
+      espacios de `prisma format` en `AttendanceDevice`.
+- [x] `pnpm check` en verde (turbo 19/19 desde caché sobre el HEAD limpio; además corrí en vivo
+      `vitest run src/modules/attendance tests/attendance-device-commands.test.ts`: 16 archivos,
+      217 tests en verde).
+- [x] `pnpm test:integration` en verde, corrida en vivo: 15 archivos, 188 tests.
+- [x] Reglas de negocio en `domain/` (`queue`/`complete`/`markSent`, `parseCommandResults`); el
+      router solo enruta.
+- [x] CQRS ligero: `claim`/`nextNumber`/`findByNumber` son operaciones del command, no métodos
+      para pantallas; la bitácora sigue en `AttendanceQueries` → DTO.
+- [x] Tipos desde `@rrhh/contracts`; `openapi.json` regenerado.
+- [x] Errores: `InvalidValueError` en `queue`; no se filtran detalles internos.
+- [x] Tiempo vía `Clock`; las fechas son `Timestamptz(3)`.
+- [x] Migración nueva: solo `ADD COLUMN` ×3 + índice único; sin `DROP` y sin FK entre módulos.
+- [x] DI: `completeDeviceCommands` se registra una vez; `container.test.ts` en verde.
+- [x] Sin secretos ni datos reales (los fixtures de RFC/nombre son los sintéticos que ya existían).
+- [x] Deviations honestas. Comprobé la 3 (`copyOf` en `nextQueued`/`findByNumber`,
+      `in-memory-attendance.store.ts`) y la 4 (`markSent` exige `QUEUED`, `device-command.ts:120-123`).
+- [x] Docs actualizadas: runbook de `zkteco-senseface-2a.md`, ADR 0014 e índice de ADRs.
+
+### Hallazgos
+
+**Low**
+
+- **L1 — El ADR 0014 y el runbook proponen como señal de robo algo que el mismo atacante puede
+  borrar.** `docs/adr/0014-comandos-salientes-con-serial-como-credencial.md:39-40` dice que un
+  comando robado "la bitácora lo muestra como `SENT` sin resultado", y
+  `docs/integraciones/zkteco-senseface-2a.md:123-124` dice que un `SENT` sin
+  respuesta "merece revisarse". Pero con este plan, `POST /iclock/devicecmd` solo se autentica con
+  el mismo serial (`zkteco-adms.router.ts:100-106` → `CompleteDeviceCommands`). Escenario: quien
+  roba `C:57:DATA UPDATE USERINFO …` con un `getrequest` y el serial ya conoce el número 57. Le
+  basta enviar `POST /iclock/devicecmd?SN=<serial>` con `ID=57&Return=0&CMD=DATA` para que el
+  comando quede `DONE`/`returnCode "0"`. La bitácora entonces muestra un éxito que el equipo real
+  nunca recibió, y la señal desaparece. El mismo atacante también puede marcar `FAILED` (o `DONE`)
+  cualquier comando `SENT` legítimo de ese equipo. Arreglo (solo docs, dentro del alcance del paso
+  6): en Consecuencias, decir que el serial también permite falsificar el resultado, así que la
+  bitácora no sirve para detectar un robo con un atacante activo; corregir igual la frase del
+  runbook. No hace falta código, porque la barrera queda fuera de alcance (decisión 12).
+
+- **L2 — El caso HTTP de AC1 "con `C:9:…` → 400" no existe, y la tabla de cobertura lo da por
+  CONFIRMED.** En `apps/api/tests/attendance-device-commands.test.ts:73-80` el `it.each` de 400
+  solo trae `CLEAR DATA`, `REBOOT` y `DATA UPDATE BIODATA Pin=1`, y ningún test del archivo encola
+  un texto con prefijo. Aun así, la fila "AC1" de `## Test coverage` lo marca CONFIRMED como
+  "(ya existente)". El rechazo sí está probado en las capas de contrato
+  (`device-command.contract.test.ts`) y de dominio, así que el riesgo real es bajo: si alguien
+  quitara el `.regex` del body del contrato en `bindRoute`, ningún test HTTP lo detectaría. La
+  corrección es solo de test (tester): agregar `'C:9:DATA QUERY USERINFO PIN=X'` al `it.each` de
+  400, o bajar la fila a la capa de contrato.
+
+**Info (no requieren cambio)**
+
+- I1 — Las filas del plan 004 con prefijo escrito a mano y todavía `QUEUED` se entregarían como
+  `C:<n>:C:1:DATA …` (`device-command.ts:91-93`). La deviación 2 y el ADR dicen que no hay filas
+  así en dev ni ambiente desplegado, así que **no está confirmado** que exista algún caso real. Si
+  apareciera un ambiente con datos del 004, habría que tratarlo con un hallazgo/migración de datos.
+- I2 — Dos `devicecmd` idénticos y simultáneos: los dos leen `SENT`, completan y guardan (upsert
+  idempotente). El único efecto es un `comando completado` duplicado en el log.
+
+Resultado: 0 High, 0 Medium, 2 Low (L1 docs del implementer, L2 test del tester), 2 Info.
+El status sigue en `review`.
+
+**Reparación (sesión principal, 2026-10-06):** review → `implementing` para L1 (solo docs:
+ADR 0014 y runbook); después L2 va al tester (testing → review) y vuelve a revisión.
+
+### Re-revisión 2026-10-06 (reviewer, subagente)
+
+Alcance: las reparaciones `7032c97` (L1, docs) y `34aebec` (L2, test) sobre `6e5f411`/`08cac26`.
+
+- **L1 — RESUELTO.** Cambió la viñeta de Consecuencias de
+  `docs/adr/0014-comandos-salientes-con-serial-como-credencial.md`. Ahora dice que, con el serial,
+  se puede responder `devicecmd` y cerrar como `DONE`/`FAILED` ese comando o cualquier otro `SENT`
+  del equipo, y que la bitácora no es evidencia confiable de entrega. Ya no queda la señal falsa
+  de "`SENT` sin resultado". La viñeta de la bitácora en `docs/integraciones/zkteco-senseface-2a.md`
+  se corrigió igual, y el cambio está anotado en la deviación 7. Ese commit solo toca docs y el
+  plan. Nit cosmético que no bloquea: en el runbook, el código inline `ID=<n>&`/`Return=0` quedó
+  partido entre dos líneas, así que se ve como `ID=<n>& Return=0`.
+- **L2 — RESUELTO.** `apps/api/tests/attendance-device-commands.test.ts:73-84` agrega
+  `'C:9:DATA QUERY USERINFO PIN=X'` al `it.each` de 400 `VALIDATION_ERROR`. Lo corrí en vivo y el
+  archivo pasa: 24 tests. La fila AC1 de `## Test coverage` ahora cita ese caso. Ese commit solo
+  toca el test y el plan.
+- `pnpm check` en verde. Turbo vino entero de caché (19/19); format, arch, plans, harness y el
+  resto de los pasos corrieron en vivo. Las reparaciones no tocan `infrastructure/` ni código de
+  producción, así que la corrida de integración anterior (188 en verde) sigue siendo válida.
+- Checklist 13/13; los hallazgos abiertos pasan a 0. I1 e I2 siguen como información.
+
+Resultado: todo resuelto. Status → `verify`.
+
+## Verification
+
+**PASS for criteria 1–5; criteria 6 and 7 NOT VERIFIED** — 2026-10-06, main session, at
+`1e7b31e`, against the dev API on `localhost:3001` (`pnpm dev:api`).
+
+- Suites: `pnpm check` green (api 876 passed / 5 skipped, contracts 261, domain 98);
+  `pnpm test:integration` 15 files / 188 tests green.
+- Migration: `db:deploy` on the dev DB → "No pending migrations to apply" (12 found).
+- Script over HTTP and `/iclock` (synthetic sede `Verificación 006 <suffix>`, devices
+  `VER006<suffix>` and `VER006B<suffix>`, suffix `MUX4KR96`), 15/15 PASS:
+  - [x] Criterion 1: `DATA QUERY USERINFO PIN=X` → 201, bitácora `QUEUED` with `number: 1`;
+        `C:9:DATA QUERY USERINFO PIN=X` → 400 `VALIDATION_ERROR`.
+  - [x] Criterion 2: next `getrequest` → exactly `C:1:DATA QUERY USERINFO PIN=X`; the next one
+        `OK`; bitácora `SENT` with `sentAt`.
+  - [x] Criterion 3: `ID=1&Return=0&CMD=DATA` → `OK`, bitácora `DONE`, `returnCode "0"`,
+        `completedAt`; `Return=-1` on command 2 → `FAILED`, `returnCode "-1"`; unknown
+        `ID=999999999` → `OK`.
+  - [x] Criterion 4: one body with two lines (commands 3 and 4) closes both as `DONE`.
+  - [x] Criterion 5: covered by the integration tests (green above) and, over HTTP, 10
+        simultaneous `getrequest` with one queued command → exactly 1 got `C:5:…`, 9 got `OK`.
+  - Unhappy path: device B posting `ID=6&Return=0` for device A command 6 → stays `SENT`.
+- API log: 2× `zkteco: resultado sin comando` (the unknown ID and the cross-device reply),
+  4× `zkteco: comando completado`, no error lines, and no command text (`USERINFO PIN`) at all.
+- **Criterion 6 NOT VERIFIED:** the dev DB had no plan-004 command rows (Deviation 2), so there
+  was nothing pre-existing to number. The column is `SERIAL NOT NULL`, so any such row gets one.
+- **Criterion 7 NOT VERIFIED:** needs the SenseFace 2A; to do by the user (queue
+  `DATA QUERY USERINFO PIN=<existing PIN>` and check `DONE` / `returnCode "0"` in the bitácora).
+- Data left in the dev DB: the sede and two devices above with six commands (numbers 1–6).

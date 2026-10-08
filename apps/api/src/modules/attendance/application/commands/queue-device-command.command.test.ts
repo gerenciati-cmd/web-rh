@@ -30,7 +30,7 @@ async function setUp() {
     now: clock.now(),
   });
   if (!registered.ok) throw registered.error;
-  // Solo un equipo con redes permitidas recibe comandos (plan 005).
+  // Solo un equipo con redes permitidas recibe comandos (plan 008).
   const networks = registered.value.setAllowedNetworks(['127.0.0.1']);
   if (!networks.ok) throw networks.error;
   await deviceRepository.add(registered.value);
@@ -67,6 +67,26 @@ describe('QueueDeviceCommand', () => {
     expect(saved?.deviceId).toBe(device.id);
     expect(saved?.queuedBy).toBe(QUEUED_BY);
     expect(saved?.queuedAt).toEqual(clock.now());
+    // Plan 006: el API asigna el número C:<n>: a partir de deviceCommandRepository.nextNumber().
+    expect(saved?.number).toBe(1);
+  });
+
+  it('asigna números consecutivos a comandos sucesivos', async () => {
+    const { command, device, store } = await setUp();
+
+    const first = await command.execute({
+      deviceId: device.id,
+      command: COMMAND,
+      queuedBy: QUEUED_BY,
+    });
+    const second = await command.execute({
+      deviceId: device.id,
+      command: COMMAND,
+      queuedBy: QUEUED_BY,
+    });
+
+    expect(first.ok && store.commands.get(first.value.id)?.number).toBe(1);
+    expect(second.ok && store.commands.get(second.value.id)?.number).toBe(2);
   });
 
   it('registra el encolado sin el texto del comando (puede llevar un PIN o un nombre)', async () => {
@@ -83,7 +103,7 @@ describe('QueueDeviceCommand', () => {
     expect(logger.entries).toEqual([
       {
         level: 'info',
-        obj: { serialNumber: 'TESTSN001', commandId: result.value.id },
+        obj: { serialNumber: 'TESTSN001', commandId: result.value.id, number: 1 },
         msg: 'zkteco: comando encolado',
       },
     ]);

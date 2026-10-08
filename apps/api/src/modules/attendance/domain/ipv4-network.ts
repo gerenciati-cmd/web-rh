@@ -1,7 +1,7 @@
 /**
  * Redes IPv4 (dirección o CIDR) para la barrera de red de los checadores. Aritmética pura sobre
  * enteros de 32 bits: el dominio no puede usar `node:net` (regla `domain-no-node-builtins`), y los
- * equipos ADMS se conectan por IPv4 (decisión 13 del README de `attendance-marcaciones`).
+ * equipos ADMS se conectan por IPv4 (decisión 17 del README de `attendance-marcaciones`).
  */
 export interface Ipv4Network {
   /** Dirección de red ya enmascarada, como entero sin signo. */

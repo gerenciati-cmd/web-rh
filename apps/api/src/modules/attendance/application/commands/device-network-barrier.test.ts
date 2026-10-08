@@ -453,6 +453,7 @@ describe('TakeDeviceCommand: barrera de red', () => {
     const command = DeviceCommand.queue({
       id,
       deviceId: setup.device.id,
+      number: 1,
       command: COMMAND,
       queuedBy: QUEUED_BY,
       now: new Date('2026-10-02T12:00:00Z'),
@@ -481,7 +482,8 @@ describe('TakeDeviceCommand: barrera de red', () => {
 
     await setup.setNetworks.execute({ deviceId: setup.device.id, allowedNetworks: ['127.0.0.1'] });
 
-    expect(await setup.take.execute({ deviceId: setup.device.id })).toBe(COMMAND);
+    // Desde el plan 006 el texto entregado lleva el número que asignó el API.
+    expect(await setup.take.execute({ deviceId: setup.device.id })).toBe(`C:1:${COMMAND}`);
     expect(setup.store.commands.get(id)?.status).toBe('SENT');
   });
 

@@ -14,14 +14,16 @@ each company see its own people's marcaciones. Shifts, jornadas, overtime and Me
 
 ## Plans
 
-| Plan                                                   | Title                               | Depends on              | Purpose                                                                                                                                                |
-| ------------------------------------------------------ | ----------------------------------- | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| [001](001-registro-de-equipos-y-marcaciones-crudas.md) | Device registry and raw marcaciones | —                       | `attendance` schema: devices (serial, name, time zone) replace the env allowlist; ATTLOG stored deduplicated; device status and punch query endpoints. |
-| [002](002-atribucion-de-marcaciones-por-rfc.md)        | Attribution of marcaciones by RFC   | 001, employees-rfc/001  | Each punch whose PIN is a colaborador's RFC is attributed to them (resolved at read time); HR reads its companies' punches.                            |
-| [003](003-checador-por-sede-y-desfase.md)              | Checador per sede and clock offset  | organization-sedes/001  | Device tied to a sede (zone copied from it, no free text); clock-offset measured on real-time pushes, flagged over 5 min.                              |
-| [004](004-sonda-de-comandos-adms.md)                   | ADMS command probe                  | 003                     | Admin queues a raw `USERINFO` command; the next poll delivers it; replies logged. Confirms the protocol with the real device.                          |
-| [005](005-barrera-de-red-y-escrituras-dirigidas.md)    | Network barrier and targeted writes | 004                     | Allowed IPv4 networks per device on `/iclock`; commands only for devices with networks; `TRUST_PROXY`; device writes no longer overwrite the sede.     |
-| 006 (not written yet)                                  | Sync colaboradores to checadores    | 005, employees-sede/001 | Automatic + manual push of the sede's colaboradores (PIN = RFC), removal on termination, command bitácora.                                             |
+| Plan                                                   | Title                               | Depends on             | Purpose                                                                                                                                                                                                          |
+| ------------------------------------------------------ | ----------------------------------- | ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [001](001-registro-de-equipos-y-marcaciones-crudas.md) | Device registry and raw marcaciones | —                      | `attendance` schema: devices (serial, name, time zone) replace the env allowlist; ATTLOG stored deduplicated; device status and punch query endpoints.                                                           |
+| [002](002-atribucion-de-marcaciones-por-rfc.md)        | Attribution of marcaciones by RFC   | 001, employees-rfc/001 | Each punch whose PIN is a colaborador's RFC is attributed to them (resolved at read time); HR reads its companies' punches.                                                                                      |
+| [003](003-checador-por-sede-y-desfase.md)              | Checador per sede and clock offset  | organization-sedes/001 | Device tied to a sede (zone copied from it, no free text); clock-offset measured on real-time pushes, flagged over 5 min.                                                                                        |
+| [004](004-sonda-de-comandos-adms.md)                   | ADMS command probe                  | 003                    | Admin queues a raw `USERINFO` command; the next poll delivers it; replies logged. Confirms the protocol with the real device.                                                                                    |
+| [005](005-escritura-dirigida-del-equipo.md)            | Targeted writes of the device row   | —                      | Device traffic writes only `lastSeenAt`/offset, the admin only sede/zone: a push no longer undoes a site change (finding, decision 11).                                                                          |
+| [006](006-entrega-y-resultado-de-comandos.md)          | Reliable command delivery + results | 004                    | API-assigned `C:<n>:`, atomic take, results close commands DONE/FAILED, several results per body; ADR 0014 on M1 (decisions 12, 14).                                                                             |
+| [007](007-sincronizacion-de-colaboradores.md)          | Sync colaboradores to checadores    | 005, 006, 008          | Automatic (employees events, networks enabled, sede change) + manual sync of the sede's colaboradores, PIN = RFC, removal on leave; skips those without RFC and devices without networks (decisions 13, 19, 20). |
+| [008](008-barrera-de-red-y-escrituras-dirigidas.md)    | Network barrier and targeted writes | 004                    | Allowed IPv4 networks per device on `/iclock`; commands only for devices with networks; `TRUST_PROXY`; ADR 0015 (decisions 15–18). Numbered 005 on its branch.                                                   |
 
 ## Dependency notes
 
@@ -29,16 +31,27 @@ each company see its own people's marcaciones. Shifts, jornadas, overtime and Me
 the colaborador record, delivered by `employees-rfc/001` (another module, so another initiative).
 
 003 needs the sede catalog (`organization-sedes/001`). 004 runs on a device that already has its
-sede (003). The sync (006, numbered 005 before 2026-10-05) needed 004 to observe the real command
-and reply formats, and needs the colaborador's sede and the change events from
-`employees-sede/001`. Note for 006 (review L3 of `employees-sede/001`): a site change on a
+sede (003). The sync (007; called 005, then 006, in earlier drafts) needed 004 to observe the real
+command and reply formats, and needs the colaborador's sede and the change events from
+`employees-sede/001`. Note for 007 (review L3 of `employees-sede/001`): a site change on a
 TERMINATED colaborador also publishes `site-assigned`, so the sync must check
 `EmployeeSummary.active` before pushing a user.
 
-Review M1 of 004 (anyone who knows a serial number can poll `getrequest` and take a queued command
-with a PIN and a name) is settled by decisions 11–13 and implemented in 005, which the sync
-depends on: the sync only sends users to devices with allowed networks. Still for 006: take the
-next command atomically (L2 of 004) and handle several results per `devicecmd` body (L3).
+Before writing the sync (review of 004): **the user must decide the barrier for outgoing commands**
+(M1: anyone who knows a serial number can poll `getrequest` and take a queued command with a PIN
+and a name); the sync must take the next command atomically (L2) and handle several results per
+`devicecmd` body (L3). Settled on 2026-10-06: M1 by decision 12; L2 and L3 in plan 006, which
+the sync (007) builds on. 005 is independent but goes first because 007 changes the same
+`AssignDeviceSite`.
+
+**Two parallel lines (integrated 2026-10-08).** Plan 008 was written and implemented on another
+branch as "005" (2026-10-05), before 005–007 existed here; both lines branched from the same
+commit. 008 also fixes the finding with targeted writes; the integration kept 008's repository
+names (`add`, `saveContact`, `saveSite`, `saveAllowedNetworks`) and 006's atomic take, now behind
+008's network check. Inside 008 and ADR 0015, "plan 005" means 008, "plan 006" means 007, "ADR
+0014" means 0015 and "decisions 11–13" mean 15–17. 007 was approved before 008 existed; it was
+revised against 008 on 2026-10-08 (decisions 19–20) and went back to `draft` for re-approval; it
+now depends on 008, which is `done` (same day, real device verified by the user).
 
 ## Decisions with the user
 
@@ -71,17 +84,41 @@ next command atomically (L2 of 004) and handle several results per `devicecmd` b
     manually; on termination the user is removed from the device and the record kept; the test
     device's users "1" and "2" stay; the time zone comes from the sede (closed list); clock offset
     over 5 minutes is detected. Full wording: `organization-sedes` README decisions 1–4, 8–9.
-11. (2026-10-05) **Barrier for `/iclock`: allowed IP networks per device, enforced by the app**
-    (not only by firewall/VPN). The production topology (public IP per sede, dynamic IP, VPN) is
-    not decided yet; the app must protect itself whichever it is. Plan 005.
-12. (2026-10-05) A device **without** allowed networks keeps sending marcaciones (nothing breaks
-    on deploy) but **never receives commands**: queuing is refused and pending ones are not
-    delivered. Commands carry RFC and name, so they only go to network-restricted devices.
-13. (2026-10-05, architect, accepted with plan 005) Networks are **IPv4 only** (address or CIDR,
-    up to 10 per device): the ADMS devices connect over IPv4 and a pure IPv4 matcher stays in
-    `domain/`. The fix for the sede overwrite (finding
+11. (2026-10-06) Finding `attendance-escritura-completa-del-equipo`: fixed with **targeted
+    writes** per use case (device traffic vs. admin), not with optimistic versioning (plan 005).
+12. (2026-10-06) Review M1 of 004: the serial as the only device credential is **accepted while
+    `/iclock` is reachable only from a controlled network**; exposing it to the internet first
+    needs a barrier (proxy with IP allowlist or mTLS). Documented in ADR 0014 (plan 006).
+    Partly superseded by decision 18.
+13. (2026-10-06) Colaboradores **without RFC are not sent** to the checador; the sync reports them.
+    The PIN for DO/CO colaboradores is decided when there are checadores there.
+14. (2026-10-06) The command bitácora **keeps the device's result** (`Return` code → DONE/FAILED),
+    so it shows whether a colaborador was loaded. The sync is split in two plans: command
+    channel (006) and sync (007).
+15. (2026-10-05, numbered 11 on its branch) **Barrier for `/iclock`: allowed IP networks per
+    device, enforced by the app** (not only by firewall/VPN). The production topology (public IP
+    per sede, dynamic IP, VPN) is not decided yet; the app must protect itself whichever it is.
+    Plan 008.
+16. (2026-10-05, numbered 12 on its branch) A device **without** allowed networks keeps sending
+    marcaciones (nothing breaks on deploy) but **never receives commands**: queuing is refused and
+    pending ones are not delivered. Commands carry RFC and name, so they only go to
+    network-restricted devices.
+17. (2026-10-05, numbered 13 on its branch; architect, accepted with plan 008) Networks are **IPv4
+    only** (address or CIDR, up to 10 per device): the ADMS devices connect over IPv4 and a pure
+    IPv4 matcher stays in `domain/`. The fix for the sede overwrite (finding
     `attendance-escritura-completa-del-equipo`) goes in the same plan: both touch the device
     repository and the `/iclock` use cases.
+18. (2026-10-08) Decisions 12 and 15 were taken on parallel branches and contradict each other.
+    The user keeps **15–17**: the barrier stays in the API (ADR 0015 partly supersedes ADR 0014).
+    Decision 12 holds only in what 0015 does not change: inside an allowed network the serial is
+    still the only credential.
+19. (2026-10-08) With the barrier a new device has no networks, so the automatic sync of a device
+    fires when its allowed networks go **from empty to non-empty** (and on a sede change), not on
+    registration. Flow: register → `PUT …/networks` → the sede's colaboradores arrive. Plan 007.
+20. (2026-10-08) An automatic sync **skips** a device without allowed networks (nothing queued,
+    no registry row) and **logs a warn** with its `deviceId`; giving it networks catches it up
+    (decision 19). A manual sync of such a device answers 422 `DEVICE_NETWORK_UNRESTRICTED`, like
+    queuing a command (decision 16). Plan 007.
 
 ## Delivered
 
@@ -97,10 +134,11 @@ next command atomically (L2 of 004) and handle several results per `devicecmd` b
   decision 4 with no data loss, since the PIN is stored.
 - **Only a network barrier (firewall, proxy, VPN) for `/iclock`**: no code, but depends on a
   topology not decided yet and leaves the app unprotected if the network is misconfigured.
-  Discarded by decision 11 (it can still be added on top).
+  Discarded by decision 15 (it can still be added on top).
 - **Accepting the M1 risk in an ADR**: RFC + name would go out to anyone with the serial number
-  printed on the device. Discarded by decision 11.
+  printed on the device. Discarded by decision 15; it was what decision 12 and ADR 0014 did on the
+  parallel branch, superseded by decision 18.
 - **Optimistic version column for the sede overwrite**: needs retries on the 10 s poll path;
-  targeted column writes remove the conflict instead (plan 005).
+  targeted column writes remove the conflict instead (plans 005 and 008).
 - **Persisting OPLOG / USER / BIODATA records**: not needed for marcaciones; biometrics are
   excluded by decision 6. They stay log-only.

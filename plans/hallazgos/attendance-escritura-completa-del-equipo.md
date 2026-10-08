@@ -37,8 +37,10 @@ instalación: asignar la sede antes de conectar el equipo, o repetir el PUT y co
 
 ## Resolución
 
-2026-10-05, plan `attendance-marcaciones/005`. `DeviceRepository.save` se reemplazó por
-escrituras dirigidas: `add` (alta), `saveContact` (lo que escribe el equipo: `lastSeenAt`,
-`lastSeenIp`, desfase), `saveSite` (`siteId`, `timeZone`) y `saveAllowedNetworks`. Un envío del
-equipo ya no pisa la sede ni la zona. Queda una limitación documentada en el runbook: las
-marcaciones del envío que estaba en curso al cambiar la sede se convierten con la zona anterior.
+Resuelto dos veces en ramas paralelas, con el mismo enfoque: `attendance-marcaciones/005`
+(2026-10-06, `saveActivity` / `saveSite`) y `attendance-marcaciones/008` (2026-10-05, numerado 005
+en su rama). Al integrarlas (2026-10-08) quedaron los nombres del 008: `DeviceRepository.save` se
+reemplazó por escrituras dirigidas: `add` (alta), `saveContact` (lo que escribe el equipo:
+`lastSeenAt`, `lastSeenIp`, desfase), `saveSite` (`siteId`, `timeZone`) y `saveAllowedNetworks`.
+Un envío del equipo ya no pisa la sede ni la zona. Queda una limitación documentada en el runbook:
+las marcaciones del envío que estaba en curso al cambiar la sede se convierten con la zona anterior.

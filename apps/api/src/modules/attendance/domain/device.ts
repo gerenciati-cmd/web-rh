@@ -157,7 +157,7 @@ export class Device extends AggregateRoot<DeviceId> {
 
   /**
    * Solo un equipo con redes permitidas recibe comandos: llevan RFC y nombre, y sin barrera de
-   * red los tomaría cualquiera que conozca el número de serie (decisión 12 del README).
+   * red los tomaría cualquiera que conozca el número de serie (decisión 16 del README).
    */
   get receivesCommands(): boolean {
     return this.props.allowedNetworks.length > 0;

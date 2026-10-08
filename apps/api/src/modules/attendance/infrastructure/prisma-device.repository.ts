@@ -38,29 +38,25 @@ export class PrismaDeviceRepository implements DeviceRepository {
     }
   }
 
+  // Sin try/catch: el equipo se acaba de leer; si la fila no existe es inesperado y debe fallar.
   async saveContact(device: Device): Promise<void> {
     await this.deps.database.client.attendanceDevice.update({
       where: { id: device.id },
-      data: {
-        lastSeenAt: device.lastSeenAt,
-        lastSeenIp: device.lastSeenIp,
-        clockOffsetSeconds: device.clockOffsetSeconds,
-        clockOffsetMeasuredAt: device.clockOffsetMeasuredAt,
-      },
+      data: DeviceMapper.toContact(device),
     });
   }
 
   async saveSite(device: Device): Promise<void> {
     await this.deps.database.client.attendanceDevice.update({
       where: { id: device.id },
-      data: { siteId: device.siteId, timeZone: device.timeZone },
+      data: DeviceMapper.toSite(device),
     });
   }
 
   async saveAllowedNetworks(device: Device): Promise<void> {
     await this.deps.database.client.attendanceDevice.update({
       where: { id: device.id },
-      data: { allowedNetworks: [...device.allowedNetworks] },
+      data: DeviceMapper.toAllowedNetworks(device),
     });
   }
 }

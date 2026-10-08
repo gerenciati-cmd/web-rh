@@ -18,7 +18,7 @@ interface Deps {
 }
 
 /**
- * Define las redes IPv4 desde las que un checador puede conectarse a `/iclock` (ADR 0014). Una
+ * Define las redes IPv4 desde las que un checador puede conectarse a `/iclock` (ADR 0015). Una
  * lista vacía quita la restricción, y con ella la entrega de comandos.
  */
 export class SetDeviceNetworks implements Command<SetDeviceNetworksInput, void> {

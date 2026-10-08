@@ -127,6 +127,101 @@ describe('PrismaDeviceRepository', () => {
     expect(rehydrated?.clockSuspect).toBe(false);
   });
 
+  describe('escritura dirigida (plan attendance-marcaciones/005)', () => {
+    // Reparación de revisión (hallazgo L1, plan 005): el snapshot "viejo" se carga ANTES de que
+    // el otro escritor guarde, para que de verdad desconozca sus columnas (si se cargara después,
+    // un `update` de la fila entera pasaría el test igual).
+    it('saveContact escribe lastSeenAt y el desfase, pero no toca siteId ni timeZone', async () => {
+      const device = await savedDevice('TESTSN001');
+      // Snapshot cargado antes de que el admin asigne la sede: desconoce siteId/timeZone nuevos.
+      const stalePush = await devices.findById(device.id);
+      if (!stalePush) throw new Error('equipo no encontrado');
+      device.assignSite('00000000-0000-4000-8000-0000000000b2', 'America/Mexico_City');
+      await devices.saveSite(device);
+      const seenAt = new Date('2026-09-29T10:00:00Z');
+      stalePush.markSeen(seenAt, null);
+      stalePush.recordClockOffset(5, seenAt);
+
+      await devices.saveContact(stalePush);
+
+      const rehydrated = await devices.findById(device.id);
+      expect(rehydrated?.lastSeenAt).toEqual(seenAt);
+      expect(rehydrated?.clockOffsetSeconds).toBe(5);
+      expect(rehydrated?.siteId).toBe('00000000-0000-4000-8000-0000000000b2');
+      expect(rehydrated?.timeZone).toBe('America/Mexico_City');
+    });
+
+    it('saveSite escribe siteId y timeZone, pero no toca lastSeenAt ni el desfase', async () => {
+      const device = await savedDevice('TESTSN001');
+      // Snapshot cargado antes de que el tráfico anote actividad: desconoce lastSeenAt/desfase nuevos.
+      const staleAdmin = await devices.findById(device.id);
+      if (!staleAdmin) throw new Error('equipo no encontrado');
+      const seenAt = new Date('2026-09-29T10:00:00Z');
+      device.markSeen(seenAt, null);
+      device.recordClockOffset(5, seenAt);
+      await devices.saveContact(device);
+      staleAdmin.assignSite('00000000-0000-4000-8000-0000000000b2', 'America/Mexico_City');
+
+      await devices.saveSite(staleAdmin);
+
+      const rehydrated = await devices.findById(device.id);
+      expect(rehydrated?.siteId).toBe('00000000-0000-4000-8000-0000000000b2');
+      expect(rehydrated?.timeZone).toBe('America/Mexico_City');
+      expect(rehydrated?.lastSeenAt).toEqual(seenAt);
+      expect(rehydrated?.clockOffsetSeconds).toBe(5);
+    });
+
+    it.each(['sede-primero', 'actividad-primero'] as const)(
+      // Criterio de aceptación 1: la fila final tiene la sede nueva y la actividad de B, en
+      // cualquier orden de escritura.
+      'la carrera entre asignar sede y tráfico del equipo (%s) no pierde ningún cambio',
+      async (order) => {
+        const device = await savedDevice('TESTSN001');
+        // Dos instancias cargadas de la misma fila, antes de que ninguna de las dos escriba.
+        const a = await devices.findById(device.id);
+        const b = await devices.findById(device.id);
+        if (!a || !b) throw new Error('equipo no encontrado');
+        a.assignSite('00000000-0000-4000-8000-0000000000b2', 'America/Mexico_City');
+        const seenAt = new Date('2026-09-29T10:00:00Z');
+        b.markSeen(seenAt, null);
+        b.recordClockOffset(3, seenAt);
+
+        if (order === 'sede-primero') {
+          await devices.saveSite(a);
+          await devices.saveContact(b);
+        } else {
+          await devices.saveContact(b);
+          await devices.saveSite(a);
+        }
+
+        const rehydrated = await devices.findById(device.id);
+        expect(rehydrated?.siteId).toBe('00000000-0000-4000-8000-0000000000b2');
+        expect(rehydrated?.timeZone).toBe('America/Mexico_City');
+        expect(rehydrated?.lastSeenAt).toEqual(seenAt);
+        expect(rehydrated?.clockOffsetSeconds).toBe(3);
+      },
+    );
+
+    it('saveContact y saveSite rechazan sobre un equipo que no existe', async () => {
+      const ghost = Device.restore('00000000-0000-4000-8000-00000000dead' as DeviceId, {
+        serialNumber: 'FANTASMA',
+        name: 'No existe',
+        timeZone: 'UTC',
+        active: true,
+        registeredAt: NOW,
+        lastSeenAt: null,
+        siteId: null,
+        clockOffsetSeconds: null,
+        clockOffsetMeasuredAt: null,
+        allowedNetworks: [],
+        lastSeenIp: null,
+      });
+
+      await expect(devices.saveContact(ghost)).rejects.toThrow();
+      await expect(devices.saveSite(ghost)).rejects.toThrow();
+    });
+  });
+
   it('un segundo equipo con el mismo serial: el índice único se traduce al conflicto de dominio', async () => {
     await savedDevice('TESTSN001');
     const duplicate = Device.register({
