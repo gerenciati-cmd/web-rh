@@ -126,7 +126,28 @@ now depends on 008, which is `done` (same day, real device verified by the user)
 
 ## Delivered
 
-<!-- Filled when the series closes. -->
+Series closed on 2026-10-08; plans 001–008 are `done`, all verified on the real SenseFace 2A
+(firmware `ZAM70-NF24HA-Ver3.3.12`).
+
+- **Devices in the database** (001, 003): registry of checadores per sede, time zone copied from
+  the sede, last contact and clock offset (warned over 5 min) in `GET /attendance/devices`.
+  ADR 0013.
+- **Marcaciones stored** (001, 002): ATTLOG deduplicated with local time and UTC instant;
+  attributed to the colaborador whose RFC equals the PIN; HR reads only its companies' punches.
+- **Command channel** (004, 006): `USERINFO` commands queued by the API with `C:<n>:`, delivered
+  once per poll even under concurrent polls, closed `DONE`/`FAILED` from the device's result;
+  bitácora in `GET …/devices/:id/commands`. ADR 0014.
+- **Network barrier** (008): allowed IPv4 networks per checador, `403` from any other IP,
+  commands only for devices with networks, `TRUST_PROXY` behind a proxy. ADR 0015.
+- **Targeted writes** (005, 008): device traffic and admin changes write disjoint columns, so a
+  push no longer undoes a sede change.
+- **Colaborador sync** (007): each checador holds its sede's active colaboradores with RFC
+  (PIN = RFC), automatically and with `POST …/devices/:id/sync`; users the API did not create are
+  never touched; `UPDATE` and `DELETE USERINFO` confirmed on the device.
+
+Runbook: `docs/integraciones/zkteco-senseface-2a.md`. Not in this series: shifts, jornadas,
+overtime and LFT rules (a later series on top of these marcaciones), a termination endpoint
+(the sync already reacts to `EMPLOYEE_TERMINATED`), and web/mobile screens.
 
 ## Considered and discarded
 
