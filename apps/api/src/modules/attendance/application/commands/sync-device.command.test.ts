@@ -262,4 +262,46 @@ describe('SyncDevice', () => {
       msg: 'zkteco: comando de sincronización inválido',
     });
   });
+
+  it('cambio de sede del checador S → T → S con la cola sin vaciar: el UPDATE final se encola y el registro queda', async () => {
+    const { command, members, store, deviceUserRepository, queuedTexts } = await setUp();
+    const siteT = '00000000-0000-4000-8000-0000000000b2';
+    const moveTo = (siteId: string) => {
+      store.devices.get(DEVICE_ID)?.assignSite(siteId, 'America/Cancun', new Date());
+    };
+    members.push(ANA);
+    await command.execute({ deviceId: DEVICE_ID, queuedBy: null });
+    // Sede T sin colaboradores: ANA sale del checador.
+    moveTo(siteT);
+    members.splice(0, members.length);
+    await command.execute({ deviceId: DEVICE_ID, queuedBy: null });
+    // De vuelta a S, con ANA otra vez.
+    moveTo(SITE_ID);
+    members.push(ANA);
+
+    const result = await command.execute({ deviceId: DEVICE_ID, queuedBy: null });
+
+    expect(result.ok && result.value).toEqual({ queued: 1, removed: 0, skipped: [] });
+    expect(queuedTexts().map((text) => text.split('\t')[0])).toEqual([
+      'DATA UPDATE USERINFO PIN=GOMA850101AB1',
+      'DATA DELETE USERINFO PIN=GOMA850101AB1',
+      'DATA UPDATE USERINFO PIN=GOMA850101AB1',
+    ]);
+    expect((await deviceUserRepository.listByDevice(DEVICE_ID)).map((row) => row.pin)).toEqual([
+      ANA.rfc,
+    ]);
+  });
+
+  it('con el DELETE como último en cola, repetir la sincronización no lo duplica', async () => {
+    const { command, members, store } = await setUp();
+    members.push(ANA);
+    await command.execute({ deviceId: DEVICE_ID, queuedBy: null });
+    members.splice(0, members.length);
+    await command.execute({ deviceId: DEVICE_ID, queuedBy: null });
+
+    const result = await command.execute({ deviceId: DEVICE_ID, queuedBy: null });
+
+    expect(result.ok && result.value.removed).toBe(0);
+    expect(store.commands.size).toBe(2);
+  });
 });

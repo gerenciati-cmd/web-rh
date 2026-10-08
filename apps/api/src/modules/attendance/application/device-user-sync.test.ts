@@ -158,4 +158,34 @@ describe('DeviceUserSync: con redes', () => {
       },
     ]);
   });
+
+  it('si el último comando en cola del PIN es el contrario, el idéntico más viejo no cuenta: se encola', async () => {
+    const { sync, store, deviceUserRepository } = setUp();
+    const online = device(['10.0.0.0/8']);
+    await sync.push(online, MEMBER, null);
+    await sync.remove(online, { pin: MEMBER.rfc, employeeId: MEMBER.employeeId }, null);
+
+    const outcome = await sync.push(online, MEMBER, null);
+
+    expect(outcome).toBe('queued');
+    expect([...store.commands.values()].map((queued) => queued.command.split('\t')[0])).toEqual([
+      'DATA UPDATE USERINFO PIN=GOMA850101AB1',
+      'DATA DELETE USERINFO PIN=GOMA850101AB1',
+      'DATA UPDATE USERINFO PIN=GOMA850101AB1',
+    ]);
+    expect(await deviceUserRepository.listByDevice(DEVICE_ID)).toHaveLength(1);
+  });
+
+  it('con el DELETE como último en cola, repetir el DELETE es duplicate aunque haya un UPDATE anterior', async () => {
+    const { sync, store } = setUp();
+    const online = device(['10.0.0.0/8']);
+    const user = { pin: MEMBER.rfc, employeeId: MEMBER.employeeId };
+    await sync.push(online, MEMBER, null);
+    await sync.remove(online, user, null);
+
+    const outcome = await sync.remove(online, user, null);
+
+    expect(outcome).toBe('duplicate');
+    expect(store.commands.size).toBe(2);
+  });
 });

@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import { deleteUserCommand, upsertUserCommand } from './device-user-commands';
+import {
+  deleteUserCommand,
+  targetsPin,
+  upsertUserCommand,
+  upsertUserPrefix,
+} from './device-user-commands';
 
 describe('upsertUserCommand', () => {
   it('arma el texto confirmado en el SenseFace 2A, con el RFC como PIN y el nombre', () => {
@@ -30,5 +35,29 @@ describe('upsertUserCommand', () => {
 describe('deleteUserCommand', () => {
   it('arma el texto de baja por PIN (pendiente de confirmar en el equipo)', () => {
     expect(deleteUserCommand('GOMA850101AB1')).toBe('DATA DELETE USERINFO PIN=GOMA850101AB1');
+  });
+});
+
+describe('upsertUserPrefix y targetsPin', () => {
+  const PIN = 'GOMA850101AB1';
+
+  it('el prefijo es el inicio del UPDATE de ese PIN, con el tab que lo separa de Name', () => {
+    expect(upsertUserPrefix(PIN)).toBe('DATA UPDATE USERINFO PIN=GOMA850101AB1\t');
+    expect(upsertUserCommand(PIN, 'Ana Rojas').startsWith(upsertUserPrefix(PIN))).toBe(true);
+  });
+
+  it('reconoce el UPDATE y el DELETE de ese PIN', () => {
+    expect(targetsPin(upsertUserCommand(PIN, 'Ana Rojas'), PIN)).toBe(true);
+    expect(targetsPin(deleteUserCommand(PIN), PIN)).toBe(true);
+  });
+
+  it('no confunde un PIN con otro que lo contiene como prefijo', () => {
+    expect(targetsPin(upsertUserCommand(`${PIN}X`, 'Ana Rojas'), PIN)).toBe(false);
+    expect(targetsPin(deleteUserCommand(`${PIN}X`), PIN)).toBe(false);
+  });
+
+  it('no reconoce otro PIN ni un comando que no es de alta ni de baja', () => {
+    expect(targetsPin(upsertUserCommand('PEXL900215AB2', 'Beto Pérez'), PIN)).toBe(false);
+    expect(targetsPin(`DATA QUERY USERINFO PIN=${PIN}`, PIN)).toBe(false);
   });
 });

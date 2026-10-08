@@ -58,6 +58,7 @@ async function queue(
   device: Device,
   text: string,
   queuedBy: string | null,
+  at: Date = NOW,
 ): Promise<DeviceCommand> {
   const created = DeviceCommand.queue({
     id: ids.next() as DeviceCommandId,
@@ -65,7 +66,7 @@ async function queue(
     number: await commands.nextNumber(),
     command: text,
     queuedBy,
-    now: NOW,
+    now: at,
   });
   if (!created.ok) throw created.error;
   await commands.save(created.value);
@@ -311,5 +312,48 @@ describe('PrismaDeviceCommandRepository: lastQueuedForPin y queued_by nulo', () 
     sent.markSent(NOW);
     expect(await commands.claim(sent)).toBe(true);
     expect(await commands.lastQueuedForPin(one.id, PIN)).toBeNull();
+  });
+
+  describe('lastQueuedForPin: el último comando en cola del PIN decide', () => {
+    const DELETE_TEXT = `DATA DELETE USERINFO PIN=${PIN}`;
+    const later = (seconds: number) => new Date(NOW.getTime() + seconds * 1000);
+
+    it('devuelve el más reciente por fecha de encolado, sea alta o baja', async () => {
+      const device = await savedDevice('TESTSN001');
+      await queue(device, UPDATE_TEXT, null, later(0));
+      await queue(device, DELETE_TEXT, null, later(5));
+      expect(await commands.lastQueuedForPin(device.id, PIN)).toBe(DELETE_TEXT);
+
+      await queue(device, UPDATE_TEXT, null, later(10));
+      expect(await commands.lastQueuedForPin(device.id, PIN)).toBe(UPDATE_TEXT);
+    });
+
+    it('con la misma fecha de encolado desempata el id mayor', async () => {
+      const device = await savedDevice('TESTSN001');
+      await queue(device, UPDATE_TEXT, null);
+      await queue(device, DELETE_TEXT, null);
+
+      expect(await commands.lastQueuedForPin(device.id, PIN)).toBe(DELETE_TEXT);
+    });
+
+    it('ignora otro PIN (también uno que contiene al PIN como prefijo) y comandos que no son alta ni baja', async () => {
+      const device = await savedDevice('TESTSN001');
+      await queue(device, UPDATE_TEXT, null, later(0));
+      await queue(device, `DATA UPDATE USERINFO PIN=${PIN}X\tName=Otra Persona`, null, later(5));
+      await queue(device, 'DATA DELETE USERINFO PIN=PEXL900215AB2', null, later(5));
+      await queue(device, `DATA QUERY USERINFO PIN=${PIN}`, null, later(5));
+
+      expect(await commands.lastQueuedForPin(device.id, PIN)).toBe(UPDATE_TEXT);
+    });
+
+    it('un comando que ya salió de la cola no cuenta: vuelve a mandar el anterior', async () => {
+      const device = await savedDevice('TESTSN001');
+      await queue(device, UPDATE_TEXT, null, later(0));
+      const sent = await queue(device, DELETE_TEXT, null, later(5));
+      sent.markSent(later(6));
+      expect(await commands.claim(sent)).toBe(true);
+
+      expect(await commands.lastQueuedForPin(device.id, PIN)).toBe(UPDATE_TEXT);
+    });
   });
 });

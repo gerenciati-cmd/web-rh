@@ -257,4 +257,42 @@ describe('SyncEmployee', () => {
 
     expect(store.commands.size).toBe(0);
   });
+
+  // Hallazgo 1 de la revisión (decisión 21): la entrega es FIFO, así que manda el ÚLTIMO comando
+  // en cola de cada PIN, no la existencia de uno idéntico.
+  it('caso B: S → T → S con la cola sin vaciar deja el UPDATE final y el registro de vuelta en S', async () => {
+    const { command, setPlacement, commandsOf, deviceUserRepository } = await setUp();
+    await command.execute({ employeeId: EMPLOYEE_ID });
+    setPlacement({ rfc: RFC, siteId: SITE_T, active: true, fullName: 'Ana Rojas' });
+    await command.execute({ employeeId: EMPLOYEE_ID });
+    setPlacement({ rfc: RFC, siteId: SITE_S, active: true, fullName: 'Ana Rojas' });
+
+    await command.execute({ employeeId: EMPLOYEE_ID });
+
+    expect(commandsOf(DEVICE_S1)).toEqual([upsert(RFC), remove(RFC), upsert(RFC)]);
+    expect(commandsOf(DEVICE_S2)).toEqual([upsert(RFC), remove(RFC), upsert(RFC)]);
+    expect(
+      (await deviceUserRepository.listByEmployee(EMPLOYEE_ID)).map((row) => row.deviceId).sort(),
+    ).toEqual([DEVICE_S1, DEVICE_S2]);
+  });
+
+  it('caso A: sale, vuelve y sale otra vez antes de que el equipo consulte: el DELETE final se encola', async () => {
+    const { command, setPlacement, commandsOf, deviceUserRepository, store } = await setUp();
+    await command.execute({ employeeId: EMPLOYEE_ID });
+    // El alta ya se entregó (el colaborador está en el equipo): nada de ese comando sigue en cola.
+    for (const queued of store.commands.values()) queued.markSent(new Date());
+    setPlacement({ rfc: RFC, siteId: SITE_T, active: true, fullName: 'Ana Rojas' });
+    await command.execute({ employeeId: EMPLOYEE_ID });
+    setPlacement({ rfc: RFC, siteId: SITE_S, active: true, fullName: 'Ana Rojas' });
+    await command.execute({ employeeId: EMPLOYEE_ID });
+    setPlacement({ rfc: RFC, siteId: SITE_T, active: true, fullName: 'Ana Rojas' });
+
+    await command.execute({ employeeId: EMPLOYEE_ID });
+
+    expect(commandsOf(DEVICE_S1)).toEqual([upsert(RFC), remove(RFC), upsert(RFC), remove(RFC)]);
+    expect(commandsOf(DEVICE_S2)).toEqual([upsert(RFC), remove(RFC), upsert(RFC), remove(RFC)]);
+    expect((await deviceUserRepository.listByEmployee(EMPLOYEE_ID)).map((r) => r.deviceId)).toEqual(
+      [DEVICE_T1],
+    );
+  });
 });
