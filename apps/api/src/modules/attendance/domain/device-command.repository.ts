@@ -13,5 +13,7 @@ export interface DeviceCommandRepository {
   claim(command: DeviceCommand): Promise<boolean>;
   /** Siguiente número `C:<n>:`, único entre todos los comandos. */
   nextNumber(): Promise<number>;
+  /** Si hay un comando idéntico (sin prefijo) todavía en cola para ese equipo. */
+  hasQueued(deviceId: DeviceId, command: string): Promise<boolean>;
   findByNumber(deviceId: DeviceId, number: number): Promise<DeviceCommand | null>;
 }

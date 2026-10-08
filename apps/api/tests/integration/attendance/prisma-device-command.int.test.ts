@@ -196,7 +196,7 @@ describe('PrismaDeviceCommandRepository', () => {
   it('TakeDeviceCommand: dos tomas concurrentes del mismo equipo con un único comando en cola entregan solo una', async () => {
     const device = await savedDevice('TESTSN001');
     // Solo un equipo con redes permitidas recibe comandos (plan 008).
-    device.setAllowedNetworks(['127.0.0.1']);
+    device.setAllowedNetworks(['127.0.0.1'], new Date('2026-10-08T12:00:00Z'));
     await devices.saveAllowedNetworks(device);
     await savedCommand(device, 'DATA QUERY USERINFO PIN=1', NOW);
     const take = new TakeDeviceCommand({

@@ -97,7 +97,11 @@ describe('PrismaDeviceRepository', () => {
 
   it('assignSite guardado cambia siteId y timeZone en la fila', async () => {
     const device = await savedDevice('TESTSN001');
-    device.assignSite('00000000-0000-4000-8000-0000000000b2', 'America/Mexico_City');
+    device.assignSite(
+      '00000000-0000-4000-8000-0000000000b2',
+      'America/Mexico_City',
+      new Date('2026-10-08T12:00:00Z'),
+    );
 
     await devices.saveSite(device);
 
@@ -136,7 +140,11 @@ describe('PrismaDeviceRepository', () => {
       // Snapshot cargado antes de que el admin asigne la sede: desconoce siteId/timeZone nuevos.
       const stalePush = await devices.findById(device.id);
       if (!stalePush) throw new Error('equipo no encontrado');
-      device.assignSite('00000000-0000-4000-8000-0000000000b2', 'America/Mexico_City');
+      device.assignSite(
+        '00000000-0000-4000-8000-0000000000b2',
+        'America/Mexico_City',
+        new Date('2026-10-08T12:00:00Z'),
+      );
       await devices.saveSite(device);
       const seenAt = new Date('2026-09-29T10:00:00Z');
       stalePush.markSeen(seenAt, null);
@@ -160,7 +168,11 @@ describe('PrismaDeviceRepository', () => {
       device.markSeen(seenAt, null);
       device.recordClockOffset(5, seenAt);
       await devices.saveContact(device);
-      staleAdmin.assignSite('00000000-0000-4000-8000-0000000000b2', 'America/Mexico_City');
+      staleAdmin.assignSite(
+        '00000000-0000-4000-8000-0000000000b2',
+        'America/Mexico_City',
+        new Date('2026-10-08T12:00:00Z'),
+      );
 
       await devices.saveSite(staleAdmin);
 
@@ -181,7 +193,11 @@ describe('PrismaDeviceRepository', () => {
         const a = await devices.findById(device.id);
         const b = await devices.findById(device.id);
         if (!a || !b) throw new Error('equipo no encontrado');
-        a.assignSite('00000000-0000-4000-8000-0000000000b2', 'America/Mexico_City');
+        a.assignSite(
+          '00000000-0000-4000-8000-0000000000b2',
+          'America/Mexico_City',
+          new Date('2026-10-08T12:00:00Z'),
+        );
         const seenAt = new Date('2026-09-29T10:00:00Z');
         b.markSeen(seenAt, null);
         b.recordClockOffset(3, seenAt);

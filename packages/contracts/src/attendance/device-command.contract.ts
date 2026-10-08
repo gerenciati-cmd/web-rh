@@ -36,7 +36,10 @@ export const DeviceCommandSchema = z
       .datetime()
       .nullable()
       .describe('Cuándo llegó la respuesta del equipo; null si aún no responde'),
-    queuedBy: z.uuid().describe('Usuario que lo encoló'),
+    queuedBy: z
+      .uuid()
+      .nullable()
+      .describe('Usuario que lo encoló; null si lo encoló la sincronización automática'),
   })
   .meta({ id: 'AttendanceDeviceCommand' });
 export type DeviceCommandDto = z.infer<typeof DeviceCommandSchema>;

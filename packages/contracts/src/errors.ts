@@ -311,6 +311,17 @@ export const API_ERRORS = {
       },
     },
   },
+  DEVICE_WITHOUT_SITE: {
+    status: 422,
+    description: 'El checador no tiene sede asignada: no hay colaboradores que sincronizar.',
+    examples: {
+      default: {
+        code: 'DEVICE_WITHOUT_SITE',
+        message: 'El checador no tiene sede asignada',
+        details: { deviceId: DEVICE_ID },
+      },
+    },
+  },
 
   // ── identity: sesión y contraseñas ───────────────────────────────────────
   INVALID_CREDENTIALS: {

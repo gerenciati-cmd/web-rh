@@ -1,5 +1,5 @@
 ---
-status: approved
+status: testing
 module: attendance
 min_implementer: mid
 depends_on: ['005', '006', '008']
@@ -294,6 +294,11 @@ null })` (an `err` result is logged at warn with its `code`, not thrown; for
 | e2e         | no      | (no e2e infrastructure yet)                                                                                                                                                |
 
 ## Deviations
+
+- Step 5: la migración quedó como `20261008204154_create_device_users` (generada por `pnpm db:migrate`; no hubo placeholder que reemplazar). Solo contiene `ALTER COLUMN queued_by DROP NOT NULL`, `CREATE TABLE`, índice y FK.
+- Step 6: el warn de una sincronización automática rechazada (`DEVICE_NETWORK_UNRESTRICTED`, etc.) lo escribe `SyncDevice` cuando `queuedBy === null`, no el handler de `subscribe`: el cradle de `subscribe` no expone `logger` y agregarlo exigiría un registro nuevo. Mismo mensaje y nivel; el handler no lanza.
+- Step 8: `queue-device-command.command.ts` y `attendance-device-commands.test.ts` no necesitaron cambios. Los callers de `assignSite`/`setAllowedNetworks` pasan la fecha literal `new Date('2026-10-08T12:00:00Z')`. La suite de integración existente pasa (199 tests).
+- Step 4: `SyncEmployee` se partió en `findTarget`, `removeStale` y `addMissing` solo para bajar la complejidad ciclomática; sin cambio de comportamiento.
 
 ## Test coverage
 

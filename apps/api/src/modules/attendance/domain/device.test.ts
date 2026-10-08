@@ -98,7 +98,11 @@ describe('Device.assignSite', () => {
   it('cambia la sede y copia la zona horaria de la nueva sede', () => {
     const device = registered();
 
-    device.assignSite('00000000-0000-4000-8000-0000000000b2', 'America/Mexico_City');
+    device.assignSite(
+      '00000000-0000-4000-8000-0000000000b2',
+      'America/Mexico_City',
+      new Date('2026-10-08T12:00:00Z'),
+    );
 
     expect(device.siteId).toBe('00000000-0000-4000-8000-0000000000b2');
     expect(device.timeZone).toBe('America/Mexico_City');
@@ -119,7 +123,11 @@ describe('Device.assignSite', () => {
       lastSeenIp: null,
     });
 
-    device.assignSite('00000000-0000-4000-8000-0000000000a1', 'America/Cancun');
+    device.assignSite(
+      '00000000-0000-4000-8000-0000000000a1',
+      'America/Cancun',
+      new Date('2026-10-08T12:00:00Z'),
+    );
 
     expect(device.siteId).toBe('00000000-0000-4000-8000-0000000000a1');
     expect(device.timeZone).toBe('America/Cancun');

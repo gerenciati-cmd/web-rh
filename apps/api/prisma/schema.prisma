@@ -231,6 +231,7 @@ model AttendanceDevice {
   lastSeenIp            String?                   @map("last_seen_ip") @db.VarChar(45)
   punches               AttendancePunch[]
   commands              AttendanceDeviceCommand[]
+  users                 AttendanceDeviceUser[]
 
   @@map("devices")
   @@schema("attendance")
@@ -249,10 +250,27 @@ model AttendanceDeviceCommand {
   sentAt      DateTime?        @map("sent_at") @db.Timestamptz(3)
   returnCode  String?          @map("return_code") @db.VarChar(16)
   completedAt DateTime?        @map("completed_at") @db.Timestamptz(3)
-  queuedBy    String           @map("queued_by") @db.Uuid
+  /// null si lo encoló la sincronización automática
+  queuedBy    String?          @map("queued_by") @db.Uuid
 
   @@index([deviceId, status, queuedAt])
   @@map("device_commands")
+  @@schema("attendance")
+}
+
+/// Usuarios que el API puso en un checador (PIN = RFC); no incluye los que creó otra persona.
+model AttendanceDeviceUser {
+  deviceId   String           @map("device_id") @db.Uuid
+  /// Mismo módulo: la FK al equipo está permitida.
+  device     AttendanceDevice @relation(fields: [deviceId], references: [id])
+  pin        String           @db.VarChar(32)
+  /// referencia por id a employees, sin FK (ADR 0010)
+  employeeId String           @map("employee_id") @db.Uuid
+  syncedAt   DateTime         @map("synced_at") @db.Timestamptz(3)
+
+  @@id([deviceId, pin])
+  @@index([employeeId])
+  @@map("device_users")
   @@schema("attendance")
 }
 

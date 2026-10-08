@@ -17,7 +17,7 @@ export interface DeviceCommandProps {
   sentAt: Date | null;
   returnCode: string | null;
   completedAt: Date | null;
-  queuedBy: string;
+  queuedBy: string | null;
 }
 
 // Duplica `DEVICE_COMMAND_PATTERN` de @rrhh/contracts (el dominio no importa contratos). Sin
@@ -43,7 +43,7 @@ export class DeviceCommand extends Entity<DeviceCommandId> {
     deviceId: DeviceId;
     number: number;
     command: string;
-    queuedBy: string;
+    queuedBy: string | null;
     now: Date;
   }): Result<DeviceCommand, InvalidValueError> {
     if (!Number.isSafeInteger(input.number) || input.number < 1) {
@@ -112,7 +112,7 @@ export class DeviceCommand extends Entity<DeviceCommandId> {
     return this.props.completedAt;
   }
 
-  get queuedBy(): string {
+  get queuedBy(): string | null {
     return this.props.queuedBy;
   }
 

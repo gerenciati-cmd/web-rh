@@ -12,6 +12,8 @@ import type { DeviceAlreadyRegisteredError } from './errors';
 export interface DeviceRepository {
   findById(id: DeviceId): Promise<Device | null>;
   findBySerialNumber(serialNumber: string): Promise<Device | null>;
+  /** Equipos activos de una sede, ordenados por nombre. */
+  listActiveBySite(siteId: string): Promise<Device[]>;
   /** Alta de un equipo nuevo. Un serial repetido retorna err; fallas de IO rechazan la promesa. */
   add(device: Device): Promise<Result<void, DeviceAlreadyRegisteredError>>;
   /** Lo que escribe el equipo: `lastSeenAt`, `lastSeenIp` y el desfase de reloj. */

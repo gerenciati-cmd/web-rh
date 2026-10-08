@@ -1,5 +1,6 @@
 import { err, ok, type DomainError } from '@rrhh/domain';
 
+import type { Clock, EventBus } from '@/shared/application/ports';
 import type { Command } from '@/shared/application/use-case';
 
 import type { DeviceId } from '../../domain/device';
@@ -15,6 +16,8 @@ export interface AssignDeviceSiteInput {
 interface Deps {
   deviceRepository: DeviceRepository;
   deviceSiteDirectory: SiteDirectory;
+  eventBus: EventBus;
+  clock: Clock;
 }
 
 /** Asigna la sede de un checador; su zona horaria se copia de la sede. */
@@ -22,7 +25,7 @@ export class AssignDeviceSite implements Command<AssignDeviceSiteInput, void> {
   constructor(private readonly deps: Deps) {}
 
   async execute(input: AssignDeviceSiteInput) {
-    const { deviceRepository, deviceSiteDirectory } = this.deps;
+    const { deviceRepository, deviceSiteDirectory, eventBus, clock } = this.deps;
 
     const device = await deviceRepository.findById(input.deviceId as DeviceId);
     if (!device) return err<DomainError>(new DeviceNotFoundError(input.deviceId));
@@ -31,8 +34,9 @@ export class AssignDeviceSite implements Command<AssignDeviceSiteInput, void> {
     if (!site) return err<DomainError>(new SiteNotFoundError(input.siteId));
     if (!site.active) return err<DomainError>(new InactiveSiteError(input.siteId));
 
-    device.assignSite(site.id, site.timeZone);
+    device.assignSite(site.id, site.timeZone, clock.now());
     await deviceRepository.saveSite(device);
+    await eventBus.publish(device.pullEvents());
     return ok(undefined);
   }
 }

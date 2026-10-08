@@ -24,6 +24,14 @@ export class PrismaDeviceRepository implements DeviceRepository {
     return row ? DeviceMapper.toDomain(row) : null;
   }
 
+  async listActiveBySite(siteId: string): Promise<Device[]> {
+    const rows = await this.deps.database.client.attendanceDevice.findMany({
+      where: { siteId, active: true },
+      orderBy: [{ name: 'asc' }, { id: 'asc' }],
+    });
+    return rows.map((row) => DeviceMapper.toDomain(row));
+  }
+
   async add(device: Device): Promise<Result<void, DeviceAlreadyRegisteredError>> {
     try {
       await this.deps.database.client.attendanceDevice.create({

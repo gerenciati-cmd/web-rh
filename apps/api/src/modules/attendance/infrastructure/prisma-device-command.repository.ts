@@ -45,6 +45,13 @@ export class PrismaDeviceCommandRepository implements DeviceCommandRepository {
     return row.n;
   }
 
+  async hasQueued(deviceId: DeviceId, command: string): Promise<boolean> {
+    const count = await this.deps.database.client.attendanceDeviceCommand.count({
+      where: { deviceId, command, status: 'QUEUED' },
+    });
+    return count > 0;
+  }
+
   async findByNumber(deviceId: DeviceId, number: number): Promise<DeviceCommand | null> {
     const row = await this.deps.database.client.attendanceDeviceCommand.findFirst({
       where: { deviceId, number },

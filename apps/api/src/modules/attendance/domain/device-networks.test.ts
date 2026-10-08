@@ -21,7 +21,7 @@ function registered(): Device {
 
 function withNetworks(networks: readonly string[]): Device {
   const device = registered();
-  const set = device.setAllowedNetworks(networks);
+  const set = device.setAllowedNetworks(networks, new Date('2026-10-08T12:00:00Z'));
   if (!set.ok) throw set.error;
   return device;
 }
@@ -40,7 +40,10 @@ describe('Device.setAllowedNetworks', () => {
   it('guarda las redes en forma canónica a.b.c.d/n', () => {
     const device = registered();
 
-    const result = device.setAllowedNetworks(['127.0.0.1', '10.1.2.3/24']);
+    const result = device.setAllowedNetworks(
+      ['127.0.0.1', '10.1.2.3/24'],
+      new Date('2026-10-08T12:00:00Z'),
+    );
 
     expect(result.ok).toBe(true);
     expect(device.allowedNetworks).toEqual(['127.0.0.1/32', '10.1.2.0/24']);
@@ -49,7 +52,10 @@ describe('Device.setAllowedNetworks', () => {
   it('elimina repetidos, también los que solo se repiten tras canonizar', () => {
     const device = registered();
 
-    device.setAllowedNetworks(['10.1.2.0/24', '10.1.2.77/24', '10.1.2.0/24']);
+    device.setAllowedNetworks(
+      ['10.1.2.0/24', '10.1.2.77/24', '10.1.2.0/24'],
+      new Date('2026-10-08T12:00:00Z'),
+    );
 
     expect(device.allowedNetworks).toEqual(['10.1.2.0/24']);
   });
@@ -57,7 +63,7 @@ describe('Device.setAllowedNetworks', () => {
   it('una lista vacía quita la restricción', () => {
     const device = withNetworks(['10.0.0.0/8']);
 
-    const result = device.setAllowedNetworks([]);
+    const result = device.setAllowedNetworks([], new Date('2026-10-08T12:00:00Z'));
 
     expect(result.ok).toBe(true);
     expect(device.allowedNetworks).toEqual([]);
@@ -69,7 +75,10 @@ describe('Device.setAllowedNetworks', () => {
     (bad) => {
       const device = withNetworks(['10.0.0.0/8']);
 
-      const result = device.setAllowedNetworks(['192.168.1.1', bad]);
+      const result = device.setAllowedNetworks(
+        ['192.168.1.1', bad],
+        new Date('2026-10-08T12:00:00Z'),
+      );
 
       expect(!result.ok && result.error.code).toBe('INVALID_VALUE');
       expect(!result.ok && result.error.message).toBe(`Red IPv4 inválida: ${bad}`);
@@ -82,10 +91,16 @@ describe('Device.setAllowedNetworks', () => {
       Array.from({ length: count }, (_, index) => `10.0.${index}.0/24`);
     const device = registered();
 
-    expect(device.setAllowedNetworks(distinct(MAX_ALLOWED_NETWORKS)).ok).toBe(true);
+    expect(
+      device.setAllowedNetworks(distinct(MAX_ALLOWED_NETWORKS), new Date('2026-10-08T12:00:00Z'))
+        .ok,
+    ).toBe(true);
     expect(device.allowedNetworks).toHaveLength(MAX_ALLOWED_NETWORKS);
 
-    const tooMany = device.setAllowedNetworks(distinct(MAX_ALLOWED_NETWORKS + 1));
+    const tooMany = device.setAllowedNetworks(
+      distinct(MAX_ALLOWED_NETWORKS + 1),
+      new Date('2026-10-08T12:00:00Z'),
+    );
     expect(!tooMany.ok && tooMany.error.message).toBe('Máximo 10 redes por checador');
     expect(device.allowedNetworks).toHaveLength(MAX_ALLOWED_NETWORKS);
   });
@@ -94,7 +109,7 @@ describe('Device.setAllowedNetworks', () => {
     const device = registered();
     const repeated = Array.from({ length: MAX_ALLOWED_NETWORKS + 5 }, () => '10.0.0.1');
 
-    expect(device.setAllowedNetworks(repeated).ok).toBe(true);
+    expect(device.setAllowedNetworks(repeated, new Date('2026-10-08T12:00:00Z')).ok).toBe(true);
     expect(device.allowedNetworks).toEqual(['10.0.0.1/32']);
   });
 });
@@ -104,10 +119,10 @@ describe('Device.receivesCommands', () => {
     const device = registered();
     expect(device.receivesCommands).toBe(false);
 
-    device.setAllowedNetworks(['10.0.0.1']);
+    device.setAllowedNetworks(['10.0.0.1'], new Date('2026-10-08T12:00:00Z'));
     expect(device.receivesCommands).toBe(true);
 
-    device.setAllowedNetworks([]);
+    device.setAllowedNetworks([], new Date('2026-10-08T12:00:00Z'));
     expect(device.receivesCommands).toBe(false);
   });
 });

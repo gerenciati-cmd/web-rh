@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
+import { FixedClock, RecordingEventBus } from '@/shared/testing/fakes';
+
 import { Device, type DeviceId } from '../../domain/device';
 import {
   InMemoryAttendanceStore,
@@ -31,6 +33,8 @@ async function setUp() {
     }),
   );
   const command = new AssignDeviceSite({
+    eventBus: new RecordingEventBus(),
+    clock: new FixedClock(),
     deviceRepository,
     deviceSiteDirectory: {
       find: (id: string) =>

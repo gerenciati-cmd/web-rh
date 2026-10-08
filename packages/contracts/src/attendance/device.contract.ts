@@ -35,6 +35,23 @@ export const DeviceSchema = z
   .meta({ id: 'AttendanceDevice' });
 export type DeviceDto = z.infer<typeof DeviceSchema>;
 
+export const DeviceSyncResultSchema = z
+  .object({
+    queued: z.number().int().describe('Comandos UPDATE encolados (altas o actualizaciones)'),
+    removed: z.number().int().describe('Comandos DELETE encolados (bajas)'),
+    skipped: z
+      .array(
+        z.object({
+          employeeId: z.uuid(),
+          fullName: z.string(),
+          reason: z.enum(['NO_RFC']).describe('NO_RFC: el colaborador no tiene RFC, que es su PIN'),
+        }),
+      )
+      .describe('Colaboradores de la sede que no se enviaron al equipo'),
+  })
+  .meta({ id: 'AttendanceDeviceSyncResult' });
+export type DeviceSyncResultDto = z.infer<typeof DeviceSyncResultSchema>;
+
 // ── Entradas (lo que envía el cliente) ─────────────────────────────────────
 export const RegisterDeviceSchema = z
   .object({
@@ -131,6 +148,7 @@ export const attendanceDeviceRoutes = {
     description: [
       'Reemplaza la lista de IPs o rangos IPv4 desde los que el checador puede conectarse a `/iclock`; desde otra IP se le rechaza.',
       'Con la lista vacía el checador sigue enviando marcaciones desde cualquier IP, pero no recibe comandos.',
+      'Al pasar de sin redes a con redes, el checador se sincroniza con los colaboradores de su sede.',
       '',
       '**Quién puede:** solo el administrador del holding.',
       '',
@@ -142,5 +160,22 @@ export const attendanceDeviceRoutes = {
     body: SetDeviceNetworksSchema,
     response: z.undefined(),
     successStatus: 204,
+  }),
+  syncDevice: defineRoute({
+    method: 'POST',
+    path: '/attendance/devices/:deviceId/sync',
+    summary: 'Sincroniza los colaboradores de la sede con el checador',
+    description: [
+      'Encola los comandos que dejan al checador con los colaboradores activos de su sede (su RFC es el PIN) y quita los que ya no pertenecen. Nunca borra usuarios que el API no creó.',
+      'Los colaboradores sin RFC no se envían: se reportan en `skipped`. El checador debe tener redes permitidas.',
+      '',
+      '**Quién puede:** solo el administrador del holding.',
+      '',
+      '**Necesita:** el `deviceId` en la ruta. Responde con los conteos de comandos encolados.',
+    ].join('\n'),
+    errors: ['DEVICE_NOT_FOUND', 'DEVICE_WITHOUT_SITE', 'DEVICE_NETWORK_UNRESTRICTED'],
+    access: requires('attendance.devices:manage'),
+    params: z.object({ deviceId: z.uuid().describe('Id del checador') }),
+    response: DeviceSyncResultSchema,
   }),
 };
