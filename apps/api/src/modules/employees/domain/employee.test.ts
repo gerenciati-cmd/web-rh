@@ -220,5 +220,136 @@ describe('Employee', () => {
         ).ok,
       ).toBe(false);
     });
+
+    const hired = () => {
+      const result = hire();
+      if (!result.ok) throw result.error;
+      result.value.pullEvents();
+      return result.value;
+    };
+
+    it('al contratar no tiene baja registrada', () => {
+      expect(hired().snapshot.termination).toBeNull();
+    });
+
+    it('guarda la fecha y el motivo de la baja', () => {
+      const employee = hired();
+
+      employee.terminate({ date: new Date('2026-01-10'), reason: 'DISMISSAL_WITH_CAUSE' }, now);
+
+      expect(employee.snapshot.termination).toEqual({
+        date: new Date('2026-01-10'),
+        reason: 'DISMISSAL_WITH_CAUSE',
+      });
+    });
+
+    it('el evento conserva el payload { employeeId, terminationDate } sin el motivo', () => {
+      const employee = hired();
+
+      employee.terminate({ date: new Date('2026-01-10'), reason: 'OTHER' }, now);
+
+      const [event] = employee.pullEvents();
+      expect(event?.payload).toEqual({
+        employeeId: 'emp-1',
+        terminationDate: new Date('2026-01-10'),
+      });
+      expect(event?.occurredAt).toEqual(now);
+    });
+
+    it('acepta la fecha de hoy (UTC) aunque ya haya pasado la medianoche', () => {
+      const employee = hired();
+
+      const result = employee.terminate(
+        { date: new Date('2026-01-15T00:00:00Z'), reason: 'END_OF_CONTRACT' },
+        now,
+      );
+
+      expect(result.ok).toBe(true);
+    });
+
+    it('acepta la baja el mismo día de la contratación', () => {
+      const employee = hired();
+
+      const result = employee.terminate(
+        { date: new Date('2026-01-01'), reason: 'MUTUAL_AGREEMENT' },
+        now,
+      );
+
+      expect(result.ok).toBe(true);
+    });
+
+    it('TERMINATION_DATE_IN_FUTURE si la fecha es posterior a hoy, sin desvincular', () => {
+      const employee = hired();
+
+      const result = employee.terminate(
+        { date: new Date('2026-01-16T00:00:00Z'), reason: 'VOLUNTARY_RESIGNATION' },
+        now,
+      );
+
+      expect(!result.ok && result.error.code).toBe('TERMINATION_DATE_IN_FUTURE');
+      expect(employee.snapshot.status).toBe('ACTIVE');
+      expect(employee.snapshot.termination).toBeNull();
+      expect(employee.pullEvents()).toEqual([]);
+    });
+
+    it('TERMINATION_BEFORE_HIRE con la fecha de contratación en details', () => {
+      const employee = hired();
+
+      const result = employee.terminate(
+        { date: new Date('2025-12-31'), reason: 'VOLUNTARY_RESIGNATION' },
+        now,
+      );
+
+      expect(!result.ok && result.error.code).toBe('TERMINATION_BEFORE_HIRE');
+      expect(!result.ok && result.error.details).toEqual({ hireDate: '2026-01-01' });
+      expect(employee.snapshot.status).toBe('ACTIVE');
+    });
+
+    it('EMPLOYEE_ALREADY_TERMINATED en la segunda baja, sin cambiar la primera ni emitir evento', () => {
+      const employee = hired();
+      employee.terminate({ date: new Date('2026-01-10'), reason: 'DEATH' }, now);
+      employee.pullEvents();
+
+      const result = employee.terminate({ date: new Date('2026-01-12'), reason: 'OTHER' }, now);
+
+      expect(!result.ok && result.error.code).toBe('EMPLOYEE_ALREADY_TERMINATED');
+      expect(!result.ok && result.error.details).toEqual({ employeeId: 'emp-1' });
+      expect(employee.snapshot.termination).toEqual({
+        date: new Date('2026-01-10'),
+        reason: 'DEATH',
+      });
+      expect(employee.pullEvents()).toEqual([]);
+    });
+
+    it('ya desvinculado gana sobre la fecha futura (orden de las reglas)', () => {
+      const employee = hired();
+      employee.terminate({ date: new Date('2026-01-10'), reason: 'DEATH' }, now);
+
+      const result = employee.terminate({ date: new Date('2026-03-01'), reason: 'OTHER' }, now);
+
+      expect(!result.ok && result.error.code).toBe('EMPLOYEE_ALREADY_TERMINATED');
+    });
+
+    it('fecha futura gana sobre anterior a la contratación (orden de las reglas)', () => {
+      const result = hire({ hireDate: new Date('2026-03-01'), now });
+      if (!result.ok) throw result.error;
+
+      const terminated = result.value.terminate(
+        { date: new Date('2026-02-01'), reason: 'OTHER' },
+        now,
+      );
+
+      expect(!terminated.ok && terminated.error.code).toBe('TERMINATION_DATE_IN_FUTURE');
+    });
+
+    it('restore sin termination (fila anterior al campo) queda con termination null', () => {
+      const employee = hired();
+      const { termination: _omitted, ...props } = employee.snapshot;
+
+      const restored = Employee.restore(employee.id, { ...props, status: 'TERMINATED' });
+
+      expect(restored.snapshot.termination).toBeNull();
+      expect(restored.snapshot.status).toBe('TERMINATED');
+    });
   });
 });

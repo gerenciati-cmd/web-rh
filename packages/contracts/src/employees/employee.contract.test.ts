@@ -6,6 +6,8 @@ import {
   EmployeeListItemSchema,
   employeeRoutes,
   RegisterEmployeeSchema,
+  TerminateEmployeeSchema,
+  TerminationReasonSchema,
 } from './employee.contract';
 
 describe('RegisterEmployeeSchema › RFC', () => {
@@ -253,5 +255,120 @@ describe('RegisterEmployeeSchema', () => {
       nationalId: { country: 'CL', number: '12.345.678-5' },
     });
     expect(result.success).toBe(false);
+  });
+});
+
+describe('TerminateEmployeeSchema', () => {
+  const valid = { terminationDate: '2026-01-10', reason: 'VOLUNTARY_RESIGNATION' };
+
+  it.each([
+    'VOLUNTARY_RESIGNATION',
+    'DISMISSAL_WITH_CAUSE',
+    'DISMISSAL_WITHOUT_CAUSE',
+    'MUTUAL_AGREEMENT',
+    'END_OF_CONTRACT',
+    'DEATH',
+    'INCAPACITY',
+    'OTHER',
+  ])('acepta el motivo %s del catálogo', (reason) => {
+    expect(TerminateEmployeeSchema.safeParse({ ...valid, reason }).success).toBe(true);
+  });
+
+  it('el catálogo de motivos tiene exactamente 8 valores', () => {
+    expect(TerminationReasonSchema.options).toHaveLength(8);
+  });
+
+  it('rechaza un motivo fuera del catálogo, con el error en reason', () => {
+    const result = TerminateEmployeeSchema.safeParse({ ...valid, reason: 'RESIGNATION' });
+    expect(result.success).toBe(false);
+    expect(!result.success && result.error.issues[0]?.path).toEqual(['reason']);
+  });
+
+  it('exige el motivo', () => {
+    expect(TerminateEmployeeSchema.safeParse({ terminationDate: '2026-01-10' }).success).toBe(
+      false,
+    );
+  });
+
+  it.each(['2026-1-10', '10/01/2026', '2026-01-10T00:00:00Z', '2026-02-30', ''])(
+    'rechaza la fecha mal formada %j',
+    (terminationDate) => {
+      expect(TerminateEmployeeSchema.safeParse({ ...valid, terminationDate }).success).toBe(false);
+    },
+  );
+
+  it('exige la fecha', () => {
+    expect(TerminateEmployeeSchema.safeParse({ reason: 'OTHER' }).success).toBe(false);
+  });
+});
+
+describe('employeeRoutes.terminateEmployee', () => {
+  const route = employeeRoutes.terminateEmployee;
+
+  it('es POST /companies/:companyId/employees/:employeeId/termination con 204', () => {
+    expect(route.method).toBe('POST');
+    expect(route.path).toBe('/companies/:companyId/employees/:employeeId/termination');
+    expect(route.successStatus).toBe(204);
+  });
+
+  it('exige employees:terminate acotado a la empresa del path', () => {
+    expect(route.access).toEqual({
+      kind: 'permission',
+      permission: 'employees:terminate',
+      companyParam: 'companyId',
+    });
+  });
+
+  it('documenta sus cuatro errores', () => {
+    expect(route.errors).toEqual([
+      'EMPLOYEE_NOT_FOUND',
+      'EMPLOYEE_ALREADY_TERMINATED',
+      'TERMINATION_DATE_IN_FUTURE',
+      'TERMINATION_BEFORE_HIRE',
+    ]);
+  });
+
+  it('valida que companyId y employeeId sean uuid', () => {
+    const uuid = '00000000-0000-4000-8000-000000000001';
+    expect(route.params.safeParse({ companyId: uuid, employeeId: uuid }).success).toBe(true);
+    expect(route.params.safeParse({ companyId: uuid, employeeId: 'x' }).success).toBe(false);
+  });
+});
+
+describe('EmployeeListItemSchema › baja', () => {
+  const active = {
+    id: '00000000-0000-4000-8000-000000000001',
+    fullName: 'Ana Rojas',
+    nationalId: 'GOMA850101HQRRRN04',
+    rfc: null,
+    siteId: null,
+    email: 'ana@example.com',
+    positionTitle: null,
+    hireDate: '2026-01-10',
+    status: 'ACTIVE',
+    terminationDate: null,
+    terminationReason: null,
+  };
+
+  it('acepta un activo con fecha y motivo de baja null', () => {
+    expect(EmployeeListItemSchema.safeParse(active).success).toBe(true);
+  });
+
+  it('acepta un desvinculado con fecha y motivo', () => {
+    expect(
+      EmployeeListItemSchema.safeParse({
+        ...active,
+        status: 'TERMINATED',
+        terminationDate: '2026-02-01',
+        terminationReason: 'DEATH',
+      }).success,
+    ).toBe(true);
+  });
+
+  it('exige ambos campos (nullable, no opcionales)', () => {
+    const { terminationDate: _date, ...withoutDate } = active;
+    const { terminationReason: _reason, ...withoutReason } = active;
+    expect(EmployeeListItemSchema.safeParse(withoutDate).success).toBe(false);
+    expect(EmployeeListItemSchema.safeParse(withoutReason).success).toBe(false);
   });
 });

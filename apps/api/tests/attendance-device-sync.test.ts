@@ -429,6 +429,22 @@ describe('sincronización de colaboradores con los checadores (HTTP)', () => {
         `UPDATE ${ana.rfc}`,
       ]);
     });
+
+    it('la baja por el endpoint (employees-desvinculacion/001) da DELETE del PIN', async () => {
+      const deviceId = await registerDevice('TESTSN001', siteS);
+      await setNetworks(deviceId, [NETWORK]).expect(204);
+      await hire(ana).expect(201);
+      const id = await employeeIdOf(ana.rfc);
+
+      await admin('post', `/companies/${companyId}/employees/${id}/termination`)
+        .send({ terminationDate: '2026-02-01', reason: 'VOLUNTARY_RESIGNATION' })
+        .expect(204);
+
+      expect((await operations(deviceId)).sort()).toEqual([
+        `DELETE ${ana.rfc}`,
+        `UPDATE ${ana.rfc}`,
+      ]);
+    });
   });
 
   describe('criterio 6: cambio de sede del equipo', () => {

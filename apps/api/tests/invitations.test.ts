@@ -466,6 +466,19 @@ describe('invitaciones — HTTP', () => {
       expect(disabled.body.code).toBe('INVALID_CREDENTIALS');
     });
 
+    it('la baja por el endpoint (employees-desvinculacion/001) cierra la sesión y el login', async () => {
+      const token = await activatedSession();
+
+      await as(hrToken)
+        .post(`/companies/${companyA}/employees/${ana}/termination`)
+        .send({ terminationDate: '2026-02-01', reason: 'VOLUNTARY_RESIGNATION' })
+        .expect(204);
+
+      await as(token).get('/auth/me').expect(401);
+      const login401 = await login('ana@aps.cl').expect(401);
+      expect(login401.body.code).toBe('INVALID_CREDENTIALS');
+    });
+
     it('el usuario queda DISABLED (no se borra) en el listado de usuarios', async () => {
       await activatedSession();
       await terminate(ana);

@@ -1,5 +1,5 @@
 ---
-status: testing
+status: review
 module: employees
 min_implementer: mid
 depends_on: []
@@ -264,6 +264,46 @@ Implemented inline in the main session (2026-10-12). All cosmetic: no design or 
 Evidence: `pnpm check` green; `pnpm test:integration` 17 files / 218 tests passed.
 
 ## Test coverage
+
+Written inline (2026-10-12). Baseline = the implementation's closing run (`pnpm check` green,
+integration 218/218). Closing run: `pnpm check` green; `pnpm test:integration` 17 files /
+222 tests passed. New tests: domain 11, application 8, contract 25, http 15 (13 in the new file,
+1 in `attendance-device-sync.test.ts`, 1 in `invitations.test.ts`), integration 4. One HTTP
+assertion first assumed `PERMISSION_DENIED` for 403; the code says `FORBIDDEN`
+(`apps/api/src/http/request-context.ts:28`), test corrected to the code. No GAP, nothing
+NOT CONFIRMED. The 2 skipped tests in `invitations.test.ts`/`attendance-device-sync.test.ts`
+were already there.
+
+| Behavior (from plan / code)                                     | Source (`file:line`)                                               | Layer       | Test                                                                                                           | State     |
+| --------------------------------------------------------------- | ------------------------------------------------------------------ | ----------- | -------------------------------------------------------------------------------------------------------------- | --------- |
+| Hire starts with `termination: null`                            | `employee.ts:112`                                                  | domain      | `employee.test.ts › al contratar no tiene baja registrada`                                                     | CONFIRMED |
+| Stores date and reason                                          | `employee.ts:133-150`                                              | domain      | `› guarda la fecha y el motivo de la baja`                                                                     | CONFIRMED |
+| Event payload unchanged `{ employeeId, terminationDate }`       | `employee.ts:133-150`                                              | domain      | `› el evento conserva el payload …`                                                                            | CONFIRMED |
+| Today (UTC) accepted; same day as hire accepted                 | `employee.ts:140-141`                                              | domain      | `› acepta la fecha de hoy (UTC)…`, `› acepta la baja el mismo día de la contratación`                          | CONFIRMED |
+| `TERMINATION_DATE_IN_FUTURE`, no state change, no event         | `employee.ts:140`, `errors.ts`                                     | domain      | `› TERMINATION_DATE_IN_FUTURE si la fecha es posterior a hoy…`                                                 | CONFIRMED |
+| `TERMINATION_BEFORE_HIRE` with `details.hireDate`               | `employee.ts:141`                                                  | domain      | `› TERMINATION_BEFORE_HIRE con la fecha de contratación en details`                                            | CONFIRMED |
+| `EMPLOYEE_ALREADY_TERMINATED`, first termination kept           | `employee.ts:138`                                                  | domain      | `› EMPLOYEE_ALREADY_TERMINATED en la segunda baja…`                                                            | CONFIRMED |
+| Rule order: terminated > future > before hire                   | `employee.ts:137-143`                                              | domain      | `› ya desvinculado gana…`, `› fecha futura gana…`                                                              | CONFIRMED |
+| `restore` without `termination` → null                          | `employee.ts:125`                                                  | domain      | `› restore sin termination (fila anterior al campo)…`                                                          | CONFIRMED |
+| Command: parses date as UTC midnight, saves, publishes          | `terminate-employee.command.ts:40-48`                              | application | `terminate-employee.command.test.ts › da de baja: guarda fecha…`, `› acepta la fecha de hoy según el reloj`    | CONFIRMED |
+| Unknown / other company → `EMPLOYEE_NOT_FOUND`, untouched       | `terminate-employee.command.ts:35-38`                              | application | `› EMPLOYEE_NOT_FOUND si el colaborador no existe`, `› … si es de otra empresa…`                               | CONFIRMED |
+| Domain errors pass through; nothing saved/published on error    | `terminate-employee.command.ts:44`                                 | application | `› TERMINATION_DATE_IN_FUTURE: mañana…`, `› TERMINATION_BEFORE_HIRE…`, `› EMPLOYEE_ALREADY_TERMINATED…`        | CONFIRMED |
+| `save` err propagated, no event                                 | `terminate-employee.command.ts:46-47`                              | application | `› propaga el err de save y no publica`                                                                        | CONFIRMED |
+| Body schema: 8 reasons, required fields, ISO date               | `employee.contract.ts:105-112`                                     | contract    | `employee.contract.test.ts › TerminateEmployeeSchema` (18)                                                     | CONFIRMED |
+| Route: POST path, 204, `employees:terminate` scoped, 4 errors   | `employee.contract.ts:222-245`                                     | contract    | `› employeeRoutes.terminateEmployee` (4)                                                                       | CONFIRMED |
+| List item: two nullable, required fields                        | `employee.contract.ts:22-28`                                       | contract    | `› EmployeeListItemSchema › baja` (3)                                                                          | CONFIRMED |
+| HR has `employees:terminate`                                    | `role-catalog.ts:24`                                               | domain      | `role-catalog.test.ts › HR: alcance empresa…` (updated list)                                                   | CONFIRMED |
+| 204 + directory shows TERMINATED, date, reason; active → nulls  | `employees.router.ts`, `test-app.ts` in-memory directory           | http        | `employee-termination.test.ts › 204 y el directorio…`, `› un colaborador activo…`, `› 204 con la fecha de hoy` | CONFIRMED |
+| 422 bodies of the three new errors                              | `errors.ts` (contracts + employees)                                | http        | `› 422 EMPLOYEE_ALREADY_TERMINATED…`, `› 422 TERMINATION_DATE_IN_FUTURE…`, `› 422 TERMINATION_BEFORE_HIRE…`    | CONFIRMED |
+| 400 on bad reason / missing or malformed date                   | `employee.contract.ts:105-112`                                     | http        | `› 400 VALIDATION_ERROR con un motivo…`, `› 400 VALIDATION_ERROR sin fecha…`                                   | CONFIRMED |
+| 404 unknown / other company, same body                          | `terminate-employee.command.ts:35-38`                              | http        | `› 404 EMPLOYEE_NOT_FOUND…` (2)                                                                                | CONFIRMED |
+| HR own company 204, HR other company 403, anonymous 401         | `employee.contract.ts:239`, `role-catalog.ts:24`                   | http        | `› RH de la empresa…`, `› 403 para RH de otra empresa…`, `› 401 sin sesión`                                    | CONFIRMED |
+| Endpoint termination → `DELETE USERINFO` on the sede's checador | `attendance.module.ts:108-120`                                     | http        | `attendance-device-sync.test.ts › la baja por el endpoint … da DELETE del PIN`                                 | CONFIRMED |
+| Endpoint termination → session closed, login refused            | `identity.module.ts:185-196`                                       | http        | `invitations.test.ts › la baja por el endpoint … cierra la sesión y el login`                                  | CONFIRMED |
+| Prisma round-trip of date (DATE column) and reason              | `employee.mapper.ts:31-33,52-53`                                   | integration | `prisma-employee.int.test.ts › guarda y rehidrata fecha … y motivo`                                            | CONFIRMED |
+| Active row and pre-field TERMINATED row read back null          | `employee.mapper.ts:31-33`                                         | integration | `› un activo se rehidrata…`, `› una fila TERMINATED sin fecha ni motivo…`                                      | CONFIRMED |
+| `listDirectory` returns the two fields                          | `prisma-employee.queries.ts:56-57,81-82`                           | integration | `› listDirectory devuelve fecha y motivo…`                                                                     | CONFIRMED |
+| Migration applies on `rrhh_test`                                | `migrations/20261012154547_add_employee_termination/migration.sql` | integration | whole `pnpm test:integration` run                                                                              | CONFIRMED |
 
 ## Review findings
 
