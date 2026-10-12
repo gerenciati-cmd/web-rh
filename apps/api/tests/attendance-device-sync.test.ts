@@ -128,7 +128,7 @@ describe('sincronización de colaboradores con los checadores (HTTP)', () => {
     const email = Email.create(`${firstName.toLowerCase()}@aps.example`);
     const rfc = person ? PersonalRfc.create(person.rfc) : null;
     if (!nationalId.ok || !email.ok || (rfc && !rfc.ok)) throw new Error('fixture inválido');
-    await container.cradle.employeeRepository.save(
+    await container.cradle.employeeRepository.add(
       Employee.restore(id as EmployeeId, {
         companyId,
         nationalId: nationalId.value,
@@ -420,7 +420,7 @@ describe('sincronización de colaboradores con los checadores (HTTP)', () => {
         new Date('2026-02-01'),
       );
       if (!terminated.ok) throw terminated.error;
-      await container.cradle.employeeRepository.save(employee);
+      await container.cradle.employeeRepository.saveTermination(employee);
 
       await container.cradle.eventBus.publish(employee.pullEvents());
 

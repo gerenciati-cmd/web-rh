@@ -1,7 +1,8 @@
 ---
-status: open
+status: resolved
 module: employees
 found: 2026-10-12
+plan: employees-desvinculacion/002
 ---
 
 # Hallazgo: un cambio de sede o RFC concurrente puede deshacer en silencio una baja

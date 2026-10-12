@@ -53,4 +53,21 @@ export const EmployeeMapper = {
       terminationReason: s.termination?.reason ?? null,
     };
   },
+
+  toRfc(employee: Employee) {
+    return { rfc: employee.snapshot.rfc?.value ?? null };
+  },
+
+  toSite(employee: Employee) {
+    return { siteId: employee.snapshot.siteId };
+  },
+
+  toTermination(employee: Employee) {
+    const s = employee.snapshot;
+    return {
+      status: s.status,
+      terminationDate: s.termination?.date ?? null,
+      terminationReason: s.termination?.reason ?? null,
+    };
+  },
 };

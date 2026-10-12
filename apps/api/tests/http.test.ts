@@ -212,7 +212,7 @@ describe('API HTTP', () => {
       .set('Authorization', `Bearer ${token}`)
       .send(validCompany)
       .expect(201);
-    vi.spyOn(container.cradle.employeeRepository, 'save').mockResolvedValue(
+    vi.spyOn(container.cradle.employeeRepository, 'add').mockResolvedValue(
       err(new EmployeeAlreadyExistsError('GOMA850101HQRRRN04')),
     );
     const response = await request(localApp)

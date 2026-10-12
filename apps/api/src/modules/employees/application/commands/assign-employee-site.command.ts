@@ -48,9 +48,10 @@ export class AssignEmployeeSite implements Command<AssignEmployeeSiteInput, unde
     const siteError = await this.checkSite(input.siteId, employer.country);
     if (siteError) return err<DomainError>(siteError);
 
-    employee.assignSite(input.siteId, clock.now());
+    const assigned = employee.assignSite(input.siteId, clock.now());
+    if (!assigned.ok) return assigned;
 
-    const saved = await employeeRepository.save(employee);
+    const saved = await employeeRepository.saveSite(employee);
     if (!saved.ok) return saved;
     await eventBus.publish(employee.pullEvents());
 

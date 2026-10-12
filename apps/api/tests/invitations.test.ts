@@ -82,7 +82,7 @@ describe('invitaciones — HTTP', () => {
       now: new Date('2026-01-15T12:00:00Z'),
     });
     if (!employee.ok) throw employee.error;
-    const saved = await employeeRepository().save(employee.value);
+    const saved = await employeeRepository().add(employee.value);
     if (!saved.ok) throw saved.error;
     return employee.value.id;
   }

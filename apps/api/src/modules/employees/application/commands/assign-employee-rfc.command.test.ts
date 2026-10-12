@@ -58,7 +58,7 @@ describe('AssignEmployeeRfc', () => {
   });
 
   const seed = async (e: Employee) => {
-    await repository.save(e);
+    await repository.add(e);
   };
   const rfcOf = (id: string) => repository.employees.get(id)?.snapshot.rfc?.value ?? null;
 
@@ -132,7 +132,7 @@ describe('AssignEmployeeRfc', () => {
       employeeId: 'emp-1',
       rfc: 'GOMA851301AB1',
     });
-    vi.spyOn(repository, 'save').mockResolvedValue({
+    vi.spyOn(repository, 'saveRfc').mockResolvedValue({
       ok: false,
       error: new EmployeeRfcAlreadyRegisteredError('GOMA850101AB1'),
     });
@@ -209,7 +209,7 @@ describe('AssignEmployeeRfc', () => {
 
   it('propaga el conflicto de save (carrera contra el índice único)', async () => {
     await seed(employee({ id: 'emp-1' }));
-    vi.spyOn(repository, 'save').mockResolvedValue({
+    vi.spyOn(repository, 'saveRfc').mockResolvedValue({
       ok: false,
       error: new EmployeeRfcAlreadyRegisteredError('GOMA850101AB1'),
     });
@@ -221,5 +221,56 @@ describe('AssignEmployeeRfc', () => {
     });
 
     expect(!result.ok && result.error.code).toBe('EMPLOYEE_RFC_ALREADY_REGISTERED');
+  });
+
+  describe('escrituras dirigidas y desvinculados (employees-desvinculacion/002)', () => {
+    const terminatedEmployee = (input: Parameters<typeof employee>[0]) => {
+      const e = employee(input);
+      e.terminate({ date: new Date('2026-01-10T00:00:00Z'), reason: 'OTHER' }, new Date());
+      e.pullEvents();
+      return e;
+    };
+
+    it('escribe con saveRfc (solo el RFC)', async () => {
+      await seed(employee({ id: 'emp-1' }));
+      const saveRfc = vi.spyOn(repository, 'saveRfc');
+
+      await assignEmployeeRfc.execute({
+        companyId: COMPANY,
+        employeeId: 'emp-1',
+        rfc: 'GOMA850101AB1',
+      });
+
+      expect(saveRfc).toHaveBeenCalledTimes(1);
+    });
+
+    it('EMPLOYEE_INACTIVE para un desvinculado: no escribe, no cambia el RFC, no publica', async () => {
+      await seed(terminatedEmployee({ id: 'emp-1' }));
+      const saveRfc = vi.spyOn(repository, 'saveRfc');
+
+      const result = await assignEmployeeRfc.execute({
+        companyId: COMPANY,
+        employeeId: 'emp-1',
+        rfc: 'GOMA850101AB1',
+      });
+
+      expect(!result.ok && result.error.code).toBe('EMPLOYEE_INACTIVE');
+      expect(saveRfc).not.toHaveBeenCalled();
+      expect(rfcOf('emp-1')).toBeNull();
+      expect(eventBus.names()).toEqual([]);
+    });
+
+    it('el RFC de otro colaborador se reporta antes que la regla del desvinculado', async () => {
+      await seed(employee({ id: 'emp-0', companyId: OTHER_COMPANY, rfc: 'GOMA850101AB1' }));
+      await seed(terminatedEmployee({ id: 'emp-1', curp: 'PEXL900215MDFRPR07' }));
+
+      const result = await assignEmployeeRfc.execute({
+        companyId: COMPANY,
+        employeeId: 'emp-1',
+        rfc: 'GOMA850101AB1',
+      });
+
+      expect(!result.ok && result.error.code).toBe('EMPLOYEE_RFC_ALREADY_REGISTERED');
+    });
   });
 });

@@ -13,9 +13,10 @@ so the future finiquito (LFT) can build on them.
 
 ## Plans
 
-| Plan                                     | Title                | Depends on | Purpose                                                                                                                           |
-| ---------------------------------------- | -------------------- | ---------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| [001](001-endpoint-de-desvinculacion.md) | Termination endpoint | —          | `POST …/employees/:employeeId/termination` with date and reason; stored on the colaborador; new permission `employees:terminate`. |
+| Plan                                               | Title                              | Depends on | Purpose                                                                                                                                                                                       |
+| -------------------------------------------------- | ---------------------------------- | ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [001](001-endpoint-de-desvinculacion.md)           | Termination endpoint               | —          | `POST …/employees/:employeeId/termination` with date and reason; stored on the colaborador; new permission `employees:terminate`.                                                             |
+| [002](002-escrituras-dirigidas-del-colaborador.md) | Targeted writes of the colaborador | 001        | Each use case writes only its columns; termination, RFC and sede writes require the row to be ACTIVE; RFC/sede changes on a terminated colaborador → 422 `EMPLOYEE_INACTIVE` (decisions 6–8). |
 
 ## Dependency notes
 
@@ -39,10 +40,22 @@ stored data.
    Scheduled terminations would be a separate feature with a job.
 5. (2026-10-12) A dedicated permission **`employees:terminate`**, granted to HR (company scope)
    and HOLDING_ADMIN (all permissions), so who edits data and who terminates can be split later.
+6. (2026-10-12) The finding `employees-guardado-completo-pisa-la-baja` (review Medium-1 of 001)
+   is fixed in this series, plan 002.
+7. (2026-10-12) Fixed with **targeted writes** per use case (as attendance did for devices,
+   its README decision 11), not with an optimistic version column: no new 409 for HR, and the
+   termination write is conditional on the row still being ACTIVE, so a double submit answers
+   `EMPLOYEE_ALREADY_TERMINATED` and publishes one event.
+8. (2026-10-12) A terminated colaborador's **sede and RFC can no longer be changed**: 422
+   `EMPLOYEE_INACTIVE` (the code identity already uses for "terminated, cannot be invited").
 
 ## Delivered
 
 ## Considered and discarded
+
+- **Optimistic version column on `employees.employees`** for the full-row overwrite: every
+  employees endpoint would gain a 409 that HR must retry, and two edits of different columns
+  would conflict for no reason. Discarded by decision 7.
 
 - **Reusing `employees:update`** for termination: simpler, but couples editing RFC/sede with
   ending employment. Discarded by decision 5.

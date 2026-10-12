@@ -179,7 +179,7 @@ describe('atribución de marcaciones por RFC (HTTP)', () => {
     const email = Email.create('legacy@aps.example');
     if (!nationalId.ok || !email.ok) throw new Error('fixture inválido');
     const id = '00000000-0000-4000-8000-0000000000a1' as EmployeeId;
-    await container.cradle.employeeRepository.save(
+    await container.cradle.employeeRepository.add(
       Employee.restore(id, {
         companyId: companyA,
         nationalId: nationalId.value,
@@ -233,7 +233,7 @@ describe('atribución de marcaciones por RFC (HTTP)', () => {
       new Date(),
     );
     if (!terminated.ok) throw terminated.error;
-    await employeeRepository.save(found);
+    await employeeRepository.saveTermination(found);
 
     const asAdmin = itemsOf(await punches(adminToken));
     const asHr = await punches(hrAToken);

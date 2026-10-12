@@ -40,6 +40,14 @@ export class EmployeeAlreadyTerminatedError extends BusinessRuleViolationError {
   }
 }
 
+export class EmployeeInactiveError extends BusinessRuleViolationError {
+  override readonly code = 'EMPLOYEE_INACTIVE';
+
+  constructor(employeeId: string) {
+    super('El colaborador está desvinculado', { employeeId });
+  }
+}
+
 export class TerminationDateInFutureError extends BusinessRuleViolationError {
   override readonly code = 'TERMINATION_DATE_IN_FUTURE';
 

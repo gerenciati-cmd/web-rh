@@ -97,7 +97,7 @@ POST /api/v1/companies/:id/employees
      → NationalId.create / Email.create        (value objects, Result)
      → EmployeeRepository.existsInCompany()
      → Employee.hire(...)                       (reglas + evento EmployeeHired)
-     → EmployeeRepository.save()                (Prisma, dentro de la tx activa si la hay)
+     → EmployeeRepository.add()                 (Prisma, dentro de la tx activa si la hay)
      → EventBus.publish(employee.pullEvents())
  → unwrap(Result): ok → 201 { id } · err → errorHandler mapea categoría → 404/409/422
 ```

@@ -5,7 +5,12 @@ import { isUniqueViolation } from '@/infrastructure/database/prisma-errors';
 
 import type { Employee, EmployeeId } from '../domain/employee';
 import type { EmployeeRepository } from '../domain/employee.repository';
-import { EmployeeAlreadyExistsError, EmployeeRfcAlreadyRegisteredError } from '../domain/errors';
+import {
+  EmployeeAlreadyExistsError,
+  EmployeeAlreadyTerminatedError,
+  EmployeeInactiveError,
+  EmployeeRfcAlreadyRegisteredError,
+} from '../domain/errors';
 
 import { EmployeeMapper } from './employee.mapper';
 
@@ -35,15 +40,12 @@ export class PrismaEmployeeRepository implements EmployeeRepository {
     return count > 0;
   }
 
-  async save(
+  async add(
     employee: Employee,
   ): Promise<Result<void, EmployeeAlreadyExistsError | EmployeeRfcAlreadyRegisteredError>> {
-    const data = EmployeeMapper.toPersistence(employee);
     try {
-      await this.deps.database.client.employee.upsert({
-        where: { id: data.id },
-        create: data,
-        update: data,
+      await this.deps.database.client.employee.create({
+        data: EmployeeMapper.toPersistence(employee),
       });
       return ok(undefined);
     } catch (error) {
@@ -66,5 +68,43 @@ export class PrismaEmployeeRepository implements EmployeeRepository {
       }
       throw error;
     }
+  }
+
+  // Las tres actualizaciones exigen que la fila siga ACTIVE. El colaborador se acaba de leer, así
+  // que 0 filas significa que otra petición lo dio de baja entretanto.
+
+  async saveRfc(
+    employee: Employee,
+  ): Promise<Result<void, EmployeeRfcAlreadyRegisteredError | EmployeeInactiveError>> {
+    try {
+      const { count } = await this.deps.database.client.employee.updateMany({
+        where: { id: employee.id, status: 'ACTIVE' },
+        data: EmployeeMapper.toRfc(employee),
+      });
+      return count === 0 ? err(new EmployeeInactiveError(employee.id)) : ok(undefined);
+    } catch (error) {
+      // El RFC es la única columna única que se escribe aquí.
+      const { rfc } = employee.snapshot;
+      if (isUniqueViolation(error) && rfc) {
+        return err(new EmployeeRfcAlreadyRegisteredError(rfc.value));
+      }
+      throw error;
+    }
+  }
+
+  async saveSite(employee: Employee): Promise<Result<void, EmployeeInactiveError>> {
+    const { count } = await this.deps.database.client.employee.updateMany({
+      where: { id: employee.id, status: 'ACTIVE' },
+      data: EmployeeMapper.toSite(employee),
+    });
+    return count === 0 ? err(new EmployeeInactiveError(employee.id)) : ok(undefined);
+  }
+
+  async saveTermination(employee: Employee): Promise<Result<void, EmployeeAlreadyTerminatedError>> {
+    const { count } = await this.deps.database.client.employee.updateMany({
+      where: { id: employee.id, status: 'ACTIVE' },
+      data: EmployeeMapper.toTermination(employee),
+    });
+    return count === 0 ? err(new EmployeeAlreadyTerminatedError(employee.id)) : ok(undefined);
   }
 }

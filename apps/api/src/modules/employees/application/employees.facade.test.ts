@@ -64,7 +64,7 @@ function hired(rfc: string | null) {
 describe('EmployeesFacade', () => {
   it('findEmployee expone el RFC normalizado', async () => {
     const { facade, employeeRepository } = setup();
-    await employeeRepository.save(hired('goma850101ab1'));
+    await employeeRepository.add(hired('goma850101ab1'));
 
     expect(await facade.findEmployee('emp-1')).toMatchObject({
       id: 'emp-1',
@@ -75,14 +75,14 @@ describe('EmployeesFacade', () => {
 
   it('findEmployee devuelve rfc null para una fila sin RFC', async () => {
     const { facade, employeeRepository } = setup();
-    await employeeRepository.save(hired(null));
+    await employeeRepository.add(hired(null));
 
     expect((await facade.findEmployee('emp-1'))?.rfc).toBeNull();
   });
 
   it('findEmployee devuelve siteId null para una fila sin sede', async () => {
     const { facade, employeeRepository } = setup();
-    await employeeRepository.save(hired('GOMA850101AB1'));
+    await employeeRepository.add(hired('GOMA850101AB1'));
 
     expect((await facade.findEmployee('emp-1'))?.siteId).toBeNull();
   });
@@ -91,7 +91,7 @@ describe('EmployeesFacade', () => {
     const { facade, employeeRepository } = setup();
     const employee = hired('GOMA850101AB1');
     employee.assignSite('site-1', new Date('2026-01-15T12:00:00Z'));
-    await employeeRepository.save(employee);
+    await employeeRepository.add(employee);
 
     expect((await facade.findEmployee('emp-1'))?.siteId).toBe('site-1');
   });

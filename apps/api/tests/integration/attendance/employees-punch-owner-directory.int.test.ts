@@ -52,7 +52,7 @@ async function hire(input: {
     now: NOW,
   });
   if (!hired.ok) throw hired.error;
-  const saved = await repository.save(hired.value);
+  const saved = await repository.add(hired.value);
   if (!saved.ok) throw saved.error;
   return hired.value;
 }
@@ -93,7 +93,7 @@ describe('EmployeesPunchOwnerDirectory con la BD real', () => {
   it('un colaborador desvinculado sigue siendo dueño de su PIN', async () => {
     const ana = await hire(ANA);
     ana.terminate({ date: new Date('2026-01-12T00:00:00Z'), reason: 'VOLUNTARY_RESIGNATION' }, NOW);
-    await repository.save(ana);
+    await repository.saveTermination(ana);
 
     const owners = await directory.ownersOf([ANA.rfc]);
 

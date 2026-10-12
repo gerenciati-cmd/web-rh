@@ -43,7 +43,7 @@ export class TerminateEmployee implements Command<TerminateEmployeeInput, undefi
     );
     if (!terminated.ok) return terminated;
 
-    const saved = await employeeRepository.save(employee);
+    const saved = await employeeRepository.saveTermination(employee);
     if (!saved.ok) return saved;
     await eventBus.publish(employee.pullEvents());
 
