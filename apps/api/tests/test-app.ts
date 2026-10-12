@@ -104,6 +104,8 @@ export function buildTestContainer(env: Env = testEnv) {
             positionTitle: s.positionTitle,
             hireDate: s.hireDate.toISOString().slice(0, 10),
             status: s.status,
+            terminationDate: s.termination?.date.toISOString().slice(0, 10) ?? null,
+            terminationReason: s.termination?.reason ?? null,
           };
         });
       return Promise.resolve({ items, total: items.length, page, pageSize });

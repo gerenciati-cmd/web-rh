@@ -232,6 +232,38 @@ export const API_ERRORS = {
       },
     },
   },
+  EMPLOYEE_ALREADY_TERMINATED: {
+    status: 422,
+    description: 'El colaborador ya fue dado de baja.',
+    examples: {
+      default: {
+        code: 'EMPLOYEE_ALREADY_TERMINATED',
+        message: 'El colaborador ya está desvinculado',
+        details: { employeeId: EMPLOYEE_ID },
+      },
+    },
+  },
+  TERMINATION_DATE_IN_FUTURE: {
+    status: 422,
+    description: 'La fecha de baja es posterior a hoy (fecha UTC); no hay bajas programadas.',
+    examples: {
+      default: {
+        code: 'TERMINATION_DATE_IN_FUTURE',
+        message: 'La fecha de baja no puede ser posterior a hoy',
+      },
+    },
+  },
+  TERMINATION_BEFORE_HIRE: {
+    status: 422,
+    description: 'La fecha de baja es anterior a la fecha de contratación.',
+    examples: {
+      default: {
+        code: 'TERMINATION_BEFORE_HIRE',
+        message: 'La fecha de baja es anterior a la contratación',
+        details: { hireDate: '2026-01-10' },
+      },
+    },
+  },
   SITE_NOT_FOUND: {
     status: 404,
     description: 'La sede indicada no existe.',

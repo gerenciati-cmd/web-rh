@@ -187,7 +187,10 @@ describe('Employee', () => {
       const employee = result.value;
       employee.pullEvents();
 
-      expect(employee.terminate(new Date('2026-02-01'), now).ok).toBe(true);
+      expect(
+        employee.terminate({ date: new Date('2026-01-10'), reason: 'VOLUNTARY_RESIGNATION' }, now)
+          .ok,
+      ).toBe(true);
       expect(employee.snapshot.status).toBe('TERMINATED');
       expect(employee.pullEvents().map((e) => e.name)).toEqual([EMPLOYEE_TERMINATED]);
     });
@@ -195,14 +198,27 @@ describe('Employee', () => {
     it('no desvincula antes de la fecha de contratación', () => {
       const result = hire();
       if (!result.ok) throw result.error;
-      expect(result.value.terminate(new Date('2025-12-01'), now).ok).toBe(false);
+      expect(
+        result.value.terminate(
+          { date: new Date('2025-12-01'), reason: 'VOLUNTARY_RESIGNATION' },
+          now,
+        ).ok,
+      ).toBe(false);
     });
 
     it('no desvincula dos veces', () => {
       const result = hire();
       if (!result.ok) throw result.error;
-      result.value.terminate(new Date('2026-02-01'), now);
-      expect(result.value.terminate(new Date('2026-02-02'), now).ok).toBe(false);
+      result.value.terminate(
+        { date: new Date('2026-01-10'), reason: 'VOLUNTARY_RESIGNATION' },
+        now,
+      );
+      expect(
+        result.value.terminate(
+          { date: new Date('2026-01-12'), reason: 'VOLUNTARY_RESIGNATION' },
+          now,
+        ).ok,
+      ).toBe(false);
     });
   });
 });

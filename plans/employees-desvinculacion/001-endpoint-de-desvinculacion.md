@@ -1,5 +1,5 @@
 ---
-status: draft
+status: testing
 module: employees
 min_implementer: mid
 depends_on: []
@@ -168,7 +168,7 @@ None
    - Observable result: the class compiles with `Command<TerminateEmployeeInput, undefined>`.
 
 6. **Persistence: schema, migration, mapper, directory query**
-   - Files: `apps/api/prisma/schema.prisma` (modify), `apps/api/prisma/migrations/<timestamp>_add_employee_termination/migration.sql` (create), `apps/api/src/modules/employees/infrastructure/employee.mapper.ts` (modify), `apps/api/src/modules/employees/infrastructure/prisma-employee.queries.ts` (modify)
+   - Files: `apps/api/prisma/schema.prisma` (modify), `apps/api/prisma/migrations/20261012154547_add_employee_termination/migration.sql` (create), `apps/api/src/modules/employees/infrastructure/employee.mapper.ts` (modify), `apps/api/src/modules/employees/infrastructure/prisma-employee.queries.ts` (modify)
    - Do:
      - `schema.prisma`: after `enum EmployeeStatus` (lines 55-60) add `enum TerminationReason`
        with the 8 values of step 1 and `@@schema("employees")`. In `model Employee`, after
@@ -197,6 +197,13 @@ None
      Register `terminateEmployee: asClass(TerminateEmployee).singleton()` and add it to
      `EmployeesCradle` (lines 20-30) and to `registrations` (lines 34-44).
    - Observable result: `tests/container.test.ts` resolves `terminateEmployee`; the route answers.
+
+8. **Adapt existing tests to the new signature, permission and fields** (added by the
+   implementer: Deviations 1–3)
+   - Files: `apps/api/tests/invitations.test.ts` (modify), `apps/api/tests/attendance-attribution.test.ts` (modify), `apps/api/tests/attendance-device-sync.test.ts` (modify), `apps/api/tests/integration/employees/prisma-employee.int.test.ts` (modify), `apps/api/tests/integration/attendance/employees-punch-owner-directory.int.test.ts` (modify), `apps/api/src/modules/identity/application/session-authenticator.test.ts` (modify), `packages/contracts/src/openapi.test.ts` (modify), `apps/api/tests/test-app.ts` (modify), `packages/contracts/src/employees/employee.contract.test.ts` (modify)
+   - Do: mechanical only — pass a `reason`, keep termination dates within each test's clock,
+     update hard-coded counts, add the two list fields to fixtures. No assertion changes.
+   - Observable result: existing suites stay green.
 
 ## Acceptance criteria
 
@@ -233,6 +240,28 @@ None
 | e2e         | no      | (no e2e infrastructure yet)                                                                                                                         |
 
 ## Deviations
+
+Implemented inline in the main session (2026-10-12). All cosmetic: no design or scope impact.
+
+1. **More callers of `terminate` than the plan listed.** Plan said only `employee.test.ts` calls
+   it; reality: 9 more calls in 5 test files (`invitations.test.ts:203,430`,
+   `attendance-attribution.test.ts:231`, `attendance-device-sync.test.ts:418`,
+   `prisma-employee.int.test.ts:72,290,397,451`, `employees-punch-owner-directory.int.test.ts:95`).
+   Done: same mechanical adaptation (add `reason: 'VOLUNTARY_RESIGNATION'`). In the two
+   integration files and in `employee.test.ts` the old date (2026-02-01) is later than the
+   test's `NOW` (2026-01-15) and would now hit `TERMINATION_DATE_IN_FUTURE`, so it moved to
+   2026-01-12 (after the 2026-01-10 hire; 2026-01-12 for the second call in `employee.test.ts`).
+   No assertion changed.
+2. **Hard-coded counts tied to the new permission and route.** HR now has 10 grants, not 9
+   (`role-catalog.test.ts:68,79`, `session-authenticator.test.ts:141,171`), and the OpenAPI
+   document has 32 operations, not 31 (`openapi.test.ts:49`). Counts updated.
+3. **Fixtures that build `EmployeeListItem`.** The in-memory `listDirectory` of
+   `tests/test-app.ts:91-110` and the `item` fixture of `employee.contract.test.ts:186-195` must
+   carry the two new fields; added (from `snapshot.termination` and as `null`).
+4. **Migration name.** Generated as `20261012154547_add_employee_termination`; the SQL only
+   creates the enum and adds two nullable columns (no `DROP`).
+
+Evidence: `pnpm check` green; `pnpm test:integration` 17 files / 218 tests passed.
 
 ## Test coverage
 

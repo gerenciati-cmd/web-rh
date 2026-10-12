@@ -192,6 +192,8 @@ describe('EmployeeListItemSchema › siteId', () => {
     positionTitle: null,
     hireDate: '2026-01-10',
     status: 'ACTIVE',
+    terminationDate: null,
+    terminationReason: null,
   };
 
   it('acepta siteId null (fila anterior al campo) y uuid', () => {

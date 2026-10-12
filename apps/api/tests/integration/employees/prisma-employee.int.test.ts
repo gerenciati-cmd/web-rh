@@ -69,7 +69,7 @@ describe('PrismaEmployeeRepository', () => {
   it('persiste la desvinculación', async () => {
     const ana = employee({ curp: 'GOMA850101HQRRRN04', firstName: 'Ana', lastName: 'Rojas' });
     await repository.save(ana);
-    ana.terminate(new Date('2026-02-01T00:00:00Z'), NOW);
+    ana.terminate({ date: new Date('2026-01-12T00:00:00Z'), reason: 'VOLUNTARY_RESIGNATION' }, NOW);
     await repository.save(ana);
 
     expect((await repository.findById(ana.id))?.snapshot.status).toBe('TERMINATED');
@@ -287,7 +287,7 @@ describe('RFC en PrismaEmployeeQueries', () => {
   it('findByRfcs marca active=false al colaborador desvinculado', async () => {
     const ana = employee({ ...ANA, rfc: 'GOMA850101AB1' });
     await repository.save(ana);
-    ana.terminate(new Date('2026-02-01T00:00:00Z'), NOW);
+    ana.terminate({ date: new Date('2026-01-12T00:00:00Z'), reason: 'VOLUNTARY_RESIGNATION' }, NOW);
     await repository.save(ana);
 
     expect(await queries.findByRfcs(['GOMA850101AB1'])).toMatchObject([{ active: false }]);
@@ -394,7 +394,10 @@ describe('Sede en PrismaEmployeeRepository y PrismaEmployeeQueries', () => {
     await repository.save(pedro);
     await repository.save(otherSite);
     await repository.save(withoutSite(zoe));
-    pedro.terminate(new Date('2026-02-01T00:00:00Z'), NOW);
+    pedro.terminate(
+      { date: new Date('2026-01-12T00:00:00Z'), reason: 'VOLUNTARY_RESIGNATION' },
+      NOW,
+    );
     await repository.save(pedro);
 
     const members = await queries.listActiveOnSite(SITE_1);
@@ -448,7 +451,10 @@ describe('PrismaEmployeeQueries.listDirectory', () => {
         lastName: 'Araya',
       }),
     );
-    pedro.terminate(new Date('2026-02-01T00:00:00Z'), NOW);
+    pedro.terminate(
+      { date: new Date('2026-01-12T00:00:00Z'), reason: 'VOLUNTARY_RESIGNATION' },
+      NOW,
+    );
     await repository.save(pedro);
   }
 

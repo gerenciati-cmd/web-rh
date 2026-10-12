@@ -21,6 +21,7 @@ export const ROLE_DEFINITIONS: Readonly<Record<Role, RoleDefinition>> = {
       'employees:read',
       'employees:register',
       'employees:update',
+      'employees:terminate',
       'attendance.devices:read',
       // Ve las marcaciones de los colaboradores de sus empresas, atribuidas por RFC
       // (README de attendance-marcaciones, decisión 8).

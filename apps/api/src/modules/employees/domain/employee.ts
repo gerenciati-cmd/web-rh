@@ -11,12 +11,23 @@ import {
   type NationalId,
   type PersonalRfc,
   type Result,
+  type TerminationReason,
 } from '@rrhh/domain';
 
-import { RfcNotApplicableError } from './errors';
+import {
+  EmployeeAlreadyTerminatedError,
+  RfcNotApplicableError,
+  TerminationBeforeHireError,
+  TerminationDateInFutureError,
+} from './errors';
 
 export type EmployeeId = Id<'Employee'>;
 export type { EmployeeStatus } from '@rrhh/domain';
+
+export interface EmployeeTermination {
+  date: Date;
+  reason: TerminationReason;
+}
 
 export interface EmployeeProps {
   companyId: string;
@@ -31,6 +42,8 @@ export interface EmployeeProps {
   positionTitle: string | null;
   hireDate: Date;
   status: EmployeeStatus;
+  /** Fecha y motivo de la baja: nulo mientras está activo, y en bajas anteriores al campo. */
+  termination: EmployeeTermination | null;
 }
 
 export const EMPLOYEE_HIRED = 'employees.employee.hired';
@@ -96,6 +109,7 @@ export class Employee extends AggregateRoot<EmployeeId> {
       positionTitle: input.positionTitle?.trim() ?? null,
       hireDate: input.hireDate,
       status: 'ACTIVE',
+      termination: null,
     });
     employee.record(
       createEvent(EMPLOYEE_HIRED, { employeeId: input.id, companyId: input.companyId }, input.now),
@@ -103,22 +117,38 @@ export class Employee extends AggregateRoot<EmployeeId> {
     return ok(employee);
   }
 
-  static restore(id: EmployeeId, props: EmployeeProps): Employee {
-    return new Employee(id, props);
+  /** `termination` es opcional para que las filas y fixtures anteriores al campo se rehidraten igual. */
+  static restore(
+    id: EmployeeId,
+    props: Omit<EmployeeProps, 'termination'> & { termination?: EmployeeTermination | null },
+  ): Employee {
+    return new Employee(id, { ...props, termination: props.termination ?? null });
   }
 
-  /** Desvinculación. Las reglas de finiquito vivirán aquí (o en un servicio de dominio). */
-  terminate(terminationDate: Date, now: Date): Result<void, BusinessRuleViolationError> {
+  /**
+   * Desvinculación con efecto inmediato: no hay bajas programadas (README de
+   * employees-desvinculacion, decisión 4). "Hoy" es la fecha UTC de `now`. Las reglas de finiquito
+   * vivirán aquí (o en un servicio de dominio).
+   */
+  terminate(
+    input: { date: Date; reason: TerminationReason },
+    now: Date,
+  ): Result<void, BusinessRuleViolationError> {
     if (this.props.status === 'TERMINATED') {
-      return err(new BusinessRuleViolationError('El colaborador ya está desvinculado'));
+      return err(new EmployeeAlreadyTerminatedError(this.id));
     }
-    if (terminationDate < this.props.hireDate) {
-      return err(
-        new BusinessRuleViolationError('La fecha de término es anterior a la contratación'),
-      );
+    if (input.date > now) return err(new TerminationDateInFutureError());
+    if (input.date < this.props.hireDate) {
+      return err(new TerminationBeforeHireError(this.props.hireDate.toISOString().slice(0, 10)));
     }
-    this.props = { ...this.props, status: 'TERMINATED' };
-    this.record(createEvent(EMPLOYEE_TERMINATED, { employeeId: this.id, terminationDate }, now));
+    this.props = {
+      ...this.props,
+      status: 'TERMINATED',
+      termination: { date: input.date, reason: input.reason },
+    };
+    this.record(
+      createEvent(EMPLOYEE_TERMINATED, { employeeId: this.id, terminationDate: input.date }, now),
+    );
     return ok(undefined);
   }
 

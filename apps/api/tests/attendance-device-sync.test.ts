@@ -415,7 +415,10 @@ describe('sincronización de colaboradores con los checadores (HTTP)', () => {
       const id = await employeeIdOf(ana.rfc);
       const employee = await container.cradle.employeeRepository.findById(id as EmployeeId);
       if (!employee) throw new Error('fixture: colaborador no encontrado');
-      const terminated = employee.terminate(new Date('2026-02-01'), new Date('2026-02-01'));
+      const terminated = employee.terminate(
+        { date: new Date('2026-02-01'), reason: 'VOLUNTARY_RESIGNATION' },
+        new Date('2026-02-01'),
+      );
       if (!terminated.ok) throw terminated.error;
       await container.cradle.employeeRepository.save(employee);
 
