@@ -115,9 +115,19 @@ endpoint is open (`apps/api/src/http/app.ts:43-47` mounts module routers with no
 
 ## Delivered
 
-- Plan 005 (implementado, pendiente de tests/review/verify): `PasswordReset` con enlace de 1 hora,
-  solicitud pública, restablecimiento forzado por RRHH/holding y cierre de todas las sesiones;
-  además serializa la emisión de invitaciones con locks consultivos (hallazgo L3).
+Plans 001–003, 005 and 006 are `done`; 004 (web/mobile login) stays deferred until a UI design
+exists (decision 9).
+
+- **Users, login and sessions** (001): `User` with argon2id, opaque revocable sessions in
+  `identity.sessions`, login/logout/me, request `Actor`, login throttle. ADR 0011.
+- **Roles and endpoint protection** (002): fixed role catalog, `(user, role, scope)`
+  assignments, access declared in contracts, row filtering by company, 403. ADR 0012.
+- **Invitations and termination** (003): invitations by HR/holding, activation linked to the
+  colaborador with the EMPLOYEE role, access disabled on `EMPLOYEE_TERMINATED`, email queue.
+- **Password reset** (005): `PasswordReset` with a 1-hour link, public request, staff-forced
+  reset, all sessions closed; invitation issuing serialized with advisory locks (hallazgo L3).
+- **In-flight login after revocation** (006): a login verified before a reset or termination no
+  longer keeps a session afterwards.
 
 ## Considered and discarded
 

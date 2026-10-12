@@ -1,0 +1,241 @@
+---
+status: draft
+module: employees
+min_implementer: mid
+depends_on: []
+---
+
+# 001 — Termination endpoint
+
+## Context
+
+**What exists today.**
+
+- The aggregate already models termination: `Employee.terminate(terminationDate, now)`
+  (`apps/api/src/modules/employees/domain/employee.ts:111-123`) rejects a second termination and
+  a date before `hireDate` with plain `BusinessRuleViolationError`s (code
+  `BUSINESS_RULE_VIOLATION`), sets `status: 'TERMINATED'` and records `EMPLOYEE_TERMINATED` with
+  `{ employeeId, terminationDate }` (`employee.ts:121`). The date is **not stored**: the props
+  (`employee.ts:21-34`) have no termination field, and neither does the `Employee` model
+  (`apps/api/prisma/schema.prisma:62-86`).
+- Nothing calls `terminate` in production code: the router has no termination route
+  (`apps/api/src/modules/employees/http/employees.router.ts:11-38`) and the contract has none
+  (`packages/contracts/src/employees/employee.contract.ts:118-204`).
+- `EMPLOYEE_TERMINATED` already has two consumers: identity disables the colaborador's access
+  (`apps/api/src/modules/identity/identity.module.ts:185-196`) and attendance reconciles the
+  colaborador on the checadores (`apps/api/src/modules/attendance/attendance.module.ts:108-120`).
+  Both read only `employeeId` from the payload, so this plan does not change the payload.
+- Permissions: `PERMISSIONS` (`packages/domain/src/identity/access.ts:6-23`) has
+  `employees:read|register|update`. HR gets them in
+  `apps/api/src/modules/identity/domain/role-catalog.ts:16-32`; HOLDING_ADMIN gets every
+  permission (`role-catalog.ts:15`). `role-catalog.test.ts:19-34` pins HR's exact list.
+- Shared vocabulary pattern: `EMPLOYEE_STATUSES` lives in
+  `packages/domain/src/employees/employee-status.ts:1-3`, is re-exported by
+  `packages/domain/src/index.ts:6`, and the contract derives its enum from it
+  (`employee.contract.ts:7`). Prisma keeps its own enum (`schema.prisma:55-60`).
+- Every exported error class is checked against the hand-written `API_ERRORS` catalog
+  (`packages/contracts/src/errors.ts`) by `apps/api/tests/error-catalog.test.ts:19-25`; a new
+  error without a catalog entry fails `pnpm check`.
+- Date-only inputs are parsed as UTC midnight: `new Date(`${input.hireDate}T00:00:00Z`)`
+  (`apps/api/src/modules/employees/application/commands/register-employee.command.ts:86`).
+
+**Approach.** Add a `POST /companies/:companyId/employees/:employeeId/termination` command that
+calls the existing `terminate`, extended to take a reason, and store date and reason as two
+nullable columns on `employees.employees`. Alternative considered: a separate
+`employees.terminations` table (history of terminations and rehires). Rehiring is not in scope
+and a colaborador has at most one termination today, so two columns are enough and keep the
+aggregate in one row; a history table can come with rehiring. Each rule gets its own error code
+instead of the generic `BUSINESS_RULE_VIOLATION`, so clients can tell them apart.
+
+"Today" for the no-future rule (README decision 4) is the **UTC date** of `clock.now()`: the
+date is UTC midnight, and it is rejected when it is later than `now`. For a sede in Mexico this
+accepts "tomorrow" (local) during the last 5–8 hours of the local day. That tolerance is accepted
+here because the sede's time zone is not in the employees module (it lives in organization); see
+Out of scope.
+
+**Files imitated.** Command: `apps/api/src/modules/employees/application/commands/assign-employee-rfc.command.ts:1-51`
+(find → company check → aggregate → save → publish). Route:
+`employee.contract.ts:162-179` (`assignEmployeeRfc`, 204 with `z.undefined()`) and
+`employees.router.ts:27-30`. Errors: `apps/api/src/modules/employees/domain/errors.ts:27-33`
+(`RfcNotApplicableError`, a `BusinessRuleViolationError` with `override readonly code`).
+
+**README decisions applied:** 2 (date + reason), 3 (reason catalog), 4 (no future dates),
+5 (`employees:terminate`).
+
+## Out of scope
+
+- Rehiring or undoing a termination; a terminated colaborador stays terminated.
+- Scheduled (future-dated) terminations and any job (decision 4).
+- Finiquito / liquidación calculations, or any rule that depends on the reason.
+- A free-text note on the termination (decision 2).
+- Rejecting RFC or sede changes on a terminated colaborador (`AssignEmployeeRfc`,
+  `AssignEmployeeSite` stay as they are).
+- Using the sede's time zone for "today".
+- Changing the `EMPLOYEE_TERMINATED` payload or its consumers in identity and attendance.
+- Web and mobile screens.
+
+## Dependencies
+
+None
+
+## Steps
+
+1. **Reason vocabulary**
+   - Files: `packages/domain/src/employees/termination-reason.ts` (create), `packages/domain/src/index.ts` (modify)
+   - Do: following `employee-status.ts:1-3`, export
+     `TERMINATION_REASONS = ['VOLUNTARY_RESIGNATION', 'DISMISSAL_WITH_CAUSE', 'DISMISSAL_WITHOUT_CAUSE', 'MUTUAL_AGREEMENT', 'END_OF_CONTRACT', 'DEATH', 'INCAPACITY', 'OTHER'] as const`
+     and `type TerminationReason`. Add a Spanish docblock: the closed catalog of README
+     decision 3 (LFT arts. 47, 51, 53). Re-export it from `index.ts` next to line 6.
+   - Observable result: `import { TERMINATION_REASONS, type TerminationReason } from '@rrhh/domain'` type-checks.
+
+2. **Permission `employees:terminate`**
+   - Files: `packages/domain/src/identity/access.ts` (modify), `apps/api/src/modules/identity/domain/role-catalog.ts` (modify), `apps/api/src/modules/identity/domain/role-catalog.test.ts` (modify)
+   - Do: add `'employees:terminate'` after `'employees:update'` in `PERMISSIONS` (`access.ts:13`)
+     and in HR's list (`role-catalog.ts:23`). In `role-catalog.test.ts:28`, add the same string to
+     the expected HR list. Nothing else changes in that test.
+   - Observable result: HOLDING_ADMIN and HR actors carry `employees:terminate`; `role-catalog.test.ts` passes.
+
+3. **Contract: errors, input, route, read model**
+   - Files: `packages/contracts/src/errors.ts` (modify), `packages/contracts/src/employees/employee.contract.ts` (modify), `packages/contracts/openapi.json` (modify)
+   - Do:
+     - `errors.ts`: after `RFC_NOT_APPLICABLE` (line 225), add three entries, all `status: 422`,
+       whose `message`s are exactly those of step 4:
+       `EMPLOYEE_ALREADY_TERMINATED` (description: the colaborador was already terminated;
+       `details: { employeeId: EMPLOYEE_ID }`), `TERMINATION_DATE_IN_FUTURE` (the date is later
+       than today, UTC; no details), `TERMINATION_BEFORE_HIRE` (the date is before the hire date;
+       `details: { hireDate: '2026-01-10' }`).
+     - `employee.contract.ts`: import `TERMINATION_REASONS`; add
+       `TerminationReasonSchema = z.enum(TERMINATION_REASONS)`. Add to `EmployeeListItemSchema`
+       (lines 10-22) `terminationDate: z.iso.date().nullable()` ("Fecha de baja (YYYY-MM-DD); null
+       si está activo") and `terminationReason: TerminationReasonSchema.nullable()` ("Motivo de la
+       baja; null si está activo"). Add `TerminateEmployeeSchema` with
+       `terminationDate: z.iso.date()` ("Fecha de baja (YYYY-MM-DD); hoy o anterior, no antes de
+       la contratación") and `reason: TerminationReasonSchema`, `.meta({ id: 'TerminateEmployeeInput' })`,
+       plus its `z.input` type, following `AssignEmployeeSiteSchema` (lines 90-95). Add route
+       `terminateEmployee`: `POST /companies/:companyId/employees/:employeeId/termination`,
+       summary "Da de baja (desvincula) a un colaborador", a description in the same 3-paragraph
+       format as `assignEmployeeSite` (who: holding admin, or HR if the company is in scope;
+       needs date ≤ today and ≥ hire date, and a reason; effects: the colaborador becomes
+       TERMINATED, loses platform access and is removed from their sede's checadores),
+       `errors: ['EMPLOYEE_NOT_FOUND', 'EMPLOYEE_ALREADY_TERMINATED', 'TERMINATION_DATE_IN_FUTURE', 'TERMINATION_BEFORE_HIRE']`,
+       `access: requires('employees:terminate', { companyParam: 'companyId' })`,
+       `params: EmployeeParams`, `body: TerminateEmployeeSchema`, `response: z.undefined()`,
+       `successStatus: 204`.
+     - `openapi.json`: regenerate with `pnpm --filter @rrhh/contracts openapi`; never edit it by hand.
+   - Observable result: `employeeRoutes.terminateEmployee` exists; the OpenAPI snapshot shows the
+     new path, the two list fields and the three errors.
+
+4. **Domain: stored termination, reason and specific errors**
+   - Files: `apps/api/src/modules/employees/domain/errors.ts` (modify), `apps/api/src/modules/employees/domain/employee.ts` (modify), `apps/api/src/modules/employees/domain/employee.test.ts` (modify)
+   - Do:
+     - `errors.ts`: three classes extending `BusinessRuleViolationError` with
+       `override readonly code` (shape of `RfcNotApplicableError`, lines 27-33):
+       `EmployeeAlreadyTerminatedError(employeeId: string)` → `EMPLOYEE_ALREADY_TERMINATED`,
+       message `'El colaborador ya está desvinculado'`, details `{ employeeId }`;
+       `TerminationDateInFutureError()` → `TERMINATION_DATE_IN_FUTURE`, message
+       `'La fecha de baja no puede ser posterior a hoy'`;
+       `TerminationBeforeHireError(hireDate: string)` → `TERMINATION_BEFORE_HIRE`, message
+       `'La fecha de baja es anterior a la contratación'`, details `{ hireDate }`.
+     - `employee.ts`: export `interface EmployeeTermination { date: Date; reason: TerminationReason }`;
+       add `termination: EmployeeTermination | null` to `EmployeeProps` with a docblock (null while
+       active; may also be null on a TERMINATED row from before the field). `hire` sets
+       `termination: null`. `restore` takes
+       `props: Omit<EmployeeProps, 'termination'> & { termination?: EmployeeTermination | null }`
+       and stores `termination: props.termination ?? null`, so the existing callers of `restore`
+       (tests, fixtures) keep compiling untouched. Change `terminate` to
+       `terminate(input: { date: Date; reason: TerminationReason }, now: Date)`, with checks in
+       this order: already TERMINATED → `EmployeeAlreadyTerminatedError(this.id)`;
+       `input.date > now` → `TerminationDateInFutureError`; `input.date < hireDate` →
+       `TerminationBeforeHireError(hireDate as YYYY-MM-DD)`. On success set
+       `status: 'TERMINATED'` and `termination: { date, reason }`, and record the event with the
+       **same payload as today** (`{ employeeId: this.id, terminationDate: input.date }`). Update
+       the docblock at line 110.
+     - `employee.test.ts`: only adapt the three existing calls (lines 190, 198, 204-205) to the
+       new signature, passing `reason: 'VOLUNTARY_RESIGNATION'`. New tests are the tester's job.
+   - Observable result: `pnpm --filter @rrhh/api typecheck` (or `pnpm check`) compiles; the three
+     existing terminate tests pass.
+
+5. **Command `TerminateEmployee`**
+   - Files: `apps/api/src/modules/employees/application/commands/terminate-employee.command.ts` (create)
+   - Do: copy the shape of `assign-employee-rfc.command.ts:1-51`. Input
+     `{ companyId; employeeId; terminationDate: string; reason: TerminationReason }`; deps
+     `employeeRepository`, `clock`, `eventBus`. Find the colaborador; another company's →
+     `EmployeeNotFoundError` (same comment as `assign-employee-rfc.command.ts:33`). Parse the date
+     as `new Date(`${input.terminationDate}T00:00:00Z`)` (as `register-employee.command.ts:86`),
+     call `employee.terminate({ date, reason }, clock.now())`, return its `err` as is, save,
+     publish `pullEvents()`, return `ok(undefined)`. Docblock: not idempotent, a second call
+     answers `EMPLOYEE_ALREADY_TERMINATED`.
+   - Observable result: the class compiles with `Command<TerminateEmployeeInput, undefined>`.
+
+6. **Persistence: schema, migration, mapper, directory query**
+   - Files: `apps/api/prisma/schema.prisma` (modify), `apps/api/prisma/migrations/<timestamp>_add_employee_termination/migration.sql` (create), `apps/api/src/modules/employees/infrastructure/employee.mapper.ts` (modify), `apps/api/src/modules/employees/infrastructure/prisma-employee.queries.ts` (modify)
+   - Do:
+     - `schema.prisma`: after `enum EmployeeStatus` (lines 55-60) add `enum TerminationReason`
+       with the 8 values of step 1 and `@@schema("employees")`. In `model Employee`, after
+       `status` (line 77): `terminationDate DateTime? @map("termination_date") @db.Date` and
+       `terminationReason TerminationReason? @map("termination_reason")`, each with a `///`
+       comment (null while active).
+     - Generate the migration with `pnpm db:migrate --name add_employee_termination` (follow the
+       `db-change` skill); do not hand-write the SQL nor edit existing migrations. Run
+       `pnpm db:generate` if the client is not regenerated.
+     - `employee.mapper.ts`: `toDomain` passes `termination` = `{ date: row.terminationDate, reason: row.terminationReason }`
+       when both are non-null, else `null`. `toPersistence` writes
+       `terminationDate: s.termination?.date ?? null` and
+       `terminationReason: s.termination?.reason ?? null`.
+     - `prisma-employee.queries.ts`: in `listDirectory`, add `terminationDate: true` and
+       `terminationReason: true` to the `select` (lines 44-56) and map them like `hireDate`
+       (line 77): `terminationDate: row.terminationDate?.toISOString().slice(0, 10) ?? null`,
+       `terminationReason: row.terminationReason`.
+   - Observable result: the migration applies on the dev and `rrhh_test` databases; existing
+     rows read back with `termination: null`.
+
+7. **HTTP route and DI registration**
+   - Files: `apps/api/src/modules/employees/http/employees.router.ts` (modify), `apps/api/src/modules/employees/employees.module.ts` (modify)
+   - Do: add `terminateEmployee: TerminateEmployee` to the router deps and bind
+     `routes.terminateEmployee` like `assignEmployeeRfc` (lines 27-30):
+     `unwrap(await deps.terminateEmployee.execute({ ...params, ...body }))`, return `undefined`.
+     Register `terminateEmployee: asClass(TerminateEmployee).singleton()` and add it to
+     `EmployeesCradle` (lines 20-30) and to `registrations` (lines 34-44).
+   - Observable result: `tests/container.test.ts` resolves `terminateEmployee`; the route answers.
+
+## Acceptance criteria
+
+- [ ] `POST /api/v1/companies/:companyId/employees/:employeeId/termination` with
+      `{ "terminationDate": "<today or earlier>", "reason": "VOLUNTARY_RESIGNATION" }` as
+      HOLDING_ADMIN answers **204**; the directory (`GET /companies/:companyId/employees`) then
+      shows that colaborador with `status: "TERMINATED"`, that `terminationDate` and that
+      `terminationReason`.
+- [ ] Active colaboradores appear in the directory with `terminationDate: null` and
+      `terminationReason: null`.
+- [ ] A second termination of the same colaborador → **422** `EMPLOYEE_ALREADY_TERMINATED`.
+- [ ] A date later than today (UTC) → **422** `TERMINATION_DATE_IN_FUTURE`.
+- [ ] A date before the hire date → **422** `TERMINATION_BEFORE_HIRE`, with `details.hireDate`.
+- [ ] A reason outside the catalog, or a missing/badly formatted date → **400** (request validation).
+- [ ] Unknown colaborador, or one from another company → **404** `EMPLOYEE_NOT_FOUND`.
+- [ ] HR of the colaborador's company can terminate (204); HR of another company → 403; no
+      session → 401.
+- [ ] After a termination, the colaborador's user (if they had one) can no longer sign in, and
+      a `DELETE USERINFO` command for their RFC is queued for each checador of their sede that
+      has allowed networks (existing consumers of `EMPLOYEE_TERMINATED`).
+- [ ] `employees.employees` has `termination_date` and `termination_reason` filled for that row.
+- [ ] `pnpm check` and `pnpm test:integration` pass; `/docs` (Scalar) shows the new endpoint
+      with its three errors.
+
+## Test layers required
+
+| Layer       | Applies | Focus                                                                                                                                               |
+| ----------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| domain      | yes     | `terminate`: stores date and reason; each of the three errors and their order; event payload unchanged.                                             |
+| application | yes     | `TerminateEmployee` with in-memory repo: happy path saves + publishes; other company → NOT_FOUND; errors pass through; nothing published on error.  |
+| contract    | yes     | `TerminateEmployeeSchema` (reason enum, date format); route access `employees:terminate` scoped to the path company; list item new nullable fields. |
+| http        | yes     | Status codes and error codes of the acceptance criteria, permissions (admin, HR own/other company, anonymous).                                      |
+| integration | yes     | Prisma round-trip of `termination` (save/find and `listDirectory`), and an untouched row reading back null.                                         |
+| e2e         | no      | (no e2e infrastructure yet)                                                                                                                         |
+
+## Deviations
+
+## Test coverage
+
+## Review findings
+
+## Verification
