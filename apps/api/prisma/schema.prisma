@@ -59,24 +59,42 @@ enum EmployeeStatus {
   @@schema("employees")
 }
 
+/// Motivo de baja (catálogo LFT; espejo de TERMINATION_REASONS en @rrhh/domain)
+enum TerminationReason {
+  VOLUNTARY_RESIGNATION
+  DISMISSAL_WITH_CAUSE
+  DISMISSAL_WITHOUT_CAUSE
+  MUTUAL_AGREEMENT
+  END_OF_CONTRACT
+  DEATH
+  INCAPACITY
+  OTHER
+
+  @@schema("employees")
+}
+
 model Employee {
-  id                String         @id @db.Uuid
+  id                String             @id @db.Uuid
   /// Referencia por id al módulo organization (sin FK a propósito).
-  companyId         String         @map("company_id") @db.Uuid
-  nationalIdCountry String         @map("national_id_country") @db.Char(2)
-  nationalIdNumber  String         @map("national_id_number") @db.VarChar(20)
+  companyId         String             @map("company_id") @db.Uuid
+  nationalIdCountry String             @map("national_id_country") @db.Char(2)
+  nationalIdNumber  String             @map("national_id_number") @db.VarChar(20)
   /// RFC persona física (solo MX), único en el holding
-  rfc               String?        @unique @db.VarChar(13)
+  rfc               String?            @unique @db.VarChar(13)
   /// referencia por id a organization.sites, sin FK (ADR 0010)
-  siteId            String?        @map("site_id") @db.Uuid
-  firstName         String         @map("first_name") @db.VarChar(100)
-  lastName          String         @map("last_name") @db.VarChar(100)
-  email             String         @db.VarChar(254)
-  positionTitle     String?        @map("position_title") @db.VarChar(150)
-  hireDate          DateTime       @map("hire_date") @db.Date
-  status            EmployeeStatus @default(ACTIVE)
-  createdAt         DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt         DateTime       @updatedAt @map("updated_at") @db.Timestamptz(3)
+  siteId            String?            @map("site_id") @db.Uuid
+  firstName         String             @map("first_name") @db.VarChar(100)
+  lastName          String             @map("last_name") @db.VarChar(100)
+  email             String             @db.VarChar(254)
+  positionTitle     String?            @map("position_title") @db.VarChar(150)
+  hireDate          DateTime           @map("hire_date") @db.Date
+  status            EmployeeStatus     @default(ACTIVE)
+  /// fecha de baja; null mientras está activo
+  terminationDate   DateTime?          @map("termination_date") @db.Date
+  /// motivo de baja; null mientras está activo
+  terminationReason TerminationReason? @map("termination_reason")
+  createdAt         DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime           @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   @@unique([companyId, nationalIdCountry, nationalIdNumber])
   @@index([companyId, status])

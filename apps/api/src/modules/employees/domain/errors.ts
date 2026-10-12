@@ -32,6 +32,30 @@ export class RfcNotApplicableError extends BusinessRuleViolationError {
   }
 }
 
+export class EmployeeAlreadyTerminatedError extends BusinessRuleViolationError {
+  override readonly code = 'EMPLOYEE_ALREADY_TERMINATED';
+
+  constructor(employeeId: string) {
+    super('El colaborador ya está desvinculado', { employeeId });
+  }
+}
+
+export class TerminationDateInFutureError extends BusinessRuleViolationError {
+  override readonly code = 'TERMINATION_DATE_IN_FUTURE';
+
+  constructor() {
+    super('La fecha de baja no puede ser posterior a hoy');
+  }
+}
+
+export class TerminationBeforeHireError extends BusinessRuleViolationError {
+  override readonly code = 'TERMINATION_BEFORE_HIRE';
+
+  constructor(hireDate: string) {
+    super('La fecha de baja es anterior a la contratación', { hireDate });
+  }
+}
+
 export class EmployerNotFoundError extends NotFoundError {
   readonly code = 'COMPANY_NOT_FOUND';
 

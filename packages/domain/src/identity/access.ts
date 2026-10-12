@@ -11,6 +11,7 @@ export const PERMISSIONS = [
   'employees:read',
   'employees:register',
   'employees:update',
+  'employees:terminate',
   'attendance.devices:read',
   'attendance.devices:manage',
   'attendance.punches:read',

@@ -69,7 +69,7 @@ describe('PrismaEmployeeRepository', () => {
   it('persiste la desvinculación', async () => {
     const ana = employee({ curp: 'GOMA850101HQRRRN04', firstName: 'Ana', lastName: 'Rojas' });
     await repository.save(ana);
-    ana.terminate(new Date('2026-02-01T00:00:00Z'), NOW);
+    ana.terminate({ date: new Date('2026-01-12T00:00:00Z'), reason: 'VOLUNTARY_RESIGNATION' }, NOW);
     await repository.save(ana);
 
     expect((await repository.findById(ana.id))?.snapshot.status).toBe('TERMINATED');
@@ -287,7 +287,7 @@ describe('RFC en PrismaEmployeeQueries', () => {
   it('findByRfcs marca active=false al colaborador desvinculado', async () => {
     const ana = employee({ ...ANA, rfc: 'GOMA850101AB1' });
     await repository.save(ana);
-    ana.terminate(new Date('2026-02-01T00:00:00Z'), NOW);
+    ana.terminate({ date: new Date('2026-01-12T00:00:00Z'), reason: 'VOLUNTARY_RESIGNATION' }, NOW);
     await repository.save(ana);
 
     expect(await queries.findByRfcs(['GOMA850101AB1'])).toMatchObject([{ active: false }]);
@@ -394,7 +394,10 @@ describe('Sede en PrismaEmployeeRepository y PrismaEmployeeQueries', () => {
     await repository.save(pedro);
     await repository.save(otherSite);
     await repository.save(withoutSite(zoe));
-    pedro.terminate(new Date('2026-02-01T00:00:00Z'), NOW);
+    pedro.terminate(
+      { date: new Date('2026-01-12T00:00:00Z'), reason: 'VOLUNTARY_RESIGNATION' },
+      NOW,
+    );
     await repository.save(pedro);
 
     const members = await queries.listActiveOnSite(SITE_1);
@@ -448,7 +451,10 @@ describe('PrismaEmployeeQueries.listDirectory', () => {
         lastName: 'Araya',
       }),
     );
-    pedro.terminate(new Date('2026-02-01T00:00:00Z'), NOW);
+    pedro.terminate(
+      { date: new Date('2026-01-12T00:00:00Z'), reason: 'VOLUNTARY_RESIGNATION' },
+      NOW,
+    );
     await repository.save(pedro);
   }
 
@@ -500,5 +506,61 @@ describe('PrismaEmployeeQueries.listDirectory', () => {
 
     expect(result.total).toBe(2);
     expect(result.items.map((e) => e.fullName)).toEqual(['Pedro Soto']);
+  });
+});
+
+describe('Baja en PrismaEmployeeRepository y PrismaEmployeeQueries (employees-desvinculacion/001)', () => {
+  const page = { page: 1, pageSize: 20 };
+
+  it('guarda y rehidrata fecha (columna DATE, sin correrse) y motivo de la baja', async () => {
+    const ana = employee({ curp: 'GOMA850101HQRRRN04', firstName: 'Ana', lastName: 'Rojas' });
+    await repository.save(ana);
+    ana.terminate(
+      { date: new Date('2026-01-12T00:00:00Z'), reason: 'DISMISSAL_WITHOUT_CAUSE' },
+      NOW,
+    );
+    await repository.save(ana);
+
+    const found = await repository.findById(ana.id);
+
+    expect(found?.snapshot.status).toBe('TERMINATED');
+    expect(found?.snapshot.termination).toEqual({
+      date: new Date('2026-01-12T00:00:00.000Z'),
+      reason: 'DISMISSAL_WITHOUT_CAUSE',
+    });
+  });
+
+  it('un activo se rehidrata con termination null', async () => {
+    const ana = employee({ curp: 'GOMA850101HQRRRN04', firstName: 'Ana', lastName: 'Rojas' });
+    await repository.save(ana);
+
+    expect((await repository.findById(ana.id))?.snapshot.termination).toBeNull();
+  });
+
+  it('una fila TERMINATED sin fecha ni motivo (anterior al campo) se rehidrata con termination null', async () => {
+    const ana = employee({ curp: 'GOMA850101HQRRRN04', firstName: 'Ana', lastName: 'Rojas' });
+    const { termination: _none, ...props } = ana.snapshot;
+    await repository.save(Employee.restore(ana.id, { ...props, status: 'TERMINATED' }));
+
+    const found = await repository.findById(ana.id);
+
+    expect(found?.snapshot.status).toBe('TERMINATED');
+    expect(found?.snapshot.termination).toBeNull();
+  });
+
+  it('listDirectory devuelve fecha y motivo del desvinculado, y null para el activo', async () => {
+    const ana = employee({ curp: 'GOMA850101HQRRRN04', firstName: 'Ana', lastName: 'Rojas' });
+    const pedro = employee({ curp: 'PEXL900215MDFRPR07', firstName: 'Pedro', lastName: 'Soto' });
+    await repository.save(ana);
+    await repository.save(pedro);
+    pedro.terminate({ date: new Date('2026-01-12T00:00:00Z'), reason: 'INCAPACITY' }, NOW);
+    await repository.save(pedro);
+
+    const result = await queries.listDirectory({ ...page, companyId: COMPANY_A });
+
+    expect(result.items.map((e) => [e.fullName, e.terminationDate, e.terminationReason])).toEqual([
+      ['Ana Rojas', null, null],
+      ['Pedro Soto', '2026-01-12', 'INCAPACITY'],
+    ]);
   });
 });

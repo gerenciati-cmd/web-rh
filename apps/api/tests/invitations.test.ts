@@ -200,7 +200,10 @@ describe('invitaciones — HTTP', () => {
 
     it('colaborador desvinculado: 422 EMPLOYEE_INACTIVE', async () => {
       const employee = await employeeRepository().findById(ana as EmployeeId);
-      const terminated = employee?.terminate(new Date('2026-01-20'), new Date('2026-01-20'));
+      const terminated = employee?.terminate(
+        { date: new Date('2026-01-20'), reason: 'VOLUNTARY_RESIGNATION' },
+        new Date('2026-01-20'),
+      );
       expect(terminated?.ok).toBe(true);
 
       const response = await invite(hrToken, companyA, ana).expect(422);
@@ -427,7 +430,10 @@ describe('invitaciones — HTTP', () => {
     async function terminate(employeeId: string): Promise<void> {
       const employee = await employeeRepository().findById(employeeId as EmployeeId);
       if (!employee) throw new Error('fixture: colaborador no encontrado');
-      const result = employee.terminate(new Date('2026-02-01'), new Date('2026-02-01'));
+      const result = employee.terminate(
+        { date: new Date('2026-02-01'), reason: 'VOLUNTARY_RESIGNATION' },
+        new Date('2026-02-01'),
+      );
       if (!result.ok) throw result.error;
       await container.cradle.eventBus.publish(employee.pullEvents());
     }
@@ -458,6 +464,19 @@ describe('invitaciones — HTTP', () => {
 
       expect(disabled.body).toEqual(wrong.body);
       expect(disabled.body.code).toBe('INVALID_CREDENTIALS');
+    });
+
+    it('la baja por el endpoint (employees-desvinculacion/001) cierra la sesión y el login', async () => {
+      const token = await activatedSession();
+
+      await as(hrToken)
+        .post(`/companies/${companyA}/employees/${ana}/termination`)
+        .send({ terminationDate: '2026-02-01', reason: 'VOLUNTARY_RESIGNATION' })
+        .expect(204);
+
+      await as(token).get('/auth/me').expect(401);
+      const login401 = await login('ana@aps.cl').expect(401);
+      expect(login401.body.code).toBe('INVALID_CREDENTIALS');
     });
 
     it('el usuario queda DISABLED (no se borra) en el listado de usuarios', async () => {

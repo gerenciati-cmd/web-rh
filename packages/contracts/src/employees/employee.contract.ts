@@ -1,10 +1,11 @@
-import { EMPLOYEE_STATUSES, NationalId, PersonalRfc } from '@rrhh/domain';
+import { EMPLOYEE_STATUSES, NationalId, PersonalRfc, TERMINATION_REASONS } from '@rrhh/domain';
 import { z } from 'zod';
 
 import { CountrySchema, CreatedSchema, PageQuerySchema, pageOf } from '../common';
 import { defineRoute, requires } from '../http';
 
 export const EmployeeStatusSchema = z.enum(EMPLOYEE_STATUSES);
+export const TerminationReasonSchema = z.enum(TERMINATION_REASONS);
 
 // ── Modelos de lectura ─────────────────────────────────────────────────────
 export const EmployeeListItemSchema = z
@@ -18,6 +19,13 @@ export const EmployeeListItemSchema = z
     positionTitle: z.string().nullable().describe('Puesto; null si no se indicó'),
     hireDate: z.iso.date().describe('Fecha de contratación (YYYY-MM-DD)'),
     status: EmployeeStatusSchema,
+    terminationDate: z.iso
+      .date()
+      .nullable()
+      .describe('Fecha de baja (YYYY-MM-DD); null si está activo'),
+    terminationReason: TerminationReasonSchema.nullable().describe(
+      'Motivo de la baja; null si está activo',
+    ),
   })
   .meta({ id: 'EmployeeListItem' });
 export type EmployeeListItem = z.infer<typeof EmployeeListItemSchema>;
@@ -93,6 +101,16 @@ export const AssignEmployeeSiteSchema = z
   })
   .meta({ id: 'AssignEmployeeSiteInput' });
 export type AssignEmployeeSiteInput = z.input<typeof AssignEmployeeSiteSchema>;
+
+export const TerminateEmployeeSchema = z
+  .object({
+    terminationDate: z.iso
+      .date()
+      .describe('Fecha de baja (YYYY-MM-DD); hoy o anterior, no antes de la contratación'),
+    reason: TerminationReasonSchema.describe('Motivo de la baja'),
+  })
+  .meta({ id: 'TerminateEmployeeInput' });
+export type TerminateEmployeeInput = z.input<typeof TerminateEmployeeSchema>;
 
 export const ListEmployeesQuerySchema = PageQuerySchema.extend({
   status: EmployeeStatusSchema.optional().describe(
@@ -198,6 +216,29 @@ export const employeeRoutes = {
     access: requires('employees:update', { companyParam: 'companyId' }),
     params: EmployeeParams,
     body: AssignEmployeeSiteSchema,
+    response: z.undefined(),
+    successStatus: 204,
+  }),
+  terminateEmployee: defineRoute({
+    method: 'POST',
+    path: '/companies/:companyId/employees/:employeeId/termination',
+    summary: 'Da de baja (desvincula) a un colaborador',
+    description: [
+      'Registra la baja de un colaborador con su fecha y motivo. Queda desvinculado, pierde el acceso a la plataforma y se retira de los checadores de su sede.',
+      '',
+      '**Quién puede:** administrador del holding, o RH si la empresa está en su alcance.',
+      '',
+      '**Necesita:** una fecha de baja de hoy o anterior y no previa a la contratación, y un motivo del catálogo. No hay bajas programadas.',
+    ].join('\n'),
+    errors: [
+      'EMPLOYEE_NOT_FOUND',
+      'EMPLOYEE_ALREADY_TERMINATED',
+      'TERMINATION_DATE_IN_FUTURE',
+      'TERMINATION_BEFORE_HIRE',
+    ],
+    access: requires('employees:terminate', { companyParam: 'companyId' }),
+    params: EmployeeParams,
+    body: TerminateEmployeeSchema,
     response: z.undefined(),
     successStatus: 204,
   }),

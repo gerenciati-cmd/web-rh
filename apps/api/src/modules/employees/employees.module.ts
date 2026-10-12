@@ -5,6 +5,7 @@ import type { AppModule } from '@/shared/app-module';
 import { AssignEmployeeRfc } from './application/commands/assign-employee-rfc.command';
 import { AssignEmployeeSite } from './application/commands/assign-employee-site.command';
 import { RegisterEmployee } from './application/commands/register-employee.command';
+import { TerminateEmployee } from './application/commands/terminate-employee.command';
 import { EmployeesFacade, type EmployeesApi } from './application/employees.facade';
 import type { EmployerDirectory } from './application/ports/employer-directory';
 import type { SiteDirectory } from './application/ports/site-directory';
@@ -26,6 +27,7 @@ export interface EmployeesCradle {
   registerEmployee: RegisterEmployee;
   assignEmployeeRfc: AssignEmployeeRfc;
   assignEmployeeSite: AssignEmployeeSite;
+  terminateEmployee: TerminateEmployee;
   listEmployees: ListEmployees;
 }
 
@@ -40,6 +42,7 @@ export const employeesModule: AppModule<EmployeesCradle> = {
     registerEmployee: asClass(RegisterEmployee).singleton(),
     assignEmployeeRfc: asClass(AssignEmployeeRfc).singleton(),
     assignEmployeeSite: asClass(AssignEmployeeSite).singleton(),
+    terminateEmployee: asClass(TerminateEmployee).singleton(),
     listEmployees: asClass(ListEmployees).singleton(),
   },
   router: createEmployeesRouter,

@@ -92,7 +92,7 @@ describe('EmployeesPunchOwnerDirectory con la BD real', () => {
 
   it('un colaborador desvinculado sigue siendo dueño de su PIN', async () => {
     const ana = await hire(ANA);
-    ana.terminate(new Date('2026-02-01T00:00:00Z'), NOW);
+    ana.terminate({ date: new Date('2026-01-12T00:00:00Z'), reason: 'VOLUNTARY_RESIGNATION' }, NOW);
     await repository.save(ana);
 
     const owners = await directory.ownersOf([ANA.rfc]);

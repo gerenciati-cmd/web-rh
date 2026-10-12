@@ -228,7 +228,10 @@ describe('atribución de marcaciones por RFC (HTTP)', () => {
     const { employeeRepository } = container.cradle;
     const found = await employeeRepository.findById(anaId as EmployeeId);
     if (!found) throw new Error('colaborador no encontrado');
-    const terminated = found.terminate(new Date('2026-09-29T00:00:00Z'), new Date());
+    const terminated = found.terminate(
+      { date: new Date('2026-09-29T00:00:00Z'), reason: 'VOLUNTARY_RESIGNATION' },
+      new Date(),
+    );
     if (!terminated.ok) throw terminated.error;
     await employeeRepository.save(found);
 

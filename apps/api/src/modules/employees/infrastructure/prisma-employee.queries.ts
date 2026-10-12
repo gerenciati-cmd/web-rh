@@ -53,6 +53,8 @@ export class PrismaEmployeeQueries implements EmployeeQueries {
           positionTitle: true,
           hireDate: true,
           status: true,
+          terminationDate: true,
+          terminationReason: true,
         },
         orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }],
         skip: (page - 1) * pageSize,
@@ -76,6 +78,8 @@ export class PrismaEmployeeQueries implements EmployeeQueries {
         positionTitle: row.positionTitle,
         hireDate: row.hireDate.toISOString().slice(0, 10),
         status: row.status,
+        terminationDate: row.terminationDate?.toISOString().slice(0, 10) ?? null,
+        terminationReason: row.terminationReason,
       };
     });
 

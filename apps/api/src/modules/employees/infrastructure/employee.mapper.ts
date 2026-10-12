@@ -27,6 +27,10 @@ export const EmployeeMapper = {
       positionTitle: row.positionTitle,
       hireDate: row.hireDate,
       status: row.status,
+      termination:
+        row.terminationDate && row.terminationReason
+          ? { date: row.terminationDate, reason: row.terminationReason }
+          : null,
     });
   },
 
@@ -45,6 +49,8 @@ export const EmployeeMapper = {
       positionTitle: s.positionTitle,
       hireDate: s.hireDate,
       status: s.status,
+      terminationDate: s.termination?.date ?? null,
+      terminationReason: s.termination?.reason ?? null,
     };
   },
 };

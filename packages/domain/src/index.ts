@@ -4,6 +4,7 @@ export * from './domain-event';
 export * from './email';
 export * from './entity';
 export * from './employees/employee-status';
+export * from './employees/termination-reason';
 export * from './errors';
 export * from './identity/access';
 export * from './money';
