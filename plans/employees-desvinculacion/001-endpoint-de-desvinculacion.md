@@ -213,25 +213,25 @@ None
 
 ## Acceptance criteria
 
-- [ ] `POST /api/v1/companies/:companyId/employees/:employeeId/termination` with
+- [x] `POST /api/v1/companies/:companyId/employees/:employeeId/termination` with
       `{ "terminationDate": "<today or earlier>", "reason": "VOLUNTARY_RESIGNATION" }` as
       HOLDING_ADMIN answers **204**; the directory (`GET /companies/:companyId/employees`) then
       shows that colaborador with `status: "TERMINATED"`, that `terminationDate` and that
       `terminationReason`.
-- [ ] Active colaboradores appear in the directory with `terminationDate: null` and
+- [x] Active colaboradores appear in the directory with `terminationDate: null` and
       `terminationReason: null`.
-- [ ] A second termination of the same colaborador → **422** `EMPLOYEE_ALREADY_TERMINATED`.
-- [ ] A date later than today (UTC) → **422** `TERMINATION_DATE_IN_FUTURE`.
-- [ ] A date before the hire date → **422** `TERMINATION_BEFORE_HIRE`, with `details.hireDate`.
-- [ ] A reason outside the catalog, or a missing/badly formatted date → **400** (request validation).
-- [ ] Unknown colaborador, or one from another company → **404** `EMPLOYEE_NOT_FOUND`.
-- [ ] HR of the colaborador's company can terminate (204); HR of another company → 403; no
+- [x] A second termination of the same colaborador → **422** `EMPLOYEE_ALREADY_TERMINATED`.
+- [x] A date later than today (UTC) → **422** `TERMINATION_DATE_IN_FUTURE`.
+- [x] A date before the hire date → **422** `TERMINATION_BEFORE_HIRE`, with `details.hireDate`.
+- [x] A reason outside the catalog, or a missing/badly formatted date → **400** (request validation).
+- [x] Unknown colaborador, or one from another company → **404** `EMPLOYEE_NOT_FOUND`.
+- [x] HR of the colaborador's company can terminate (204); HR of another company → 403; no
       session → 401.
-- [ ] After a termination, the colaborador's user (if they had one) can no longer sign in, and
+- [x] After a termination, the colaborador's user (if they had one) can no longer sign in, and
       a `DELETE USERINFO` command for their RFC is queued for each checador of their sede that
       has allowed networks (existing consumers of `EMPLOYEE_TERMINATED`).
-- [ ] `employees.employees` has `termination_date` and `termination_reason` filled for that row.
-- [ ] `pnpm check` and `pnpm test:integration` pass; `/docs` (Scalar) shows the new endpoint
+- [x] `employees.employees` has `termination_date` and `termination_reason` filled for that row.
+- [x] `pnpm check` and `pnpm test:integration` pass; `/docs` (Scalar) shows the new endpoint
       with its three errors.
 
 ## Test layers required
@@ -399,3 +399,37 @@ plan). `pnpm plans:scope` passes. Medium-1 stays as the open finding
 changed, so the review verdict holds. Plan to `verify`.
 
 ## Verification
+
+**PASS** — 2026-10-12, main session, at `2b8c96b`, against the dev API on `localhost:3000`.
+
+- Suites: `pnpm check` green and `pnpm test:integration` 17 files / 222 tests passed (closing run
+  of the tests phase; no code changed since). `pnpm --filter @rrhh/api db:deploy` on the dev DB:
+  "No pending migrations to apply" (`20261012154547_add_employee_termination` already applied by
+  `db:migrate`).
+- HTTP script as HOLDING_ADMIN (`scratchpad/verify-termination.mts`; synthetic data with suffix
+  `266Y3`: a new MX company, a new sede, a checador with network `10.250.0.0/16`, two
+  colaboradores hired on that sede), 17/17 PASS:
+  - Directory before: both `ACTIVE` with `terminationDate`/`terminationReason` null.
+  - Tomorrow → 422 `TERMINATION_DATE_IN_FUTURE`; `2026-01-09` (hired `2026-01-10`) → 422
+    `TERMINATION_BEFORE_HIRE` with `details.hireDate: "2026-01-10"`; reason `RESIGNATION` → 400;
+    `01/03/2026` and missing date → 400; unknown id → 404 `EMPLOYEE_NOT_FOUND`; through another
+    company → 404 `EMPLOYEE_NOT_FOUND`; anonymous → 401.
+  - `2026-02-15` + `VOLUNTARY_RESIGNATION` → 204; the directory shows Ana `TERMINATED`,
+    `2026-02-15`, `VOLUNTARY_RESIGNATION`; Luis still `ACTIVE` with nulls. Second termination →
+    422 `EMPLOYEE_ALREADY_TERMINATED` with `details.employeeId`.
+  - Checador commands after the termination: `UPDATE` of both RFCs (hire) and `DELETE` of Ana's
+    RFC only — the attendance consumer reacts to the endpoint.
+  - Luis with today's date + `END_OF_CONTRACT` → 204.
+  - `/api/v1/openapi.json` has `POST /companies/{companyId}/employees/{employeeId}/termination`
+    ("Da de baja (desvincula) a un colaborador"; responses 204, 400, 401, 403, 404, 422). The
+    script's first check of that looked up the path with the `/api/v1` prefix and reported FAIL;
+    re-checked with `jq` on the real key — present.
+- Rows (`psql`): `Ana | TERMINATED | 2026-02-15 | VOLUNTARY_RESIGNATION`,
+  `Luis | TERMINATED | 2026-10-12 | END_OF_CONTRACT`.
+- **NOT VERIFIED in the running app** (covered by HTTP tests on the real container, see Test
+  coverage): HR of the colaborador's company → 204 and HR of another company → 403 (no HR user in
+  the dev DB), and the identity reaction (session closed, login refused), which needs an activated
+  colaborador account through the email invitation flow.
+- Data left in the dev DB: company `Verificación Baja 266Y3 S.A. de C.V.` with two terminated
+  colaboradores, sede `Verificación baja 266Y3`, checador `VERIFBAJA266Y3` (network
+  `10.250.0.0/16`, unreachable) with three QUEUED commands for synthetic RFCs.
