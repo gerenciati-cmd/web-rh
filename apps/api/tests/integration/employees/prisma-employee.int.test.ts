@@ -560,3 +560,120 @@ describe('Baja en PrismaEmployeeRepository y PrismaEmployeeQueries (employees-de
     ]);
   });
 });
+
+describe('Escrituras dirigidas (employees-desvinculacion/002)', () => {
+  const SITE_1 = '019b1c2e-0000-7000-8000-000000000001';
+  const SITE_2 = '019b1c2e-0000-7000-8000-000000000002';
+  const ANA = { curp: 'GOMA850101HQRRRN04', firstName: 'Ana', lastName: 'Rojas' };
+  const TERMINATION = { date: new Date('2026-01-12T00:00:00Z'), reason: 'DEATH' } as const;
+
+  const rfcOf = (raw: string) => {
+    const rfc = PersonalRfc.create(raw);
+    if (!rfc.ok) throw rfc.error;
+    return rfc.value;
+  };
+
+  /** Dos lecturas de la misma fila: simulan dos peticiones que la cargaron a la vez. */
+  async function twoReads() {
+    const ana = employee({ ...ANA, rfc: 'GOMA850101AB1', siteId: SITE_1 });
+    await repository.add(ana);
+    const first = await repository.findById(ana.id);
+    const second = await repository.findById(ana.id);
+    if (!first || !second) throw new Error('fixture inválido');
+    return { id: ana.id, first, second };
+  }
+
+  it('saveSite solo escribe la sede (un RFC cambiado en memoria no se guarda)', async () => {
+    const { id, first } = await twoReads();
+    first.assignRfc(rfcOf('GOMA850101AB9'), NOW);
+    first.assignSite(SITE_2, NOW);
+
+    expect((await repository.saveSite(first)).ok).toBe(true);
+
+    const found = await repository.findById(id);
+    expect(found?.snapshot.siteId).toBe(SITE_2);
+    expect(found?.snapshot.rfc?.value).toBe('GOMA850101AB1');
+  });
+
+  it('saveRfc solo escribe el RFC (una sede cambiada en memoria no se guarda)', async () => {
+    const { id, first } = await twoReads();
+    first.assignSite(SITE_2, NOW);
+    first.assignRfc(rfcOf('GOMA850101AB9'), NOW);
+
+    expect((await repository.saveRfc(first)).ok).toBe(true);
+
+    const found = await repository.findById(id);
+    expect(found?.snapshot.rfc?.value).toBe('GOMA850101AB9');
+    expect(found?.snapshot.siteId).toBe(SITE_1);
+  });
+
+  it('saveTermination solo escribe estado, fecha y motivo', async () => {
+    const { id, first } = await twoReads();
+    first.assignSite(SITE_2, NOW);
+    first.terminate(TERMINATION, NOW);
+
+    expect((await repository.saveTermination(first)).ok).toBe(true);
+
+    const found = await repository.findById(id);
+    expect(found?.snapshot.status).toBe('TERMINATED');
+    expect(found?.snapshot.termination).toEqual(TERMINATION);
+    expect(found?.snapshot.siteId).toBe(SITE_1);
+  });
+
+  it('un cambio de sede leído antes de la baja → EMPLOYEE_INACTIVE y la baja queda intacta', async () => {
+    const { id, first, second } = await twoReads();
+    first.terminate(TERMINATION, NOW);
+    await repository.saveTermination(first);
+    second.assignSite(SITE_2, NOW);
+
+    const result = await repository.saveSite(second);
+
+    expect(!result.ok && result.error.code).toBe('EMPLOYEE_INACTIVE');
+    const found = await repository.findById(id);
+    expect(found?.snapshot.status).toBe('TERMINATED');
+    expect(found?.snapshot.termination).toEqual(TERMINATION);
+    expect(found?.snapshot.siteId).toBe(SITE_1);
+  });
+
+  it('un cambio de RFC leído antes de la baja → EMPLOYEE_INACTIVE y el RFC no cambia', async () => {
+    const { id, first, second } = await twoReads();
+    first.terminate(TERMINATION, NOW);
+    await repository.saveTermination(first);
+    second.assignRfc(rfcOf('GOMA850101AB9'), NOW);
+
+    const result = await repository.saveRfc(second);
+
+    expect(!result.ok && result.error.code).toBe('EMPLOYEE_INACTIVE');
+    const found = await repository.findById(id);
+    expect(found?.snapshot.rfc?.value).toBe('GOMA850101AB1');
+    expect(found?.snapshot.status).toBe('TERMINATED');
+  });
+
+  it('una segunda baja leída antes de la primera → EMPLOYEE_ALREADY_TERMINATED y se conserva la primera', async () => {
+    const { id, first, second } = await twoReads();
+    first.terminate(TERMINATION, NOW);
+    second.terminate({ date: new Date('2026-01-14T00:00:00Z'), reason: 'OTHER' }, NOW);
+
+    expect((await repository.saveTermination(first)).ok).toBe(true);
+    const result = await repository.saveTermination(second);
+
+    expect(!result.ok && result.error.code).toBe('EMPLOYEE_ALREADY_TERMINATED');
+    expect((await repository.findById(id))?.snapshot.termination).toEqual(TERMINATION);
+  });
+
+  it('dos bajas concurrentes: exactamente una se aplica', async () => {
+    const { first, second } = await twoReads();
+    first.terminate(TERMINATION, NOW);
+    second.terminate({ date: new Date('2026-01-14T00:00:00Z'), reason: 'OTHER' }, NOW);
+
+    const results = await Promise.all([
+      repository.saveTermination(first),
+      repository.saveTermination(second),
+    ]);
+
+    expect(results.filter((result) => result.ok)).toHaveLength(1);
+    expect(results.filter((result) => !result.ok).map((result) => result.error.code)).toEqual([
+      'EMPLOYEE_ALREADY_TERMINATED',
+    ]);
+  });
+});

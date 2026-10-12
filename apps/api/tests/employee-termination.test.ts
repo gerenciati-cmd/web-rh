@@ -41,7 +41,7 @@ describe('Baja del colaborador (HTTP)', () => {
   let companyB: string;
   let employeeId: string;
 
-  const call = (method: 'get' | 'post', path: string, token: string | null) => {
+  const call = (method: 'get' | 'post' | 'put', path: string, token: string | null) => {
     const test = request(app)[method](`${API_PREFIX}${path}`);
     return token ? test.set('Authorization', `Bearer ${token}`) : test;
   };
@@ -202,5 +202,46 @@ describe('Baja del colaborador (HTTP)', () => {
     const response = await terminate({ terminationDate: TODAY, reason: 'OTHER' }, null).expect(401);
 
     expect(response.body.code).toBe('AUTHENTICATION_REQUIRED');
+  });
+
+  describe('desvinculado no se edita (employees-desvinculacion/002)', () => {
+    const put = (field: 'site' | 'rfc', body: object) =>
+      call('put', `/companies/${companyA}/employees/${employeeId}/${field}`, adminToken).send(body);
+
+    beforeEach(async () => {
+      await terminate({ terminationDate: '2026-02-15', reason: 'DEATH' }).expect(204);
+    });
+
+    it('PUT …/site → 422 EMPLOYEE_INACTIVE con employeeId y la baja intacta', async () => {
+      const otherSite = await createTestSite(container, 'Playa del Carmen');
+
+      const response = await put('site', { siteId: otherSite }).expect(422);
+
+      expect(response.body).toEqual({
+        code: 'EMPLOYEE_INACTIVE',
+        message: 'El colaborador está desvinculado',
+        details: { employeeId },
+      });
+      expect((await listed())[0]).toMatchObject({
+        status: 'TERMINATED',
+        terminationDate: '2026-02-15',
+        terminationReason: 'DEATH',
+      });
+    });
+
+    it('PUT …/rfc → 422 EMPLOYEE_INACTIVE sin cambiar el RFC', async () => {
+      const response = await put('rfc', { rfc: 'GOMA850101AB9' }).expect(422);
+
+      expect(response.body.code).toBe('EMPLOYEE_INACTIVE');
+      const rows = (await call('get', `/companies/${companyA}/employees`, adminToken).expect(200))
+        .body.items as { rfc: string }[];
+      expect(rows[0]?.rfc).toBe('GOMA850101AB1');
+    });
+
+    it('una segunda baja sigue respondiendo 422 EMPLOYEE_ALREADY_TERMINATED', async () => {
+      const response = await terminate({ terminationDate: TODAY, reason: 'OTHER' }).expect(422);
+
+      expect(response.body.code).toBe('EMPLOYEE_ALREADY_TERMINATED');
+    });
   });
 });

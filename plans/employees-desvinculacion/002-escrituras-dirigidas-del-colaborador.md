@@ -1,5 +1,5 @@
 ---
-status: testing
+status: review
 module: employees
 min_implementer: mid
 depends_on: ['001']
@@ -227,6 +227,30 @@ Evidence: `pnpm check` green; `pnpm test:integration` 17 files / 222 tests passe
 `employeeRepository.save` left in `apps/api`.
 
 ## Test coverage
+
+Written inline (2026-10-12). Baseline = the implementation's closing run (`pnpm check` green,
+integration 222/222). Closing run: `pnpm check` green; `pnpm test:integration` 17 files /
+229 tests passed. New tests: domain 5, application 9, contract 3, http 3, integration 7. No GAP,
+nothing NOT CONFIRMED. The race tests run against the real `rrhh_test` Postgres (two reads of the
+same row, and two `saveTermination` in `Promise.all`).
+
+| Behavior (from plan / code)                                                       | Source (`file:line`)                                                                                                                             | Layer       | Test                                                                                                                            | State     |
+| --------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ----------- | ------------------------------------------------------------------------------------------------------------------------------- | --------- |
+| `assignSite` on TERMINATED → `EMPLOYEE_INACTIVE`, no change, no event             | `employee.ts:173-174`                                                                                                                            | domain      | `employee.test.ts › desvinculado no se edita › assignSite → EMPLOYEE_INACTIVE…`, `› …misma sede…`                               | CONFIRMED |
+| `assignRfc` on TERMINATED → `EMPLOYEE_INACTIVE`, checked before country           | `employee.ts:160-161`                                                                                                                            | domain      | `› assignRfc → EMPLOYEE_INACTIVE…`, `› assignRfc revisa la baja antes que el país…`                                             | CONFIRMED |
+| ACTIVE still edits (`assignSite` returns ok)                                      | `employee.ts:173-183`                                                                                                                            | domain      | `› un activo sigue pudiendo cambiar sede y RFC`                                                                                 | CONFIRMED |
+| Commands call the targeted write                                                  | `register-employee.command.ts:91`, `assign-employee-rfc.command.ts:45`, `assign-employee-site.command.ts:54`, `terminate-employee.command.ts:46` | application | `› inserta con add`, `› escribe con saveRfc`, `› escribe con saveSite`, `› escribe con saveTermination`                         | CONFIRMED |
+| Terminated: site/RFC commands answer `EMPLOYEE_INACTIVE`, no write/event          | `assign-employee-site.command.ts:51-52`, `employee.ts:160-161`                                                                                   | application | `assign-employee-site.command.test.ts › EMPLOYEE_INACTIVE para un desvinculado…`, same in `assign-employee-rfc.command.test.ts` | CONFIRMED |
+| Error order kept: sede validation and RFC uniqueness first; tenancy 404           | `assign-employee-site.command.ts:39-49`, `assign-employee-rfc.command.ts:38-40`                                                                  | application | `› la validación de la sede va antes…`, `› el RFC de otro colaborador se reporta antes…`, `› un desvinculado de otra empresa…`  | CONFIRMED |
+| Write err propagated, nothing published                                           | commands, lines above                                                                                                                            | application | `› propaga el fallo de save…` (site), `› propaga el err de save…` (termination)                                                 | CONFIRMED |
+| Both PUT routes document `EMPLOYEE_INACTIVE` (variant `employees`)                | `employee.contract.ts` routes, `errors.ts` `EMPLOYEE_INACTIVE`                                                                                   | contract    | `employee.contract.test.ts › desvinculado no se edita` (3)                                                                      | CONFIRMED |
+| Error class matches the catalog variant                                           | `domain/errors.ts`, `error-catalog.test.ts:34-38`                                                                                                | contract    | `error-catalog.test.ts` (existing, now includes `EmployeeInactiveError`)                                                        | CONFIRMED |
+| HTTP: PUT site/rfc after termination → 422 body; termination intact               | router → commands                                                                                                                                | http        | `employee-termination.test.ts › desvinculado no se edita` (3)                                                                   | CONFIRMED |
+| ACTIVE flows unchanged (register, RFC, site, termination)                         | whole suite                                                                                                                                      | http        | existing `employee-site`, `employee-rfc`, `employee-termination`, `http` tests, green after the conversion                      | CONFIRMED |
+| Each write touches only its columns                                               | `prisma-employee.repository.ts:76-108`, `employee.mapper.ts`                                                                                     | integration | `prisma-employee.int.test.ts › Escrituras dirigidas › saveSite solo…`, `› saveRfc solo…`, `› saveTermination solo…`             | CONFIRMED |
+| Stale sede / RFC write after a termination → `EMPLOYEE_INACTIVE`, row intact      | `prisma-employee.repository.ts:84,100`                                                                                                           | integration | `› un cambio de sede leído antes de la baja…`, `› un cambio de RFC leído antes de la baja…`                                     | CONFIRMED |
+| Stale / concurrent second termination → `EMPLOYEE_ALREADY_TERMINATED`, first kept | `prisma-employee.repository.ts:103-108`                                                                                                          | integration | `› una segunda baja leída antes de la primera…`, `› dos bajas concurrentes: exactamente una se aplica`                          | CONFIRMED |
+| `saveRfc` unique conflict → `EMPLOYEE_RFC_ALREADY_REGISTERED`                     | `prisma-employee.repository.ts:76-93`                                                                                                            | integration | `› asignar el RFC de otro colaborador falla…` (existing, now through `saveRfc`)                                                 | CONFIRMED |
 
 ## Review findings
 

@@ -215,4 +215,12 @@ describe('RegisterEmployee', () => {
     ).toHaveLength(1);
     expect(eventBus.names()).toHaveLength(1);
   });
+
+  it('inserta con add (employees-desvinculacion/002)', async () => {
+    const add = vi.spyOn(repository, 'add');
+
+    await registerEmployee.execute(input);
+
+    expect(add).toHaveBeenCalledTimes(1);
+  });
 });

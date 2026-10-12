@@ -178,4 +178,18 @@ describe('TerminateEmployee', () => {
     expect(!result.ok && result.error.code).toBe('EMPLOYEE_ALREADY_TERMINATED');
     expect(eventBus.names()).toEqual([]);
   });
+
+  it('escribe con saveTermination (employees-desvinculacion/002)', async () => {
+    await seed(employee({ id: 'emp-1' }));
+    const saveTermination = vi.spyOn(repository, 'saveTermination');
+
+    await terminateEmployee.execute({
+      companyId: COMPANY,
+      employeeId: 'emp-1',
+      terminationDate: '2026-01-10',
+      reason: 'OTHER',
+    });
+
+    expect(saveTermination).toHaveBeenCalledTimes(1);
+  });
 });

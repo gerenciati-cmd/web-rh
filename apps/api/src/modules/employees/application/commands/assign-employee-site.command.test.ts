@@ -168,4 +168,50 @@ describe('AssignEmployeeSite', () => {
     expect(!result.ok && result.error.code).toBe('EMPLOYEE_INACTIVE');
     expect(eventBus.names()).toEqual([]);
   });
+
+  describe('escrituras dirigidas y desvinculados (employees-desvinculacion/002)', () => {
+    const terminatedEmployee = (id: string) => {
+      const e = employee({ id });
+      e.terminate({ date: new Date('2026-01-10T00:00:00Z'), reason: 'OTHER' }, new Date());
+      e.pullEvents();
+      return e;
+    };
+
+    it('escribe con saveSite (solo la sede)', async () => {
+      await seed(employee({ id: 'emp-1' }));
+      const saveSite = vi.spyOn(repository, 'saveSite');
+
+      await run('site-2');
+
+      expect(saveSite).toHaveBeenCalledTimes(1);
+    });
+
+    it('EMPLOYEE_INACTIVE para un desvinculado: no escribe, no cambia la sede, no publica', async () => {
+      await seed(terminatedEmployee('emp-1'));
+      const saveSite = vi.spyOn(repository, 'saveSite');
+
+      const result = await run('site-2');
+
+      expect(!result.ok && result.error.code).toBe('EMPLOYEE_INACTIVE');
+      expect(saveSite).not.toHaveBeenCalled();
+      expect(siteOf('emp-1')).toBe('site-1');
+      expect(eventBus.names()).toEqual([]);
+    });
+
+    it('la validación de la sede va antes que la regla del desvinculado', async () => {
+      await seed(terminatedEmployee('emp-1'));
+
+      const result = await run('site-unknown');
+
+      expect(!result.ok && result.error.code).toBe('SITE_NOT_FOUND');
+    });
+
+    it('un desvinculado de otra empresa sigue respondiendo EMPLOYEE_NOT_FOUND', async () => {
+      await seed(terminatedEmployee('emp-1'));
+
+      const result = await run('site-2', 'emp-1', OTHER_COMPANY);
+
+      expect(!result.ok && result.error.code).toBe('EMPLOYEE_NOT_FOUND');
+    });
+  });
 });

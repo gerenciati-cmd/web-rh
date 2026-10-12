@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
+import { API_ERRORS } from '../errors';
+
 import {
   AssignEmployeeRfcSchema,
   AssignEmployeeSiteSchema,
@@ -370,5 +372,26 @@ describe('EmployeeListItemSchema › baja', () => {
     const { terminationReason: _reason, ...withoutReason } = active;
     expect(EmployeeListItemSchema.safeParse(withoutDate).success).toBe(false);
     expect(EmployeeListItemSchema.safeParse(withoutReason).success).toBe(false);
+  });
+});
+
+describe('desvinculado no se edita (employees-desvinculacion/002)', () => {
+  it.each(['assignEmployeeRfc', 'assignEmployeeSite'] as const)(
+    '%s documenta EMPLOYEE_INACTIVE con la variante employees',
+    (name) => {
+      expect(employeeRoutes[name].errors).toContainEqual({
+        code: 'EMPLOYEE_INACTIVE',
+        variant: 'employees',
+      });
+    },
+  );
+
+  it('la variante employees del catálogo trae el employeeId en details', () => {
+    expect(API_ERRORS.EMPLOYEE_INACTIVE.status).toBe(422);
+    expect(API_ERRORS.EMPLOYEE_INACTIVE.examples.employees).toMatchObject({
+      code: 'EMPLOYEE_INACTIVE',
+      message: 'El colaborador está desvinculado',
+      details: { employeeId: expect.any(String) },
+    });
   });
 });

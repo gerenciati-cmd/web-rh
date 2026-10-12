@@ -352,4 +352,65 @@ describe('Employee', () => {
       expect(restored.snapshot.status).toBe('TERMINATED');
     });
   });
+
+  describe('desvinculado no se edita (employees-desvinculacion/002)', () => {
+    const terminated = () => {
+      const result = hire();
+      if (!result.ok) throw result.error;
+      const employee = result.value;
+      employee.terminate({ date: new Date('2026-01-10'), reason: 'OTHER' }, now);
+      employee.pullEvents();
+      return employee;
+    };
+    const rfc = (raw: string) => {
+      const value = PersonalRfc.create(raw);
+      if (!value.ok) throw value.error;
+      return value.value;
+    };
+
+    it('assignSite → EMPLOYEE_INACTIVE con employeeId, sin cambiar la sede ni registrar evento', () => {
+      const employee = terminated();
+
+      const result = employee.assignSite('site-2', now);
+
+      expect(!result.ok && result.error.code).toBe('EMPLOYEE_INACTIVE');
+      expect(!result.ok && result.error.details).toEqual({ employeeId: 'emp-1' });
+      expect(employee.snapshot.siteId).toBe('site-1');
+      expect(employee.pullEvents()).toEqual([]);
+    });
+
+    it('assignSite con la misma sede también se rechaza', () => {
+      expect(terminated().assignSite('site-1', now).ok).toBe(false);
+    });
+
+    it('assignRfc → EMPLOYEE_INACTIVE, sin cambiar el RFC ni registrar evento', () => {
+      const employee = terminated();
+
+      const result = employee.assignRfc(rfc('GOMA850101AB9'), now);
+
+      expect(!result.ok && result.error.code).toBe('EMPLOYEE_INACTIVE');
+      expect(employee.snapshot.rfc?.value).toBe('GOMA850101AB1');
+      expect(employee.pullEvents()).toEqual([]);
+    });
+
+    it('assignRfc revisa la baja antes que el país (desvinculado de otro país → EMPLOYEE_INACTIVE)', () => {
+      const doId = NationalId.create('DO', '00113918205');
+      if (!doId.ok) throw doId.error;
+      const result = hire({ nationalId: doId.value, rfc: undefined });
+      if (!result.ok) throw result.error;
+      result.value.terminate({ date: new Date('2026-01-10'), reason: 'OTHER' }, now);
+
+      const assigned = result.value.assignRfc(rfc('GOMA850101AB1'), now);
+
+      expect(!assigned.ok && assigned.error.code).toBe('EMPLOYEE_INACTIVE');
+    });
+
+    it('un activo sigue pudiendo cambiar sede y RFC (assignSite devuelve ok)', () => {
+      const result = hire();
+      if (!result.ok) throw result.error;
+
+      expect(result.value.assignSite('site-2', now).ok).toBe(true);
+      expect(result.value.assignRfc(rfc('GOMA850101AB9'), now).ok).toBe(true);
+    });
+  });
 });
