@@ -178,19 +178,19 @@ the **persisted** status, updated only by its writes.
 
 ## Acceptance criteria
 
-- [ ] All existing employees flows behave as before for ACTIVE colaboradores: register (201),
+- [x] All existing employees flows behave as before for ACTIVE colaboradores: register (201),
       `PUT …/rfc` (204), `PUT …/site` (204), termination (204), directory unchanged.
-- [ ] `PUT …/site` and `PUT …/rfc` on a TERMINATED colaborador → **422** `EMPLOYEE_INACTIVE` with
+- [x] `PUT …/site` and `PUT …/rfc` on a TERMINATED colaborador → **422** `EMPLOYEE_INACTIVE` with
       `details.employeeId`; the row keeps its termination; no event is published.
-- [ ] After a termination, a sede change that read the row before it (simulated in a test with a
+- [x] After a termination, a sede change that read the row before it (simulated in a test with a
       stale aggregate) cannot bring back `status: ACTIVE` nor clear `termination_date` /
       `termination_reason`: the write answers `EMPLOYEE_INACTIVE`.
-- [ ] Two terminations of the same ACTIVE colaborador, the second from a stale aggregate: one
+- [x] Two terminations of the same ACTIVE colaborador, the second from a stale aggregate: one
       204, the other 422 `EMPLOYEE_ALREADY_TERMINATED`; exactly one `EMPLOYEE_TERMINATED` is
       published.
-- [ ] `EmployeeRepository` has no whole-row `save`; `rg "employeeRepository.save|repository.save\(" apps/api` finds no employees calls.
-- [ ] `/api/v1/openapi.json` lists 422 `EMPLOYEE_INACTIVE` on both PUT routes.
-- [ ] `pnpm check` and `pnpm test:integration` pass.
+- [x] `EmployeeRepository` has no whole-row `save`; `rg "employeeRepository.save|repository.save\(" apps/api` finds no employees calls.
+- [x] `/api/v1/openapi.json` lists 422 `EMPLOYEE_INACTIVE` on both PUT routes.
+- [x] `pnpm check` and `pnpm test:integration` pass.
 
 ## Test layers required
 
@@ -342,3 +342,29 @@ Low-2 → `docs/architecture.md:100` now reads `EmployeeRepository.add()`, decla
 holds. Plan to `verify`.
 
 ## Verification
+
+**PASS** — 2026-10-12, main session, at `de52e45`, against the dev API on `localhost:3000`.
+
+- Suites: `pnpm check` green and `pnpm test:integration` 17 files / 229 tests passed (closing run
+  of the tests phase; only a plan and doc line changed since). No schema change in this plan.
+- HTTP script as HOLDING_ADMIN (`scratchpad/verify-targeted-writes.mts`; synthetic data with
+  suffix `RW2AU`: a new MX company, two sedes, a checador on sede A with network
+  `10.251.0.0/16`, three colaboradores hired on sede A), 10/10 PASS:
+  - Register → 201 ×3 (now through `add`). Active Luis: `PUT …/site` to sede B → 204 and
+    `PUT …/rfc` → 204; the directory shows both changes.
+  - Ana terminated (`2026-02-15`, `DEATH`) → 204. Then `PUT …/site` → 422
+    `{ code: EMPLOYEE_INACTIVE, message: "El colaborador está desvinculado", details: { employeeId } }`;
+    `PUT …/rfc` → 422 `EMPLOYEE_INACTIVE`. The directory still shows Ana `TERMINATED`,
+    `2026-02-15`, `DEATH`, her original sede and RFC.
+  - Eva: two `POST …/termination` sent at the same time (`Promise.all`) → one 204 and one 422
+    `EMPLOYEE_ALREADY_TERMINATED`. The checador has exactly **one** `DELETE` for her RFC (one
+    `EMPLOYEE_TERMINATED` published).
+  - `/api/v1/openapi.json`: 422 of `PUT …/rfc` is `RFC_NOT_APPLICABLE, EMPLOYEE_INACTIVE`; of
+    `PUT …/site` is `SITE_INACTIVE, SITE_COUNTRY_MISMATCH, EMPLOYEE_INACTIVE`.
+- Criterion 3 (a sede change that read the row before a termination) cannot be timed reliably
+  over HTTP; it is exercised against the real Postgres in
+  `prisma-employee.int.test.ts › Escrituras dirigidas › un cambio de sede leído antes de la baja…`
+  (and the RFC variant), green in the run above.
+- Data left in the dev DB: company `Verificación Escrituras RW2AU S.A. de C.V.` (Ana and Eva
+  terminated, Luis active on sede B), sedes `Verificación escrituras A/B RW2AU`, checador
+  `VERIFESCRW2AU` (network `10.251.0.0/16`, unreachable) with QUEUED commands for synthetic RFCs.
