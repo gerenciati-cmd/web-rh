@@ -400,7 +400,9 @@ describe('buildOpenApiDocument — documentación por endpoint y errores', () =>
       SITE_NOT_FOUND: { $ref: '#/components/examples/SITE_NOT_FOUND' },
       COMPANY_NOT_FOUND: { $ref: '#/components/examples/COMPANY_NOT_FOUND' },
     });
-    expect(responses?.['422']?.description).toBe('SITE_INACTIVE, SITE_COUNTRY_MISMATCH');
+    expect(responses?.['422']?.description).toBe(
+      'SITE_INACTIVE, SITE_COUNTRY_MISMATCH, EMPLOYEE_INACTIVE',
+    );
   });
 
   it('una ruta con variante referencia el ejemplo de esa variante y el catálogo lo emite una vez', () => {

@@ -425,11 +425,17 @@ export const API_ERRORS = {
   },
   EMPLOYEE_INACTIVE: {
     status: 422,
-    description: 'El colaborador está desvinculado y no se le puede invitar.',
+    description:
+      'El colaborador está desvinculado: no se le puede invitar ni cambiar su sede o RFC.',
     examples: {
       default: {
         code: 'EMPLOYEE_INACTIVE',
         message: 'No se puede invitar a un colaborador desvinculado',
+      },
+      employees: {
+        code: 'EMPLOYEE_INACTIVE',
+        message: 'El colaborador está desvinculado',
+        details: { employeeId: EMPLOYEE_ID },
       },
     },
   },

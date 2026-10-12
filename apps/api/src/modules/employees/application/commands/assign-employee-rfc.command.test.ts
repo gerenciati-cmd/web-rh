@@ -58,7 +58,7 @@ describe('AssignEmployeeRfc', () => {
   });
 
   const seed = async (e: Employee) => {
-    await repository.save(e);
+    await repository.add(e);
   };
   const rfcOf = (id: string) => repository.employees.get(id)?.snapshot.rfc?.value ?? null;
 
@@ -132,7 +132,7 @@ describe('AssignEmployeeRfc', () => {
       employeeId: 'emp-1',
       rfc: 'GOMA851301AB1',
     });
-    vi.spyOn(repository, 'save').mockResolvedValue({
+    vi.spyOn(repository, 'saveRfc').mockResolvedValue({
       ok: false,
       error: new EmployeeRfcAlreadyRegisteredError('GOMA850101AB1'),
     });
@@ -209,7 +209,7 @@ describe('AssignEmployeeRfc', () => {
 
   it('propaga el conflicto de save (carrera contra el índice único)', async () => {
     await seed(employee({ id: 'emp-1' }));
-    vi.spyOn(repository, 'save').mockResolvedValue({
+    vi.spyOn(repository, 'saveRfc').mockResolvedValue({
       ok: false,
       error: new EmployeeRfcAlreadyRegisteredError('GOMA850101AB1'),
     });

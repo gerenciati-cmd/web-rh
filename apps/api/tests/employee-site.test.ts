@@ -160,7 +160,7 @@ describe('Sede del colaborador (HTTP)', () => {
       const stored = container.cradle.employeeRepository;
       const employee = await stored.findById(id as EmployeeId);
       if (!employee) throw new Error('fixture inválido');
-      await stored.save(Employee.restore(employee.id, { ...employee.snapshot, siteId: null }));
+      await stored.saveSite(Employee.restore(employee.id, { ...employee.snapshot, siteId: null }));
       expect((await list(companyA))[0]).toMatchObject({ id, siteId: null });
 
       await assign(companyA, id, { siteId }).expect(204);

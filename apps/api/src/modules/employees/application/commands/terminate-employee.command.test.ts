@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { FixedClock, RecordingEventBus } from '@/shared/testing/fakes';
 
 import { Employee, EMPLOYEE_TERMINATED, type EmployeeId } from '../../domain/employee';
-import { EmployeeAlreadyExistsError } from '../../domain/errors';
+import { EmployeeAlreadyTerminatedError } from '../../domain/errors';
 import { InMemoryEmployeeRepository } from '../../infrastructure/in-memory/in-memory-employee.repository';
 
 import { TerminateEmployee } from './terminate-employee.command';
@@ -47,7 +47,7 @@ describe('TerminateEmployee', () => {
   });
 
   const seed = async (e: Employee) => {
-    await repository.save(e);
+    await repository.add(e);
   };
   const stored = (id: string) => repository.employees.get(id)?.snapshot;
 
@@ -116,7 +116,7 @@ describe('TerminateEmployee', () => {
 
   it('TERMINATION_DATE_IN_FUTURE: mañana según el reloj, sin guardar ni publicar', async () => {
     await seed(employee({ id: 'emp-1' }));
-    const save = vi.spyOn(repository, 'save');
+    const save = vi.spyOn(repository, 'saveTermination');
 
     const result = await terminateEmployee.execute({
       companyId: COMPANY,
@@ -163,9 +163,9 @@ describe('TerminateEmployee', () => {
 
   it('propaga el err de save y no publica', async () => {
     await seed(employee({ id: 'emp-1' }));
-    vi.spyOn(repository, 'save').mockResolvedValue({
+    vi.spyOn(repository, 'saveTermination').mockResolvedValue({
       ok: false,
-      error: new EmployeeAlreadyExistsError('GOMA850101HQRRRN04'),
+      error: new EmployeeAlreadyTerminatedError('emp-1'),
     });
 
     const result = await terminateEmployee.execute({
@@ -175,7 +175,7 @@ describe('TerminateEmployee', () => {
       reason: 'OTHER',
     });
 
-    expect(!result.ok && result.error.code).toBe('EMPLOYEE_ALREADY_EXISTS');
+    expect(!result.ok && result.error.code).toBe('EMPLOYEE_ALREADY_TERMINATED');
     expect(eventBus.names()).toEqual([]);
   });
 });

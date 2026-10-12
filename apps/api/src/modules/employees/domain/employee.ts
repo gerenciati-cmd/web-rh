@@ -16,6 +16,7 @@ import {
 
 import {
   EmployeeAlreadyTerminatedError,
+  EmployeeInactiveError,
   RfcNotApplicableError,
   TerminationBeforeHireError,
   TerminationDateInFutureError,
@@ -152,8 +153,12 @@ export class Employee extends AggregateRoot<EmployeeId> {
     return ok(undefined);
   }
 
-  /** Captura o corrige el RFC; la unicidad en el holding la verifica el caso de uso. */
+  /**
+   * Captura o corrige el RFC; la unicidad en el holding la verifica el caso de uso. Un desvinculado
+   * no se edita (README de employees-desvinculacion, decisión 8).
+   */
   assignRfc(rfc: PersonalRfc, now: Date): Result<void, BusinessRuleViolationError> {
+    if (this.props.status === 'TERMINATED') return err(new EmployeeInactiveError(this.id));
     if (this.props.nationalId.country !== 'MX') return err(new RfcNotApplicableError());
     if (this.props.rfc?.value === rfc.value) return ok(undefined);
     this.props = { ...this.props, rfc };
@@ -161,14 +166,19 @@ export class Employee extends AggregateRoot<EmployeeId> {
     return ok(undefined);
   }
 
-  /** Asigna o cambia la sede; la validez de la sede la verifica el caso de uso. */
-  assignSite(siteId: string, now: Date): void {
+  /**
+   * Asigna o cambia la sede; la validez de la sede la verifica el caso de uso. Un desvinculado no
+   * se edita (README de employees-desvinculacion, decisión 8).
+   */
+  assignSite(siteId: string, now: Date): Result<void, EmployeeInactiveError> {
+    if (this.props.status === 'TERMINATED') return err(new EmployeeInactiveError(this.id));
     const previousSiteId = this.props.siteId;
-    if (previousSiteId === siteId) return;
+    if (previousSiteId === siteId) return ok(undefined);
     this.props = { ...this.props, siteId };
     this.record(
       createEvent(EMPLOYEE_SITE_ASSIGNED, { employeeId: this.id, siteId, previousSiteId }, now),
     );
+    return ok(undefined);
   }
 
   get snapshot(): Readonly<EmployeeProps> {

@@ -191,7 +191,7 @@ describe('RegisterEmployee', () => {
   });
 
   it('propaga conflicto de save sin publicar evento', async () => {
-    vi.spyOn(repository, 'save').mockResolvedValue(
+    vi.spyOn(repository, 'add').mockResolvedValue(
       err(new EmployeeAlreadyExistsError('GOMA850101HQRRRN04')),
     );
     const result = await registerEmployee.execute(input);
@@ -200,7 +200,7 @@ describe('RegisterEmployee', () => {
   });
   it('no convierte fallos inesperados en conflicto', async () => {
     const failure = new Error('persistencia no disponible');
-    vi.spyOn(repository, 'save').mockRejectedValue(failure);
+    vi.spyOn(repository, 'add').mockRejectedValue(failure);
     await expect(registerEmployee.execute(input)).rejects.toBe(failure);
     expect(eventBus.names()).toEqual([]);
   });

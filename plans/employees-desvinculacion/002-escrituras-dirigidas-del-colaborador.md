@@ -1,5 +1,5 @@
 ---
-status: draft
+status: testing
 module: employees
 min_implementer: mid
 depends_on: ['001']
@@ -164,6 +164,12 @@ the **persisted** status, updated only by its writes.
      deviation.
    - Observable result: `pnpm check` and `pnpm test:integration` green.
 
+10. **More tests tied to `save` or to the error lists** (added by the implementer: Deviations
+    1–2)
+    - Files: `apps/api/tests/employee-site.test.ts` (modify), `apps/api/tests/http.test.ts` (modify), `packages/contracts/src/openapi.test.ts` (modify)
+    - Do: same mechanical rule as step 9; update the pinned 422 description of `PUT …/site`.
+    - Observable result: suites green.
+
 ## Acceptance criteria
 
 - [ ] All existing employees flows behave as before for ACTIVE colaboradores: register (201),
@@ -192,6 +198,33 @@ the **persisted** status, updated only by its writes.
 | e2e         | no      | (no e2e infrastructure yet)                                                                                                                                             |
 
 ## Deviations
+
+Implemented inline in the main session (2026-10-12), on branch
+`feat/employees-escrituras-dirigidas` (cut from `origin/main` after PR #19 was merged).
+
+1. **Three more test files than step 9 listed** (cosmetic): `tests/employee-site.test.ts:163`
+   (re-stores a `restore` with `siteId: null` → `saveSite`), `tests/http.test.ts:215` (spy on
+   `save` during registration → `add`), and `packages/contracts/src/openapi.test.ts:403`, which
+   pins the 422 description of `PUT …/site` (now
+   `SITE_INACTIVE, SITE_COUNTRY_MISMATCH, EMPLOYEE_INACTIVE`). Declared in step 10.
+2. **Two assertions had to change** (step 9 said none would). The tests "propaga el fallo de
+   save" in `assign-employee-site.command.test.ts:159-170` and
+   `terminate-employee.command.test.ts:164-179` mocked the write returning
+   `EmployeeAlreadyExistsError`, which `saveSite` / `saveTermination` can no longer return by
+   type. They now mock the only error each write can return (`EmployeeInactiveError`,
+   `EmployeeAlreadyTerminatedError`) and assert that code. What they check (the write's err is
+   propagated and nothing is published) is unchanged.
+3. **Step 8 produced no diff**, as expected: `employees.facade.ts` only calls `findById`.
+
+Mechanical conversion of step 9: every first store → `add`; after `terminate` →
+`saveTermination` (`prisma-employee.int.test.ts:73,291,401,458,522,557`,
+`employees-punch-owner-directory.int.test.ts:96`, `attendance-attribution.test.ts:236`,
+`attendance-device-sync.test.ts:423`); after `assignRfc` and the "re-save its own RFC" case →
+`saveRfc` (`prisma-employee.int.test.ts:205,214,225`); after `assignSite` → `saveSite`
+(`prisma-employee.int.test.ts:347,364`).
+
+Evidence: `pnpm check` green; `pnpm test:integration` 17 files / 222 tests passed; no
+`employeeRepository.save` left in `apps/api`.
 
 ## Test coverage
 

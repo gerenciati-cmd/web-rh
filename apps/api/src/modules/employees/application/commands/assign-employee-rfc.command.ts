@@ -42,7 +42,7 @@ export class AssignEmployeeRfc implements Command<AssignEmployeeRfcInput, undefi
     const assigned = employee.assignRfc(rfc.value, clock.now());
     if (!assigned.ok) return assigned;
 
-    const saved = await employeeRepository.save(employee);
+    const saved = await employeeRepository.saveRfc(employee);
     if (!saved.ok) return saved;
     await eventBus.publish(employee.pullEvents());
 

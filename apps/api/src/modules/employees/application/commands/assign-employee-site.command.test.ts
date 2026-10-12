@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { FixedClock, RecordingEventBus } from '@/shared/testing/fakes';
 
 import { Employee, EMPLOYEE_SITE_ASSIGNED, type EmployeeId } from '../../domain/employee';
-import { EmployeeAlreadyExistsError } from '../../domain/errors';
+import { EmployeeInactiveError } from '../../domain/errors';
 import { InMemoryEmployeeRepository } from '../../infrastructure/in-memory/in-memory-employee.repository';
 import type { Employer, EmployerDirectory } from '../ports/employer-directory';
 import type { SiteDirectory, WorkSite } from '../ports/site-directory';
@@ -77,7 +77,7 @@ describe('AssignEmployeeSite', () => {
   });
 
   const seed = async (e: Employee) => {
-    await repository.save(e);
+    await repository.add(e);
   };
   const siteOf = (id: string) => repository.employees.get(id)?.snapshot.siteId;
   const run = (siteId: string, employeeId = 'emp-1', companyId = COMPANY) =>
@@ -158,14 +158,14 @@ describe('AssignEmployeeSite', () => {
 
   it('propaga el fallo de save sin publicar evento', async () => {
     await seed(employee({ id: 'emp-1' }));
-    vi.spyOn(repository, 'save').mockResolvedValue({
+    vi.spyOn(repository, 'saveSite').mockResolvedValue({
       ok: false,
-      error: new EmployeeAlreadyExistsError('GOMA850101HQRRRN04'),
+      error: new EmployeeInactiveError('emp-1'),
     });
 
     const result = await run('site-2');
 
-    expect(!result.ok && result.error.code).toBe('EMPLOYEE_ALREADY_EXISTS');
+    expect(!result.ok && result.error.code).toBe('EMPLOYEE_INACTIVE');
     expect(eventBus.names()).toEqual([]);
   });
 });
