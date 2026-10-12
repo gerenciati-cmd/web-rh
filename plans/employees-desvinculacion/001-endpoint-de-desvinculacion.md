@@ -1,5 +1,5 @@
 ---
-status: review
+status: verify
 module: employees
 min_implementer: mid
 depends_on: []
@@ -205,6 +205,12 @@ None
      update hard-coded counts, add the two list fields to fixtures. No assertion changes.
    - Observable result: existing suites stay green.
 
+9. **New test files and initiative bookkeeping** (added after review Low-1 and Low-2)
+   - Files: `apps/api/src/modules/employees/application/commands/terminate-employee.command.test.ts` (create), `apps/api/tests/employee-termination.test.ts` (create), `plans/identity-acceso/README.md` (modify)
+   - Do: the tester's two new test files (see Test coverage); the identity README fix the user
+     asked for together with this plan (Deviation 5).
+   - Observable result: `pnpm plans:scope` passes.
+
 ## Acceptance criteria
 
 - [ ] `POST /api/v1/companies/:companyId/employees/:employeeId/termination` with
@@ -260,6 +266,10 @@ Implemented inline in the main session (2026-10-12). All cosmetic: no design or 
    carry the two new fields; added (from `snapshot.termination` and as `null`).
 4. **Migration name.** Generated as `20261012154547_add_employee_termination`; the SQL only
    creates the enum and adds two nullable columns (no `DROP`).
+5. **`plans/identity-acceso/README.md` rides on this branch** (review Low-2). The user asked, in
+   the same request that started this initiative (2026-10-12), to fix that README's stale
+   "Delivered" section (it said plan 005 was pending). It went into this plan's draft commit
+   `ca3c5ed`. Kept here on purpose; declared in step 9. Docs only, no code.
 
 Evidence: `pnpm check` green; `pnpm test:integration` 17 files / 218 tests passed.
 
@@ -306,5 +316,86 @@ were already there.
 | Migration applies on `rrhh_test`                                | `migrations/20261012154547_add_employee_termination/migration.sql` | integration | whole `pnpm test:integration` run                                                                              | CONFIRMED |
 
 ## Review findings
+
+Reviewer (subagent), 2026-10-12. Diff `main...HEAD` (3 commits), working tree clean.
+
+**Checklist: 12/13. FAIL: plans:scope.**
+
+- [ ] `pnpm plans:scope`: **fails** (exit 1). See Low-1 and Low-2. Hot files: the
+      `schema.prisma` change adds the enum and two columns. The other changed lines in `model
+Employee` only realign columns (whitespace from `prisma format`), so I accept it as
+      append-only. `test-app.ts` is declared in step 8.
+- [x] `pnpm check` green (format, typecheck, lint, tests, arch, plans:lint, harness, quality).
+- [x] `pnpm test:integration`: 17 files / 222 tests passed.
+- [x] Business rules only in `Employee.terminate` (`employee.ts:133-150`). Router, mapper and
+      queries only map values.
+- [x] CQRS-lite: `TerminateEmployee` goes find → aggregate → `save` → publish and returns
+      `Result`. The directory goes through `EmployeeQueries`. The repository has no new methods.
+- [x] Types come from `@rrhh/contracts` / `@rrhh/domain` (`TERMINATION_REASONS` is shared;
+      Prisma keeps its own enum, as with `EmployeeStatus`).
+- [x] There are three domain errors with stable codes, and the `API_ERRORS` messages match them
+      exactly. The `error-catalog` test is green.
+- [x] Dates are UTC midnight (`terminate-employee.command.ts:41`) and "today" comes from
+      `clock.now()`. No money is involved.
+- [x] The migration is new (`20261012154547_add_employee_termination`). Its SQL only does
+      `CREATE TYPE` and adds two nullable columns: no DROP, no FK.
+- [x] DI: registered once in `employees.module.ts`, and `container.test.ts` is green.
+- [x] No secrets or real personal data. The fixtures use `*.example` and a synthetic CURP.
+- [x] Deviations are honest. I spot-checked 1 and 2: the dates moved to 2026-01-10/12 in
+      `employee.test.ts`, HR went 9→10 and 18→20 in `role-catalog.test.ts`, and the authenticator
+      went 9→10.
+- [x] Docs: `docs/architecture.md:144-146` (the identity subscription) is still accurate. No doc
+      lists permissions or endpoints by hand. `docs/conventions.md:82` uses
+      `employee.terminate(date)` only to illustrate "tell, don't ask", so it is not a stale
+      description (no finding).
+
+**Findings: 0 High, 1 Medium (out of scope → finding), 2 Low.**
+
+- **Medium-1 (out of scope, now reachable; recorded in
+  `plans/hallazgos/employees-guardado-completo-pisa-la-baja.md`).**
+  `apps/api/src/modules/employees/infrastructure/prisma-employee.repository.ts:43-47` does an
+  `upsert` of the whole row with no version check. `TerminateEmployee`
+  (`terminate-employee.command.ts:34,46`) and `AssignEmployeeSite`
+  (`assign-employee-site.command.ts:39,53`) both load the row and then save the whole thing.
+  - Scenario: a site change runs concurrently with a termination. The PUT saves after the
+    termination, which writes back `status: ACTIVE` and nulls `termination_*`. The colaborador
+    shows as active with no termination, identity already disabled their access, and attendance
+    adds them back to the new sede's checadores (`EMPLOYEE_SITE_ASSIGNED` → `syncEmployee`).
+  - A double POST can also return 204 twice and publish two `EMPLOYEE_TERMINATED` events.
+  - Not reproduced: the window is the time between `findById` and `save`. The pattern existed
+    before this plan, but this plan's endpoint is what makes it reachable.
+  - It does not block this plan. It is the user's call whether it becomes a plan.
+- **Low-1: two test files are not declared in the plan.**
+  `apps/api/src/modules/employees/application/commands/terminate-employee.command.test.ts` and
+  `apps/api/tests/employee-termination.test.ts` were created by the tester, appear in `## Test
+coverage` and are legitimate. But no `Files:` line names them, so `plans:scope` reports them as
+  out of scope. Earlier plans (for example `attendance-marcaciones/002`, its tests step) declare
+  the test files. Fix: add them to a `Files:` line (plan only, no code change).
+- **Low-2: `plans/identity-acceso/README.md` is not in this plan.** It was changed in commit
+  `ca3c5ed` (the draft of this plan) to rewrite the "Delivered" section of another initiative.
+  - The content looks correct, but it is outside the plan and outside this initiative.
+    `plans:scope` reports it.
+  - Failure scenario: the PR for `feat/employees-desvinculacion` mixes in the closing of
+    `identity-acceso`, and reverting the branch would also revert that closing.
+  - Fix: the main session decides whether to move it to its own `docs(identity)` commit/branch
+    or to declare it explicitly as a deviation. No product code is involved.
+
+Bug hunt, no defects found:
+
+- End-to-end trace: the contract (`z.iso.date()` rejects impossible dates such as `2026-02-30`;
+  closed enum) → command → domain (rule order matches the plan; today's UTC midnight is ≤ `now`)
+  → mapper (date and reason, or null) → directory → 204.
+- Tenancy: another company → 404. HR of another company → 403 (by `companyParam`).
+- Payload of `EMPLOYEE_TERMINATED`: unchanged.
+
+Status stays `review`: the scope checklist item fails. Low-1 and Low-2 need only plan/commit
+bookkeeping (no product code changes). Once they are resolved and `pnpm plans:scope` passes, the
+plan can move to `verify`.
+
+**Resolution (main session, 2026-10-12):** Low-1 → the two test files are declared in step 9.
+Low-2 → declared as Deviation 5 and in step 9 (the user asked for that README fix with this
+plan). `pnpm plans:scope` passes. Medium-1 stays as the open finding
+`plans/hallazgos/employees-guardado-completo-pisa-la-baja.md` for the user to triage. No code
+changed, so the review verdict holds. Plan to `verify`.
 
 ## Verification
