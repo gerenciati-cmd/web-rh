@@ -1,5 +1,5 @@
 ---
-status: review
+status: verify
 module: employees
 min_implementer: mid
 depends_on: ['001']
@@ -170,6 +170,12 @@ the **persisted** status, updated only by its writes.
     - Do: same mechanical rule as step 9; update the pinned 422 description of `PUT …/site`.
     - Observable result: suites green.
 
+11. **Tests phase files and doc** (added after review Low-1 and Low-2)
+    - Files: `apps/api/src/modules/employees/domain/employee.test.ts` (modify), `apps/api/tests/employee-termination.test.ts` (modify), `packages/contracts/src/employees/employee.contract.test.ts` (modify), `docs/architecture.md` (modify)
+    - Do: the tester's new tests (see Test coverage); the registration flow in
+      `docs/architecture.md:100` names `EmployeeRepository.add()` instead of the removed `save()`.
+    - Observable result: `pnpm plans:scope` passes.
+
 ## Acceptance criteria
 
 - [ ] All existing employees flows behave as before for ACTIVE colaboradores: register (201),
@@ -253,5 +259,86 @@ same row, and two `saveTermination` in `Promise.all`).
 | `saveRfc` unique conflict → `EMPLOYEE_RFC_ALREADY_REGISTERED`                     | `prisma-employee.repository.ts:76-93`                                                                                                            | integration | `› asignar el RFC de otro colaborador falla…` (existing, now through `saveRfc`)                                                 | CONFIRMED |
 
 ## Review findings
+
+Reviewed 2026-10-12 (reviewer subagent). Diff `origin/main...HEAD` on
+`feat/employees-escrituras-dirigidas` (commits `884dea3`, `9f13e4d`, `17caeb1`), clean worktree.
+
+**Checklist: 11/13 passed. Failed: scope and stale docs.**
+
+- [ ] `pnpm plans:scope … --base origin/main` **fails**. Three files are out of scope:
+      `apps/api/src/modules/employees/domain/employee.test.ts`,
+      `apps/api/tests/employee-termination.test.ts`,
+      `packages/contracts/src/employees/employee.contract.test.ts`. See Low-1.
+      `employees.facade.ts` is declared but unchanged, which step 8 expects.
+- [x] `pnpm check` green: format, types, lint, tests, arch, plans, harness, hooks, bootstrap
+      and quality.
+- [x] `pnpm test:integration`: 17 files and 229 tests passed against `rrhh_test`.
+- [x] Business rules are in `domain/`. The "terminated is not edited" rule is in
+      `Employee.assignRfc`/`assignSite`. The adapters' `status: 'ACTIVE'` condition is only the
+      race guard, as the plan says.
+- [x] CQRS-lite holds. Commands go aggregate → targeted write → `Result`. The repository gains
+      no screen-specific method; each write is tied to one use case.
+- [x] Contracts: `EMPLOYEE_INACTIVE` uses the `employees` variant on both PUT routes, and
+      `openapi.json` was regenerated. Nothing is duplicated by hand.
+- [x] Errors: `EmployeeInactiveError` has the stable code `EMPLOYEE_INACTIVE`, and
+      `error-catalog.test.ts` maps it to the variant.
+- [x] Money, dates and ids: no changes. `clock.now()` is still used for the events.
+- [x] Schema: unchanged and no migration. That is correct, because the needed columns came
+      from 001.
+- [x] DI: no new registrations. `container.test.ts` is green.
+- [x] No secrets, `.env` contents or real personal data. Fixtures use synthetic CURPs and RFCs.
+- [x] `## Deviations` is honest. I checked Deviation 2:
+      `assign-employee-site.command.test.ts:159-170` now mocks `saveSite` returning
+      `EmployeeInactiveError` and asserts that code with no events published.
+- [ ] Stale docs. See Low-2.
+
+**Findings: 0 Critical, 0 High, 0 Medium, 2 Low.**
+
+- **Low-1: three test files the tester created or changed are not declared in any `Files:`
+  line.**
+  - The files are `apps/api/src/modules/employees/domain/employee.test.ts` (domain block
+    "desvinculado no se edita"), `apps/api/tests/employee-termination.test.ts` (3 HTTP tests)
+    and `packages/contracts/src/employees/employee.contract.test.ts` (3 contract tests).
+  - They are legitimate and listed in `## Test coverage`, but `plans:scope` reports them as out
+    of scope. Plan 001 had the same problem (its review Low-1).
+  - Fix (plan only, no code): add them to a `Files:` line, for example a step 11 for the tests
+    phase.
+- **Low-2: `docs/architecture.md:100` still describes the registration flow as
+  `EmployeeRepository.save()`.**
+  - This plan removed `save`. Registration now calls `EmployeeRepository.add()`
+    (`register-employee.command.ts:91`).
+  - Failure scenario: someone reading the canonical flow example looks for a `save` that no
+    longer exists on the port, or copies the old "whole-row save" pattern into a new use case.
+  - Fix: change the line to `add()`, and declare `docs/architecture.md` in the plan, because it
+    is not in any `Files:` line today.
+
+Bug hunt (correctness). I traced each changed flow from the contract through the command, the
+domain and both adapters to the response. **No defects found.**
+
+- Prisma `updateMany` returns the number of rows **matched**, not rows changed. So re-saving an
+  unchanged RFC or sede on an ACTIVE row still gives `count = 1`. That path is covered by "volver
+  a guardar al dueño de un RFC no choca consigo mismo".
+- Two concurrent `saveTermination` calls are safe. Under READ COMMITTED, the second `UPDATE`
+  waits for the row lock and then re-checks `status = 'ACTIVE'` against the committed row, so it
+  gets 0 rows. The real-Postgres test `Promise.all` confirms this.
+- Two edits of different columns no longer overwrite each other. This includes a sede change
+  saved just before a termination: the termination writes only status, date and reason.
+- If an `EMPLOYEE_SITE_ASSIGNED` event is published after `EMPLOYEE_TERMINATED`, the result is
+  still correct, because attendance rebuilds from the current state
+  (`sync-employee.command.ts:57-63`).
+- `add` now uses `create`, so a duplicate primary key would end in `EMPLOYEE_ALREADY_EXISTS`.
+  This cannot happen with UUID v7 ids from `IdGenerator`.
+- Tenancy is unchanged: the 404 for another company's colaborador still comes before the
+  domain rule, and there is an application test for it.
+- No `employeeRepository.save` callers remain, including in scripts or seeds.
+
+The status stays `review`. Neither finding touches product code: one is a plan edit and the
+other a doc edit. After those edits, `plans:scope` should pass, and per the repair handoff no new
+testing round is needed for doc/plan-only changes. The main session decides how to route them.
+
+**Resolution (main session, 2026-10-12):** Low-1 → the three test files are declared in step 11.
+Low-2 → `docs/architecture.md:100` now reads `EmployeeRepository.add()`, declared in step 11.
+`pnpm plans:scope --base origin/main` passes. No product code changed, so the review verdict
+holds. Plan to `verify`.
 
 ## Verification
