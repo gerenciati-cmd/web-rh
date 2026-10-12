@@ -1,5 +1,5 @@
 ---
-status: verify
+status: done
 module: employees
 min_implementer: mid
 depends_on: ['001']

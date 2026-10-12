@@ -1,5 +1,5 @@
 ---
-status: planned
+status: resolved
 module: employees
 found: 2026-10-12
 plan: employees-desvinculacion/002
