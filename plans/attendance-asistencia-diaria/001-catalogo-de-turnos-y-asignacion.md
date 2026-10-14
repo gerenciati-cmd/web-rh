@@ -497,3 +497,33 @@ now lists only `plans/employees-desvinculacion/README.md` (commit `d691308`, the
 another series on this branch). Plan to `verify`.
 
 ## Verification
+
+**PASS** — 2026-10-14, main session, at `2905eaa`, against the dev API on `localhost:3000`.
+
+- Suites: `pnpm check` green; `pnpm test:integration` 18 files / 242 tests passed;
+  `pnpm --filter @rrhh/api db:deploy` → "No pending migrations to apply" (16 migrations, including
+  `20261014184751_create_shifts`).
+- HTTP script as HOLDING_ADMIN (`scratchpad/verify-shifts.mjs`, run by the user with their
+  credentials in env vars; suffix `IIT5B`; company A = `Verificación Escrituras RW2AU` with Luis
+  active and Ana terminated, company B = `Verificación Baja 266Y3`), **22/22 PASS**:
+  - Mon–Fri 09:00–18:00 (7 days, meal 60, anchor Monday 2026-10-12, tolerance 10) → 201; same
+    name upper-cased → 409 `SHIFT_ALREADY_EXISTS`; same name in company B → 201.
+  - Night 22:00–06:00 and 24x24 (08:00–08:00 + REST) → 201. Only REST, 29 days, meal ≥ duration,
+    `start` "24:00" → 400 `VALIDATION_ERROR` each. Non-existent company → 404 `COMPANY_NOT_FOUND`.
+  - `GET …/attendance/shifts` → only company A, ordered `24x24 IIT5B | Nocturno IIT5B | Oficina
+IIT5B`; `days` as sent, meal defaulted to 0.
+  - Luis: `PUT …/2026-11-02` (office) → 204, again with the night shift → 204, `…/2026-12-01`
+    (24x24) → 204. History: `2026-12-01 24x24` first, one row for `2026-11-02` = `Nocturno IIT5B`,
+    `assignedBy` = the admin's user id.
+  - Colaborador of company B → 404 `EMPLOYEE_NOT_FOUND`; shift of company B → 404
+    `SHIFT_NOT_FOUND`; terminated Ana → 422 `EMPLOYEE_INACTIVE` "El colaborador está desvinculado";
+    history of a company B colaborador → 404 `EMPLOYEE_NOT_FOUND`.
+  - `/api/v1/openapi.json` has the 3 paths (4 operations) of shifts.
+- DB (read-only SELECTs): `attendance.shifts` rows with `pg_typeof(days) = jsonb`, cycle lengths
+  7/2/2 and tolerances 10/5/0; `attendance.shift_assignments` for Luis = `2026-11-02 Nocturno`,
+  `2026-12-01 24x24`.
+- **NOT VERIFIED in the running app**: HR of company A → 403 on company B's routes (needs an HR
+  user through the invitation flow). Covered by `tests/attendance-shifts.test.ts` on the real
+  container, green in `pnpm check`.
+- Data left in the dev DB: shifts `Oficina/Nocturno/24x24 IIT5B` (company A), `Oficina IIT5B`
+  (company B), and Luis's two assignments.
