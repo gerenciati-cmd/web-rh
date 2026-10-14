@@ -1,5 +1,5 @@
 ---
-status: draft
+status: testing
 module: attendance
 min_implementer: mid
 depends_on: []
@@ -302,6 +302,28 @@ true } } }`, `orderBy: { effectiveFrom: 'desc' }`, count), paginated like
 | e2e         | no      | (no e2e infrastructure yet)                                                                                                                                                                                                                  |
 
 ## Deviations
+
+Cosmetic, fixed forward (no design or scope impact):
+
+1. **Step 2, day schema split.** `ShiftDaySchema` with `.default(0)` on `mealBreakMinutes` and one
+   `.meta({ id })` made OpenAPI fail ("el modelo tiene dos formas distintas": input optional vs
+   output required). Split into `ShiftDayInputSchema` (id `CreateAttendanceShiftDayInput`, default
+   0, used by `CreateShiftSchema.days`) and `ShiftDaySchema` (id `AttendanceShiftDay`, required,
+   used by `ShiftSchema`). Wire behaviour is what the plan describes.
+2. **Step 1, expected counts outside the listed files.** Adding two HR permissions raised HR's grant
+   count; mechanical `toHaveLength` updates (10 to 12, 20 to 24) in `role-catalog.test.ts` (listed)
+   and in `apps/api/src/modules/identity/application/session-authenticator.test.ts` (NOT listed;
+   two assertions, 10 to 12).
+3. **Step 4, lint.** `@typescript-eslint/prefer-optional-chain` required `employee?.companyId !==
+companyId` / `shift?.companyId !== companyId` instead of `!x || x.companyId !== ...`; same
+   behaviour.
+
+Process note: `pnpm plans:scope` reports many out-of-scope files from earlier work on this branch
+(employees-desvinculacion); the only out-of-scope file touched by this implementation is the
+`session-authenticator.test.ts` of deviation 2.
+
+Commands: `pnpm check` green; `pnpm test:integration` 229/229 green (no new integration tests yet:
+tester phase). Migration `20261014184751_create_shifts` applied to the dev DB.
 
 ## Test coverage
 

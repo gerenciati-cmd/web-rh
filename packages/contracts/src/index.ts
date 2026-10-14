@@ -1,6 +1,7 @@
 export * from './attendance/device-command.contract';
 export * from './attendance/device.contract';
 export * from './attendance/punch.contract';
+export * from './attendance/shift.contract';
 export * from './common';
 export * from './errors';
 export * from './employees/employee.contract';
@@ -16,6 +17,7 @@ export * from './openapi';
 import { attendanceDeviceCommandRoutes } from './attendance/device-command.contract';
 import { attendanceDeviceRoutes } from './attendance/device.contract';
 import { attendancePunchRoutes } from './attendance/punch.contract';
+import { attendanceShiftRoutes } from './attendance/shift.contract';
 import { employeeRoutes } from './employees/employee.contract';
 import { accessRoutes } from './identity/access.contract';
 import { authRoutes } from './identity/auth.contract';
@@ -36,4 +38,5 @@ export const apiRoutes = {
   attendanceDevices: attendanceDeviceRoutes,
   attendanceDeviceCommands: attendanceDeviceCommandRoutes,
   attendancePunches: attendancePunchRoutes,
+  attendanceShifts: attendanceShiftRoutes,
 } as const;

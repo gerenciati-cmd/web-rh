@@ -40,6 +40,7 @@ const COMPANY_ID = '0191a2b3-0000-7000-8000-00000000c001';
 const SITE_ID = '0191a2b3-0000-7000-8000-00000000d001';
 const DEVICE_ID = '0191a2b3-0000-7000-8000-00000000e001';
 const EMPLOYEE_ID = '0191a2b3-0000-7000-8000-00000000f001';
+const SHIFT_ID = '0191a2b3-0000-7000-8000-00000000a001';
 
 /**
  * Catálogo único de errores de la API: código → status, descripción y ejemplo. Alimenta la
@@ -355,6 +356,29 @@ export const API_ERRORS = {
     },
   },
 
+  SHIFT_NOT_FOUND: {
+    status: 404,
+    description: 'El turno indicado no existe (también cuando es de otra empresa: responde igual).',
+    examples: {
+      default: {
+        code: 'SHIFT_NOT_FOUND',
+        message: 'El turno no existe',
+        details: { shiftId: SHIFT_ID },
+      },
+    },
+  },
+  SHIFT_ALREADY_EXISTS: {
+    status: 409,
+    description: 'Ya hay un turno con ese nombre en la empresa (sin distinguir mayúsculas).',
+    examples: {
+      default: {
+        code: 'SHIFT_ALREADY_EXISTS',
+        message: 'Ya existe un turno con ese nombre en la empresa',
+        details: { name: 'Matutino' },
+      },
+    },
+  },
+
   // ── identity: sesión y contraseñas ───────────────────────────────────────
   INVALID_CREDENTIALS: {
     status: 401,
@@ -426,7 +450,7 @@ export const API_ERRORS = {
   EMPLOYEE_INACTIVE: {
     status: 422,
     description:
-      'El colaborador está desvinculado: no se le puede invitar ni cambiar su sede o RFC.',
+      'El colaborador está desvinculado: no se le puede invitar, cambiar su sede o RFC ni asignarle un turno.',
     examples: {
       default: {
         code: 'EMPLOYEE_INACTIVE',

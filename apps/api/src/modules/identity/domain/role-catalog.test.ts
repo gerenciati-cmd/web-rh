@@ -23,6 +23,8 @@ describe('ROLE_DEFINITIONS', () => {
       [
         'attendance.devices:read',
         'attendance.punches:read',
+        'attendance.shifts:manage',
+        'attendance.shifts:read',
         'employees:read',
         'employees:register',
         'employees:update',
@@ -65,7 +67,7 @@ describe('grantsFor', () => {
   it('HR en una empresa: sus permisos quedan atados a esa empresa', () => {
     const grants = grantsFor([{ role: 'HR', companyId: 'company-a' }]);
 
-    expect(grants).toHaveLength(10);
+    expect(grants).toHaveLength(12);
     expect(grants.every((grant) => grant.companyId === 'company-a')).toBe(true);
     expect(grants.map((grant) => grant.permission)).not.toContain('organization.companies:create');
   });
@@ -76,7 +78,7 @@ describe('grantsFor', () => {
       { role: 'HR', companyId: 'company-b' },
     ]);
 
-    expect(grants).toHaveLength(20);
+    expect(grants).toHaveLength(24);
     expect(new Set(grants.map((grant) => grant.companyId))).toEqual(
       new Set(['company-a', 'company-b']),
     );

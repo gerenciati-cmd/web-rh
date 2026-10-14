@@ -48,6 +48,46 @@ export class DeviceNetworkUnrestrictedError extends BusinessRuleViolationError {
   }
 }
 
+export class ShiftNotFoundError extends NotFoundError {
+  readonly code = 'SHIFT_NOT_FOUND';
+
+  constructor(shiftId: string) {
+    super('El turno no existe', { shiftId });
+  }
+}
+
+export class ShiftAlreadyExistsError extends ConflictError {
+  override readonly code = 'SHIFT_ALREADY_EXISTS';
+
+  constructor(name: string) {
+    super('Ya existe un turno con ese nombre en la empresa', { name });
+  }
+}
+
+export class CompanyNotFoundError extends NotFoundError {
+  readonly code = 'COMPANY_NOT_FOUND';
+
+  constructor(companyId: string) {
+    super('La empresa no existe', { companyId });
+  }
+}
+
+export class EmployeeNotFoundError extends NotFoundError {
+  readonly code = 'EMPLOYEE_NOT_FOUND';
+
+  constructor(employeeId: string) {
+    super('El colaborador no existe', { employeeId });
+  }
+}
+
+export class EmployeeInactiveError extends BusinessRuleViolationError {
+  override readonly code = 'EMPLOYEE_INACTIVE';
+
+  constructor(employeeId: string) {
+    super('El colaborador está desvinculado', { employeeId });
+  }
+}
+
 export class DeviceWithoutSiteError extends BusinessRuleViolationError {
   override readonly code = 'DEVICE_WITHOUT_SITE';
 
