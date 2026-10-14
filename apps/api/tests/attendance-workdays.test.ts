@@ -330,6 +330,27 @@ describe('Jornadas diarias (HTTP)', () => {
     });
   });
 
+  it('viernes con salida a las 00:30 del sábado: horas extra del viernes y sin fila el sábado (revisión Low-3)', async () => {
+    await createAndAssign(companyA, anaId, officeShift, '2026-10-05');
+    await push(
+      attlog(ana.rfc, '2026-10-09 09:00:00') + attlog(ana.rfc, '2026-10-10 00:30:00'),
+    ).expect(200);
+
+    const response = await recalculate({ from: '2026-10-09', to: '2026-10-10' }).expect(200);
+
+    expect(response.body).toEqual({ recalculatedDates: 2, storedWorkdays: 1, pendingDates: [] });
+    const rows = itemsOf(await list('?from=2026-10-09&to=2026-10-10').expect(200));
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      date: '2026-10-09',
+      status: 'ATTENDED',
+      punchCount: 2,
+      lastPunchAt: '2026-10-10T05:30:00.000Z',
+      workedMinutes: 870,
+      overtimeMinutes: 390,
+    });
+  });
+
   it('hoy está pendiente: no se calcula ni se guarda', async () => {
     const today = new Date().toISOString().slice(0, 10);
     await createAndAssign(companyA, anaId, officeShift, '2026-10-05');

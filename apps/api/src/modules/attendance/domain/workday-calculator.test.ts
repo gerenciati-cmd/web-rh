@@ -100,6 +100,31 @@ describe('windowBoundaries', () => {
     expect(boundariesOf(entries)).toEqual([iso('2026-10-09', '05:00'), iso('2026-10-10', '05:00')]);
   });
 
+  it('un día sin turno después de uno laborable conserva el mismo alcance de 24 h (revisión Low-3)', () => {
+    const entries = calendar('2026-10-09', 2, (date) =>
+      date === '2026-10-09' ? plan(OFFICE) : null,
+    );
+
+    expect(boundariesOf(entries)).toEqual([iso('2026-10-09', '05:00'), iso('2026-10-10', '05:00')]);
+  });
+
+  it('el día previo a un descanso capta lo mismo que cualquier otro: de 05:00 a 05:00 del día siguiente', () => {
+    const friday = calendar('2026-10-09', 3, officeWeek);
+    const thursday = calendar('2026-10-08', 3, officeWeek);
+
+    // viernes → sábado (descanso) y jueves → viernes (laborable) miden 24 h entre sus fronteras.
+    const fridayWindow = boundariesOf(friday)
+      .slice(0, 2)
+      .map((value) => Date.parse(value));
+    const thursdayWindow = boundariesOf(thursday)
+      .slice(0, 2)
+      .map((value) => Date.parse(value));
+    expect((fridayWindow[1] ?? 0) - (fridayWindow[0] ?? 0)).toBe(
+      (thursdayWindow[1] ?? 0) - (thursdayWindow[0] ?? 0),
+    );
+    expect(boundariesOf(friday)[1]).toBe(iso('2026-10-10', '05:00'));
+  });
+
   it('turno nocturno seguido de otro: capta de 18:00 de D a 18:00 de D+1', () => {
     const entries = calendar('2026-10-05', 2, () => plan(NIGHT));
 
@@ -449,6 +474,118 @@ describe('calculateWorkdays', () => {
       });
       expect(rowOf(result, '2026-10-06')).toBeUndefined();
       expect(result.closedDates).toEqual(['2026-10-05', '2026-10-06']);
+    });
+  });
+
+  describe('el día antes de un descanso (revisión Low-3)', () => {
+    it('viernes de 09:00 a 18:00 con salida a las 00:30 del sábado: horas extra del viernes, sin fila de descanso', () => {
+      const result = run({ punches: [at('2026-10-09', '09:00'), at('2026-10-10', '00:30')] });
+
+      expect(rowOf(result, '2026-10-09')).toMatchObject({
+        status: 'ATTENDED',
+        punchCount: 2,
+        lastPunchAt: at('2026-10-10', '00:30'),
+        lateMinutes: 0,
+        workedMinutes: 870,
+        overtimeMinutes: 390,
+      });
+      expect(rowOf(result, '2026-10-10')).toBeUndefined();
+    });
+
+    it('la salida del viernes a las 04:59 del sábado sigue siendo del viernes y a las 05:00 ya es del sábado', () => {
+      const inside = run({ punches: [at('2026-10-09', '09:00'), at('2026-10-10', '04:59')] });
+      const edge = run({ punches: [at('2026-10-09', '09:00'), at('2026-10-10', '05:00')] });
+
+      expect(rowOf(inside, '2026-10-09')).toMatchObject({ status: 'ATTENDED', punchCount: 2 });
+      expect(rowOf(inside, '2026-10-10')).toBeUndefined();
+      expect(rowOf(edge, '2026-10-09')).toMatchObject({
+        status: 'ABSENT_SINGLE_PUNCH',
+        punchCount: 1,
+      });
+      expect(rowOf(edge, '2026-10-10')).toMatchObject({ status: 'REST_WORKED', punchCount: 1 });
+    });
+
+    it('el sábado sigue abierto hasta que cierra la ventana del viernes: el viernes cierra a las 05:00 del sábado', () => {
+      const before = run({ now: new Date(at('2026-10-10', '05:00').getTime() - 1) });
+      const after = run({ now: at('2026-10-10', '05:00') });
+
+      expect(before.pendingDates).toContain('2026-10-09');
+      expect(after.pendingDates).not.toContain('2026-10-09');
+    });
+
+    it('un día sin turno después de uno laborable también deja la salida con su día', () => {
+      const result = run({
+        planOf: (date) => (date === '2026-10-10' ? null : officeWeek(date)),
+        punches: [at('2026-10-09', '09:00'), at('2026-10-10', '00:30')],
+      });
+
+      expect(rowOf(result, '2026-10-09')).toMatchObject({ status: 'ATTENDED', punchCount: 2 });
+    });
+
+    describe('turno nocturno antes de un descanso', () => {
+      const night = (date: string) => plan(date === '2026-10-05' ? NIGHT : REST);
+      const options = { first: '2026-10-04', count: 4, planOf: night };
+
+      it('la salida hasta las 17:59 de D+1 es de la noche de D', () => {
+        const result = run({
+          ...options,
+          punches: [at('2026-10-05', '21:50'), at('2026-10-06', '17:59')],
+        });
+
+        expect(rowOf(result, '2026-10-05')).toMatchObject({ status: 'ATTENDED', punchCount: 2 });
+        expect(rowOf(result, '2026-10-06')).toBeUndefined();
+      });
+
+      it('una marcación a las 18:00 de D+1 ya es del descanso', () => {
+        const result = run({
+          ...options,
+          punches: [at('2026-10-05', '21:50'), at('2026-10-06', '18:00')],
+        });
+
+        expect(rowOf(result, '2026-10-05')).toMatchObject({
+          status: 'ABSENT_SINGLE_PUNCH',
+          punchCount: 1,
+        });
+        expect(rowOf(result, '2026-10-06')).toMatchObject({
+          status: 'REST_WORKED',
+          punchCount: 1,
+        });
+      });
+    });
+
+    describe('24x24 antes de un descanso (08:00 a 08:00)', () => {
+      const day24: ShiftDay = { type: 'WORK', start: '08:00', end: '08:00', mealBreakMinutes: 0 };
+      const options = {
+        first: '2026-10-04',
+        count: 5,
+        planOf: (date: string) =>
+          plan(date === '2026-10-05' || date === '2026-10-07' ? day24 : REST),
+      };
+
+      it('la ventana va de 04:00 de D a 12:00 de D+1: una salida a las 11:59 es de D', () => {
+        const result = run({
+          ...options,
+          punches: [at('2026-10-05', '08:00'), at('2026-10-06', '11:59')],
+        });
+
+        expect(rowOf(result, '2026-10-05')).toMatchObject({
+          status: 'ATTENDED',
+          scheduledMinutes: 1440,
+          workedMinutes: 1679,
+          overtimeMinutes: 239,
+        });
+        expect(rowOf(result, '2026-10-06')).toBeUndefined();
+      });
+
+      it('una marcación a las 12:00 de D+1 ya es del descanso', () => {
+        const result = run({
+          ...options,
+          punches: [at('2026-10-05', '08:00'), at('2026-10-06', '12:00')],
+        });
+
+        expect(rowOf(result, '2026-10-05')).toMatchObject({ status: 'ABSENT_SINGLE_PUNCH' });
+        expect(rowOf(result, '2026-10-06')).toMatchObject({ status: 'REST_WORKED', punchCount: 1 });
+      });
     });
   });
 
