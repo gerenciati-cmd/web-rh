@@ -12,6 +12,10 @@ export interface EmployeeSummary {
   rfc: string | null;
   siteId: string | null;
   active: boolean;
+  /** Fecha de contratación YYYY-MM-DD. */
+  hireDate: string;
+  /** Fecha de baja YYYY-MM-DD; null si está activo. */
+  terminationDate: string | null;
 }
 
 /**
@@ -39,7 +43,8 @@ export class EmployeesFacade implements EmployeesApi {
   async findEmployee(employeeId: string): Promise<EmployeeSummary | null> {
     const employee = await this.deps.employeeRepository.findById(employeeId as EmployeeId);
     if (!employee) return null;
-    const { companyId, email, firstName, lastName, rfc, siteId, status } = employee.snapshot;
+    const { companyId, email, firstName, lastName, rfc, siteId, status, hireDate, termination } =
+      employee.snapshot;
     return {
       id: employee.id,
       companyId,
@@ -48,6 +53,8 @@ export class EmployeesFacade implements EmployeesApi {
       rfc: rfc?.value ?? null,
       siteId,
       active: status === 'ACTIVE',
+      hireDate: hireDate.toISOString().slice(0, 10),
+      terminationDate: termination?.date.toISOString().slice(0, 10) ?? null,
     };
   }
 
