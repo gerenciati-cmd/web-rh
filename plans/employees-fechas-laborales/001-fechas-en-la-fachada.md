@@ -1,5 +1,5 @@
 ---
-status: review
+status: verify
 module: employees
 min_implementer: small
 depends_on: []
@@ -38,7 +38,7 @@ None
 ## Steps
 
 1. **Expose the dates**
-   - Files: `apps/api/src/modules/employees/application/employees.facade.ts` (modify)
+   - Files: `apps/api/src/modules/employees/application/employees.facade.ts` (modify), `apps/api/src/modules/employees/application/employees.facade.test.ts` (modify)
    - Do: add to `EmployeeSummary` `hireDate: string` (docblock "Fecha de contratación
      YYYY-MM-DD") and `terminationDate: string | null` ("Fecha de baja YYYY-MM-DD; null si está
      activo"). In `findEmployee`, destructure `hireDate` and `termination` from the snapshot and
@@ -77,5 +77,62 @@ None.
 No GAP / NOT CONFIRMED. Other layers not required by the plan.
 
 ## Review findings
+
+Review 2026-10-14 (reviewer subagent). Diff base: `origin/main` (commits `4b8a02f`, `b8e7ee7`;
+the plan-doc commits and the uncommitted change of `attendance-asistencia-diaria/002` are
+another plan's and were excluded).
+
+### Checklist — 12/13 passed
+
+- [ ] `pnpm plans:scope <plan> --base origin/main` — **fails mechanically (exit 1)**. Flagged:
+      `employees.facade.test.ts` (Low-2 below) and the two `attendance-asistencia-diaria` plan
+      files (another plan's docs, not this diff). No product file outside `employees.facade.ts`.
+      No hot files touched. (With the default base `main` the local `main` is stale and reports
+      82 files; use `--base origin/main`.)
+- [x] `pnpm check` passes (format, typecheck, lint, tests 19/19 turbo tasks, arch, plans,
+      harness, quality).
+- [x] Integration: N/A, no `infrastructure/` change.
+- [x] No business rules outside `domain/`: the facade only formats snapshot fields.
+- [x] CQRS-lite: facade read via repository is pre-existing; unchanged shape.
+- [x] Contracts: N/A (internal facade type, not an HTTP DTO).
+- [x] Errors: N/A.
+- [x] Dates UTC: `toISOString().slice(0, 10)` over `@db.Date` columns (UTC midnight), same
+      formatting as the domain (`employee.ts` `TerminationBeforeHireError`) and `test-app.ts`.
+- [x] Schema: none.
+- [x] DI: none.
+- [x] No secrets / personal data (test RFC is synthetic, existing fixture).
+- [x] Deviations "None." — spot-checked: code matches step 1 literally (`employees.facade.ts:15-18,46-57`).
+- [x] Docs: no doc describes `EmployeeSummary` fields (grep `docs/`); nothing stale.
+
+### Findings
+
+**Medium-1 — `terminationDate` docblock misstates the contract** —
+`apps/api/src/modules/employees/application/employees.facade.ts:17`. It says "null si está
+activo", but it is also `null` for a `TERMINATED` colaborador whose baja predates the field
+(`employee.ts:45-47`: termination is "nulo … en bajas anteriores al campo"; the mapper only builds
+it with date and reason, `employee.mapper.ts:30-32`). Scenario: a legacy terminated row returns
+`{ active: false, terminationDate: null }`; a consumer reading the docblock (the attendance plan
+002 port drops `active`, `002-jornada-diaria-guardada.md:182-184`) treats `null` as "still
+employed" and builds jornadas/faltas after the person left. Fix in scope: docblock states both
+cases and that `active` disambiguates (one-line comment change; optionally a facade test for a
+`TERMINATED` row with `termination: null`). The consumer-side risk is out of scope →
+`plans/hallazgos/attendance-baja-sin-fecha-en-la-jornada.md`.
+
+**Low-2 — test file not in the plan's Files list** — the plan's step 1 lists only
+`employees.facade.ts`; `employees.facade.test.ts` is named in "Test layers required" and the
+tests match it, so the work is planned, but `plans:scope` flags it. No code change; the main
+session may add it to step 1's Files when returning the plan to implementing.
+
+Test review: both new tests assert the acceptance criteria (`hireDate` `YYYY-MM-DD`,
+`terminationDate` null for active, stored date for terminated, `active: false`). No High findings.
+
+Status stays `review` (Medium-1 needs a code change).
+
+**Resolution (main session, 2026-10-14):** Medium-1 → the `terminationDate` docblock in
+`employees.facade.ts` now states both null cases and that `active` tells them apart (comment only,
+no behaviour change, so no new testing round). The consumer side is planned in
+`attendance-asistencia-diaria/002` step 4 (finding `attendance-baja-sin-fecha-en-la-jornada` →
+`planned`); the dev DB has 0 terminated rows without a date. Low-2 → step 1 declares
+`employees.facade.test.ts`. `pnpm check` green after the change. Plan to `verify`.
 
 ## Verification

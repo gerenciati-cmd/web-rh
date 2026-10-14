@@ -14,7 +14,10 @@ export interface EmployeeSummary {
   active: boolean;
   /** Fecha de contratación YYYY-MM-DD. */
   hireDate: string;
-  /** Fecha de baja YYYY-MM-DD; null si está activo. */
+  /**
+   * Fecha de baja YYYY-MM-DD. Null si está activo, y también en una baja anterior al campo (sin
+   * fecha guardada): `active` distingue ambos casos.
+   */
   terminationDate: string | null;
 }
 
