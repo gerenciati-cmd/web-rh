@@ -1,5 +1,5 @@
 ---
-status: testing
+status: review
 module: employees
 min_implementer: small
 depends_on: []
@@ -68,6 +68,13 @@ None
 None.
 
 ## Test coverage
+
+| Behavior                                                         | Source (`file:line`)                            | Layer       | Test (`employees.facade.test.ts`)                                                  | State     |
+| ---------------------------------------------------------------- | ----------------------------------------------- | ----------- | ---------------------------------------------------------------------------------- | --------- |
+| `hireDate` as `YYYY-MM-DD`, `terminationDate` null when active   | `employees.facade.ts:49-50`                     | application | findEmployee expone la fecha de contratación y terminationDate null para un activo | CONFIRMED |
+| `terminationDate` = stored termination date for a terminated one | `employees.facade.ts:50`, `employee.ts:134-152` | application | findEmployee expone la fecha de baja de un colaborador dado de baja                | CONFIRMED |
+
+No GAP / NOT CONFIRMED. Other layers not required by the plan.
 
 ## Review findings
 

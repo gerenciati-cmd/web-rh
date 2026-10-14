@@ -96,6 +96,33 @@ describe('EmployeesFacade', () => {
     expect((await facade.findEmployee('emp-1'))?.siteId).toBe('site-1');
   });
 
+  it('findEmployee expone la fecha de contratación y terminationDate null para un activo', async () => {
+    const { facade, employeeRepository } = setup();
+    await employeeRepository.add(hired('GOMA850101AB1'));
+
+    expect(await facade.findEmployee('emp-1')).toMatchObject({
+      hireDate: '2026-01-01',
+      terminationDate: null,
+    });
+  });
+
+  it('findEmployee expone la fecha de baja de un colaborador dado de baja', async () => {
+    const { facade, employeeRepository } = setup();
+    const employee = hired('GOMA850101AB1');
+    const result = employee.terminate(
+      { date: new Date('2026-02-10T00:00:00Z'), reason: 'VOLUNTARY_RESIGNATION' },
+      new Date('2026-03-01T12:00:00Z'),
+    );
+    expect(result.ok).toBe(true);
+    await employeeRepository.add(employee);
+
+    expect(await facade.findEmployee('emp-1')).toMatchObject({
+      hireDate: '2026-01-01',
+      terminationDate: '2026-02-10',
+      active: false,
+    });
+  });
+
   it('listActiveOnSite delega en las queries con la misma sede', async () => {
     const { facade, listActiveOnSite, member } = setup();
 
