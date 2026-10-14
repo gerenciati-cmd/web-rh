@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
+import type { JobQueue } from '@/shared/application/jobs';
 import {
   FixedClock,
   RecordingJobQueue,
@@ -18,7 +19,10 @@ import {
 import { RecordDevicePush, type RecordDevicePushInput } from './record-device-push.command';
 
 /** Arma el comando con repositorios en memoria donde `registeredSerials` son equipos activos. */
-async function setUp(registeredSerials: readonly string[]) {
+async function setUp(
+  registeredSerials: readonly string[],
+  jobQueue: JobQueue = new RecordingJobQueue(),
+) {
   const logger = new RecordingLogger();
   const clock = new FixedClock();
   const idGenerator = new SequentialIdGenerator();
@@ -48,7 +52,7 @@ async function setUp(registeredSerials: readonly string[]) {
       punchRepository,
       idGenerator,
       clock,
-      jobQueue: new RecordingJobQueue(),
+      jobQueue,
     }),
   };
 }
@@ -572,6 +576,154 @@ describe('RecordDevicePush', () => {
       expect([...store.punches.values()][0]?.occurredAt.toISOString()).toBe(
         '2026-09-28T08:01:00.000Z',
       );
+    });
+  });
+});
+
+// Plan attendance-asistencia-diaria/003, decisión 19: nuevas marcaciones encolan el recálculo.
+describe('RecordDevicePush: recálculo automático', () => {
+  // FixedClock por defecto: hoy = 2026-01-15 (UTC). Cancún es UTC−5.
+  const line = (pin: string, deviceTime: string): DevicePushRecord => ({
+    kind: 'attendance',
+    pin,
+    deviceTime,
+    status: '0',
+    verifyMode: '1',
+    extraFields: 6,
+  });
+  const push = (command: RecordDevicePush, records: readonly DevicePushRecord[]) =>
+    command.execute({ serialNumber: 'TESTSN001', table: 'ATTLOG', records, sourceIp: null });
+
+  it('encola un job por PIN con el rango de su primera marcación − 1 a su última', async () => {
+    const queue = new RecordingJobQueue();
+    const { command } = await setUp(['TESTSN001'], queue);
+
+    await push(command, [
+      line('RFCAAA', '2026-01-13 08:00:00'),
+      line('RFCBBB', '2026-01-14 09:00:00'),
+      line('RFCAAA', '2026-01-14 18:00:00'),
+    ]);
+
+    expect(queue.jobs).toEqual([
+      {
+        name: 'attendance.recalculate-workdays',
+        data: { pin: 'RFCAAA', from: '2026-01-12', to: '2026-01-14' },
+        options: undefined,
+      },
+      {
+        name: 'attendance.recalculate-workdays',
+        data: { pin: 'RFCBBB', from: '2026-01-13', to: '2026-01-14' },
+        options: undefined,
+      },
+    ]);
+  });
+
+  it('usa la fecha UTC de la marcación: una salida nocturna local cae al día UTC siguiente', async () => {
+    const queue = new RecordingJobQueue();
+    const { command } = await setUp(['TESTSN001'], queue);
+
+    // 22:30 en Cancún del 14 = 03:30Z del 15.
+    await push(command, [line('RFCAAA', '2026-01-14 22:30:00')]);
+
+    expect(queue.jobs.map((job) => job.data)).toEqual([
+      { pin: 'RFCAAA', from: '2026-01-14', to: '2026-01-15' },
+    ]);
+  });
+
+  it('reenviar solo líneas ya guardadas no encola nada', async () => {
+    const queue = new RecordingJobQueue();
+    const { command } = await setUp(['TESTSN001'], queue);
+    const records = [line('RFCAAA', '2026-01-14 08:00:00')];
+    await push(command, records);
+    queue.jobs.length = 0;
+
+    await push(command, records);
+
+    expect(queue.jobs).toEqual([]);
+  });
+
+  it('un lote con una línea nueva y un duplicado usa el rango de todo el lote', async () => {
+    const queue = new RecordingJobQueue();
+    const { command } = await setUp(['TESTSN001'], queue);
+    await push(command, [line('RFCAAA', '2026-01-10 08:00:00')]);
+    queue.jobs.length = 0;
+
+    await push(command, [
+      line('RFCAAA', '2026-01-10 08:00:00'),
+      line('RFCAAA', '2026-01-14 08:00:00'),
+    ]);
+
+    expect(queue.jobs.map((job) => job.data)).toEqual([
+      { pin: 'RFCAAA', from: '2026-01-09', to: '2026-01-14' },
+    ]);
+  });
+
+  it('un lote sin marcaciones válidas (todas rechazadas) no encola nada', async () => {
+    const queue = new RecordingJobQueue();
+    const { command } = await setUp(['TESTSN001'], queue);
+
+    await push(command, [line('RFCAAA', 'no es una fecha')]);
+
+    expect(queue.jobs).toEqual([]);
+  });
+
+  it('una tabla distinta de ATTLOG no encola nada', async () => {
+    const queue = new RecordingJobQueue();
+    const { command } = await setUp(['TESTSN001'], queue);
+
+    await command.execute({
+      serialNumber: 'TESTSN001',
+      table: 'OPERLOG',
+      records: [line('RFCAAA', '2026-01-14 08:00:00')],
+      sourceIp: null,
+    });
+
+    expect(queue.jobs).toEqual([]);
+  });
+
+  it('un equipo no autorizado no encola nada', async () => {
+    const queue = new RecordingJobQueue();
+    const { command } = await setUp(['OTRO'], queue);
+
+    await push(command, [line('RFCAAA', '2026-01-14 08:00:00')]);
+
+    expect(queue.jobs).toEqual([]);
+  });
+
+  it('marcaciones anteriores al piso de 62 fechas no encolan nada', async () => {
+    const queue = new RecordingJobQueue();
+    const { command } = await setUp(['TESTSN001'], queue);
+
+    await push(command, [line('RFCAAA', '2025-06-01 08:00:00')]);
+
+    expect(queue.jobs).toEqual([]);
+  });
+
+  it('si encolar falla, el envío se acepta igual, se registra el error y se sigue con los demás PIN', async () => {
+    const attempts: object[] = [];
+    const failingFirst: JobQueue = {
+      enqueue: (_name, data) => {
+        attempts.push(data);
+        return attempts.length === 1
+          ? Promise.reject(new Error('Valkey caído'))
+          : Promise.resolve();
+      },
+    };
+    const { command, logger, store } = await setUp(['TESTSN001'], failingFirst);
+
+    const result = await push(command, [
+      line('RFCAAA', '2026-01-14 08:00:00'),
+      line('RFCBBB', '2026-01-14 09:00:00'),
+    ]);
+
+    expect(result.ok && result.value).toEqual({ accepted: 2 });
+    expect(store.punches.size).toBe(2);
+    expect(attempts).toHaveLength(2);
+    const errors = logger.entries.filter((entry) => entry.level === 'error');
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toMatchObject({
+      obj: { serialNumber: 'TESTSN001', pin: 'RFCAAA' },
+      msg: 'asistencia: no se pudo encolar el recálculo',
     });
   });
 });

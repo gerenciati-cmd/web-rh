@@ -1,5 +1,5 @@
 ---
-status: testing
+status: review
 module: attendance
 min_implementer: high
 depends_on: ['002']
@@ -214,6 +214,13 @@ today, today)` — add `jobQueue` and `clock` to the destructured cradle.
      that modules can declare recurring jobs that the worker schedules (ADR 0016).
    - Observable result: `pnpm check` passes.
 
+8. **Tests phase files and Deviation 1** (added by the main session before review, as the
+   Low-1 of plans 001 and 002)
+   - Files: `apps/api/src/modules/attendance/domain/workday-recalculation.test.ts` (create), `apps/api/src/modules/attendance/application/jobs/recalculate-workdays.job.test.ts` (create), `apps/api/src/modules/attendance/application/jobs/close-workdays.job.test.ts` (create), `apps/api/tests/attendance-recalculation.test.ts` (create), `apps/api/tests/integration/attendance/prisma-workday-lock.int.test.ts` (create), `apps/api/tests/integration/attendance/prisma-workday.int.test.ts` (modify), `apps/api/tests/attendance-clock-offset.test.ts` (modify), `apps/api/tests/attendance-device-network.test.ts` (modify), `apps/api/tests/zkteco-adms.test.ts` (modify)
+   - Do: the tester's files (see Test coverage) and the mechanical `jobQueue` argument of
+     Deviation 1.
+   - Observable result: `pnpm plans:scope … --base origin/main` lists no file out of scope.
+
 ## Acceptance criteria
 
 With the API **and the worker** running against the dev database:
@@ -280,6 +287,43 @@ clock }`: `jobQueue` and `clock` live in `SharedCradle`, not in `AttendanceCradl
    params (`max-params` warning, max 4). The signature is the plan's; left as specified.
 
 ## Test coverage
+
+Tester, 2026-10-14. Baseline: `pnpm check` and `pnpm test:integration` (261 tests) green. Closing:
+`pnpm check` green, `pnpm test:integration` 20 files / 269 tests green. No GAP and no NOT CONFIRMED
+among the layers below; the NOT CONFIRMED items are listed at the end. Lint keeps only the two
+pre-existing/specified warnings (`max-params` on `enqueueWorkdayRecalculation`, Deviation 7;
+`complexity` in `workday-calculator.ts`, out of scope).
+
+| Behavior                                                                                                                             | Source                                             | Layer       | Test                                                                                                               | State                                                                   |
+| ------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------- |
+| `utcDate` is the UTC date, not local                                                                                                 | `workday-recalculation.ts:13`                      | domain      | `workday-recalculation.test.ts › utcDate`                                                                          | CONFIRMED                                                               |
+| `automaticRange` clamps to `[today−61, today]` (62 dates), keeps inner ranges, null when empty/inverted                              | `workday-recalculation.ts:22-32`                   | domain      | `workday-recalculation.test.ts › automaticRange` (8 tests)                                                         | CONFIRMED                                                               |
+| `sweepRange` = last 3 dates, across month/year                                                                                       | `workday-recalculation.ts:35-37`                   | domain      | `workday-recalculation.test.ts › sweepRange`                                                                       | CONFIRMED                                                               |
+| `enqueueWorkdayRecalculation` enqueues clamped range for employeeId or pin, nothing when empty                                       | `recalculate-workdays.job.ts:23-35`                | application | `recalculate-workdays.job.test.ts › enqueueWorkdayRecalculation`                                                   | CONFIRMED                                                               |
+| `RecalculateWorkdaysJob`: employeeId / pin targets, unknown PIN (debug), missing employee (warn)                                     | `recalculate-workdays.job.ts:56-110`               | application | `recalculate-workdays.job.test.ts › RecalculateWorkdaysJob`                                                        | CONFIRMED                                                               |
+| `err` from the command → warn `{employeeId, code}` and completes; unexpected exception propagates                                    | `recalculate-workdays.job.ts:66-73`                | application | same file (`un err del caso de uso…`, `una excepción inesperada…`)                                                 | CONFIRMED                                                               |
+| `CloseWorkdaysJob`: one job per assigned employee, sweep range, skips ended-before-range and missing                                 | `close-workdays.job.ts:40-52`                      | application | `close-workdays.job.test.ts` (6 tests)                                                                             | CONFIRMED                                                               |
+| `RecordDevicePush` enqueues per PIN (first−1 … last), only when something was inserted                                               | `record-device-push.command.ts:118-150`            | application | `record-device-push.command.test.ts › recálculo automático` (duplicates, mixed batch, rejected, non-ATTLOG, floor) | CONFIRMED                                                               |
+| An enqueue error is logged and never fails the push; other PINs still enqueue                                                        | `record-device-push.command.ts:151-157`            | application | `… › si encolar falla, el envío se acepta igual…`                                                                  | CONFIRMED                                                               |
+| `AssignEmployeeShift` enqueues effectiveFrom…today; not for future dates; clamped; not on errors                                     | `assign-employee-shift.command.ts:57-66`           | application | `assign-employee-shift.command.test.ts › recálculo automático` (+ SHIFT_NOT_FOUND case)                            | CONFIRMED                                                               |
+| `RecalculateWorkdays` runs in the transaction, locks before writing, validations outside, closes on throw                            | `recalculate-workdays.command.ts:97-124`           | application | `recalculate-workdays.command.test.ts › serialización por colaborador` (3 tests)                                   | CONFIRMED                                                               |
+| Punch, assignment, termination enqueue the right job and the job updates `GET …/workdays`                                            | `attendance.module.ts` (subscribe), commands above | http        | `tests/attendance-recalculation.test.ts` (marcaciones, asignación, baja)                                           | CONFIRMED                                                               |
+| Hourly close enqueues per assigned colaborador, faltas appear after running jobs; ended skipped                                      | `close-workdays.job.ts`                            | http        | `… › cierre horario`                                                                                               | CONFIRMED                                                               |
+| Job for a colaborador without RFC completes without throwing and stores nothing                                                      | `recalculate-workdays.job.ts:66-73`                | http        | `… › colaborador que no se puede recalcular`                                                                       | CONFIRMED                                                               |
+| Module declares both handlers and the schedule (name matches a handler); `jobScheduler` resolves in DI                               | `attendance.module.ts`, `container.ts`             | http        | `… › declaración del módulo`; `tests/container.test.ts` (existing, resolves every registration)                    | CONFIRMED                                                               |
+| `lockEmployee` really serializes two same-colaborador transactions on Postgres (B waits in `pg_locks`)                               | `prisma-workday.repository.ts:29-35`               | integration | `prisma-workday-lock.int.test.ts › un segundo recálculo… espera…`                                                  | CONFIRMED                                                               |
+| Lock is per colaborador (another one is not blocked) and is released on rollback                                                     | same                                               | integration | same file (2 tests)                                                                                                | CONFIRMED                                                               |
+| Control: without the lock two concurrent `replaceDates` of one date hit the unique constraint; with it both finish and the last wins | `prisma-workday.repository.ts:11-27`               | integration | same file (`control: sin el candado…`, `con el candado la misma carrera se serializa…`)                            | CONFIRMED                                                               |
+| Real `RecalculateWorkdays` x5 concurrent over Prisma repos: all ok, same 7 rows as a single run                                      | `recalculate-workdays.command.ts`                  | integration | same file › `RecalculateWorkdays concurrente contra Postgres`                                                      | CONFIRMED                                                               |
+| `listAssignedEmployees` is distinct per employee and carries `companyId`; empty when none                                            | `prisma-shift-assignment.repository.ts:44-49`      | integration | `prisma-workday.int.test.ts › listAssignedEmployees`                                                               | CONFIRMED                                                               |
+| `BullMqJobQueue.upsert` creates a job scheduler in Valkey; worker start-up logs and upserts schedules                                | `bullmq-job-queue.ts`, `worker.ts`                 | -           | none                                                                                                               | NOT CONFIRMED (needs Valkey and a running worker; left to the verifier) |
+
+Deviation 4 (`$executeRaw` with `pg_advisory_xact_lock`) is now confirmed against `rrhh_test`: the
+lock works, B shows up as an ungranted advisory lock in `pg_locks` until A ends. Tests per layer
+added: domain 11, application 35 (recalculate job and enqueue helper 12, close 6, push 9, assign 5,
+recalculate 3), http 12, integration 8 (6 lock + 2 distinct). Two items stay NOT CONFIRMED: the
+Valkey scheduler upsert and the worker start-up log (need Valkey and a running worker), and the
+decision that an RFC change does not trigger a recalculation (absence of code, nothing to assert).
 
 ## Review findings
 

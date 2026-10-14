@@ -94,6 +94,8 @@ async function setUp(
     },
     add: (shift) => shiftRepository.add(shift),
   };
+  /** Orden de transacción, candado y escritura, para probar que se serializa. */
+  const txEvents: string[] = [];
   const replaceCalls: {
     employeeId: string;
     dates: readonly string[];
@@ -102,9 +104,13 @@ async function setUp(
   const workdayRepository: WorkdayRepository = {
     replaceDates: (employeeId, dates, workdays) => {
       replaceCalls.push({ employeeId, dates, workdays });
+      txEvents.push('replace');
       return inner.replaceDates(employeeId, dates, workdays);
     },
-    lockEmployee: (employeeId) => inner.lockEmployee(employeeId),
+    lockEmployee: (employeeId) => {
+      txEvents.push(`lock:${employeeId}`);
+      return inner.lockEmployee(employeeId);
+    },
   };
 
   const employee: { current: WorkdayEmployee | null } = {
@@ -135,7 +141,16 @@ async function setUp(
     shiftRepository: countingShifts,
     punchRepository: punches,
     workdayRepository,
-    transactionRunner: { run: (work) => work() },
+    transactionRunner: {
+      run: async (work) => {
+        txEvents.push('begin');
+        try {
+          return await work();
+        } finally {
+          txEvents.push('end');
+        }
+      },
+    },
     clock,
   });
 
@@ -162,12 +177,46 @@ async function setUp(
     workdayStore,
     findByIdCalls,
     replaceCalls,
+    txEvents,
   };
 }
 
 const input = { companyId: COMPANY, employeeId: EMPLOYEE, from: '2026-10-05', to: '2026-10-11' };
 
 describe('RecalculateWorkdays', () => {
+  // Plan attendance-asistencia-diaria/003 (revisión del 002, Low-2): recálculos concurrentes del
+  // mismo colaborador se serializan con un candado dentro de la transacción.
+  describe('serialización por colaborador', () => {
+    it('abre la transacción, toma el candado del colaborador y solo después escribe', async () => {
+      const { command, txEvents } = await setUp();
+
+      const result = await command.execute(input);
+
+      expect(result.ok).toBe(true);
+      expect(txEvents).toEqual(['begin', `lock:${EMPLOYEE}`, 'replace', 'end']);
+    });
+
+    it('los errores de validación ocurren antes de la transacción: no abre ni bloquea', async () => {
+      const missing = await setUp({ employee: null });
+      const badRange = await setUp();
+
+      await missing.command.execute(input);
+      await badRange.command.execute({ ...input, from: '2026-10-11', to: '2026-10-05' });
+
+      expect(missing.txEvents).toEqual([]);
+      expect(badRange.txEvents).toEqual([]);
+    });
+
+    it('cierra la transacción aunque el cálculo falle (turno asignado inexistente)', async () => {
+      const { command, assign, txEvents } = await setUp();
+      await assign('2026-10-05', '00000000-0000-4000-8000-0000000000ff' as ShiftId);
+
+      await expect(command.execute(input)).rejects.toThrow('asignado no existe');
+
+      expect(txEvents).toEqual(['begin', `lock:${EMPLOYEE}`, 'end']);
+    });
+  });
+
   describe('errores, en orden', () => {
     it('colaborador inexistente: EMPLOYEE_NOT_FOUND', async () => {
       const { command } = await setUp({ employee: null });
