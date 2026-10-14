@@ -311,3 +311,42 @@ model AttendancePunch {
   @@map("punches")
   @@schema("attendance")
 }
+
+model AttendanceShift {
+  id               String                      @id @db.Uuid
+  /// referencia por id a organization, sin FK (ADR 0010)
+  companyId        String                      @map("company_id") @db.Uuid
+  name             String                      @db.VarChar(100)
+  /// Nombre en minúsculas: la unicidad por empresa no distingue mayúsculas.
+  nameKey          String                      @map("name_key") @db.VarChar(100)
+  /// Fecha en la que cae el día 1 del ciclo.
+  cycleStartDate   DateTime                    @map("cycle_start_date") @db.Date
+  toleranceMinutes Int                         @map("tolerance_minutes")
+  /// Ciclo del turno: días WORK/REST, ver `domain/shift.ts`.
+  days             Json
+  active           Boolean                     @default(true)
+  createdAt        DateTime                    @map("created_at") @db.Timestamptz(3)
+  assignments      AttendanceShiftAssignment[]
+
+  @@unique([companyId, nameKey])
+  @@map("shifts")
+  @@schema("attendance")
+}
+
+model AttendanceShiftAssignment {
+  /// referencia por id a employees, sin FK (ADR 0010)
+  employeeId    String          @map("employee_id") @db.Uuid
+  /// referencia por id a organization, sin FK (ADR 0010)
+  companyId     String          @map("company_id") @db.Uuid
+  shiftId       String          @map("shift_id") @db.Uuid
+  /// Mismo módulo: la FK al turno está permitida.
+  shift         AttendanceShift @relation(fields: [shiftId], references: [id])
+  effectiveFrom DateTime        @map("effective_from") @db.Date
+  assignedAt    DateTime        @map("assigned_at") @db.Timestamptz(3)
+  assignedBy    String          @map("assigned_by") @db.Uuid
+
+  @@id([employeeId, effectiveFrom])
+  @@index([shiftId])
+  @@map("shift_assignments")
+  @@schema("attendance")
+}

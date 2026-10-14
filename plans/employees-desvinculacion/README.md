@@ -51,6 +51,21 @@ stored data.
 
 ## Delivered
 
+Series closed on 2026-10-14; plans 001–002 are `done`, verified against the dev API (the real
+checador was not exercised in this series; the `DELETE USERINFO` it receives was already
+confirmed on it by attendance plan 007).
+
+- **Termination endpoint** (001): `POST …/employees/:employeeId/termination` with a date (today or
+  earlier, not before hire) and an LFT-based reason from a closed catalog; stored on the
+  colaborador; new permission `employees:terminate` (HR, HOLDING_ADMIN). The colaborador becomes
+  `TERMINATED`, loses platform access and is removed from their sede's checadores.
+- **Targeted writes** (002): each use case writes only its columns, so a concurrent RFC or sede
+  save no longer undoes a termination; a double submit answers `EMPLOYEE_ALREADY_TERMINATED` and
+  publishes one event; RFC and sede of a terminated colaborador → 422 `EMPLOYEE_INACTIVE`.
+
+Not in this series: future-dated terminations (decision 4), the finiquito (it builds on the stored
+date and reason), rehiring a terminated colaborador, and web/mobile screens.
+
 ## Considered and discarded
 
 - **Optimistic version column on `employees.employees`** for the full-row overwrite: every

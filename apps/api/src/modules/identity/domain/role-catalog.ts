@@ -26,6 +26,10 @@ export const ROLE_DEFINITIONS: Readonly<Record<Role, RoleDefinition>> = {
       // Ve las marcaciones de los colaboradores de sus empresas, atribuidas por RFC
       // (README de attendance-marcaciones, decisión 8).
       'attendance.punches:read',
+      // Define los turnos de sus empresas y los asigna a sus colaboradores (README de
+      // attendance-asistencia-diaria, decisión 11).
+      'attendance.shifts:read',
+      'attendance.shifts:manage',
       'identity.users:invite',
       'identity.users:reset-password',
     ],

@@ -35,6 +35,7 @@ const VARIANT_BY_CLASS: Readonly<Record<string, string>> = {
   'identity/AssignmentCompanyInactiveError': 'role_assignment',
   'identity/EmployeeNotFoundError': 'identity',
   'employees/EmployeeInactiveError': 'employees',
+  'attendance/EmployeeInactiveError': 'employees',
 };
 
 interface Produced {

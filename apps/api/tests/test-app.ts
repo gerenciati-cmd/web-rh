@@ -13,6 +13,12 @@ import {
   InMemoryDeviceUserRepository,
   InMemoryPunchRepository,
 } from '@/modules/attendance/infrastructure/in-memory/in-memory-attendance.store';
+import {
+  InMemoryShiftAssignmentRepository,
+  InMemoryShiftQueries,
+  InMemoryShiftRepository,
+  InMemoryShiftStore,
+} from '@/modules/attendance/infrastructure/in-memory/in-memory-shift.store';
 import type { EmployeeQueries } from '@/modules/employees/application/queries/employee.queries';
 import { InMemoryEmployeeRepository } from '@/modules/employees/infrastructure/in-memory/in-memory-employee.repository';
 import type { CompanyDirectory } from '@/modules/identity/application/ports/company-directory';
@@ -61,6 +67,7 @@ export function buildTestContainer(env: Env = testEnv) {
   const companies = new InMemoryCompanyStore();
   const sites = new InMemorySiteStore();
   const attendance = new InMemoryAttendanceStore();
+  const shifts = new InMemoryShiftStore();
   const employees = new InMemoryEmployeeRepository();
   const users = new InMemoryUserRepository();
   const roleAssignments = new InMemoryRoleAssignmentRepository({ userRepository: users });
@@ -162,6 +169,9 @@ export function buildTestContainer(env: Env = testEnv) {
     deviceCommandRepository: asValue(new InMemoryDeviceCommandRepository(attendance)),
     deviceUserRepository: asValue(new InMemoryDeviceUserRepository(attendance)),
     attendanceQueries: asValue(new InMemoryAttendanceQueries(attendance)),
+    shiftRepository: asValue(new InMemoryShiftRepository(shifts)),
+    shiftAssignmentRepository: asValue(new InMemoryShiftAssignmentRepository(shifts)),
+    shiftQueries: asValue(new InMemoryShiftQueries(shifts)),
     userRepository: asValue(users),
     sessionRepository: asValue(new InMemorySessionRepository()),
     loginThrottleRepository: asValue(new InMemoryLoginThrottleRepository()),
