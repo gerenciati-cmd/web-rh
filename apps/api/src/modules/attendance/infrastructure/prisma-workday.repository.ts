@@ -25,4 +25,12 @@ export class PrismaWorkdayRepository implements WorkdayRepository {
       });
     });
   }
+
+  async lockEmployee(employeeId: string): Promise<void> {
+    // Candado consultivo de transacción: se libera solo al commit/rollback. Fuera de una
+    // transacción se liberaría de inmediato, así que el llamador debe abrir una. `$executeRaw`
+    // en vez de `$queryRaw` porque la función devuelve `void`, que no hay que deserializar.
+    await this.deps.database.client
+      .$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${employeeId}::text, 0))`;
+  }
 }

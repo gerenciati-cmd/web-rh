@@ -104,6 +104,7 @@ async function setUp(
       replaceCalls.push({ employeeId, dates, workdays });
       return inner.replaceDates(employeeId, dates, workdays);
     },
+    lockEmployee: (employeeId) => inner.lockEmployee(employeeId),
   };
 
   const employee: { current: WorkdayEmployee | null } = {
@@ -134,6 +135,7 @@ async function setUp(
     shiftRepository: countingShifts,
     punchRepository: punches,
     workdayRepository,
+    transactionRunner: { run: (work) => work() },
     clock,
   });
 

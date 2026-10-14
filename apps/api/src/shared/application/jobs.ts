@@ -19,3 +19,18 @@ export interface JobHandler<T = unknown> {
   readonly name: string;
   handle(data: T): Promise<void>;
 }
+
+/**
+ * Job recurrente que declara un módulo (ADR 0016). `pattern` es una expresión cron y `timeZone`
+ * una zona IANA (p. ej. `America/Cancun`) con la que se interpreta. Lo ejecuta el `JobHandler`
+ * registrado con el mismo `name`.
+ */
+export interface ScheduledJob {
+  name: string;
+  pattern: string;
+  timeZone: string;
+}
+
+export interface JobScheduler {
+  upsert(job: ScheduledJob): Promise<void>;
+}

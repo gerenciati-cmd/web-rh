@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   FixedClock,
   RecordingEventBus,
+  RecordingJobQueue,
   RecordingLogger,
   SequentialIdGenerator,
 } from '@/shared/testing/fakes';
@@ -84,6 +85,7 @@ async function setUp(networks: readonly string[] = []) {
       punchRepository,
       idGenerator,
       clock,
+      jobQueue: new RecordingJobQueue(),
     }),
     setNetworks: new SetDeviceNetworks({
       deviceRepository,
@@ -320,6 +322,7 @@ describe('RecordDevicePush: barrera de red', () => {
       punchRepository: racingPunches,
       idGenerator: new SequentialIdGenerator(),
       clock: setup.clock,
+      jobQueue: new RecordingJobQueue(),
     });
 
     await push.execute({

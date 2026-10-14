@@ -1,5 +1,5 @@
 ---
-status: draft
+status: testing
 module: attendance
 min_implementer: high
 depends_on: ['002']
@@ -248,6 +248,36 @@ With the API **and the worker** running against the dev database:
 | e2e         | no      | (no e2e infrastructure yet)                                                                                                                                                                                                                                                                                                                                                                                                                          |
 
 ## Deviations
+
+Implementer, 2026-10-14. All 7 steps done. Citations spot-checked (`jobs.ts:5-21`, `container.ts:84-86`,
+`worker.ts:19-33`, `recalculate-workdays.command.ts:72-112`, `prisma-workday.repository.ts:11-27`,
+`employee.ts:151`, `fakes.ts:49-57`): match. All deviations are cosmetic (fixed forward):
+
+1. **Step 4 — three more test files needed the mechanical `jobQueue` constructor arg.** The plan
+   lists the in-module tests, but `RecordDevicePush` is also built by hand in
+   `apps/api/tests/zkteco-adms.test.ts`, `apps/api/tests/attendance-device-network.test.ts` and
+   `apps/api/tests/attendance-clock-offset.test.ts`. Without it typecheck fails. Same edit as the
+   planned ones (`jobQueue: new RecordingJobQueue()` + import); no behaviour change.
+2. **Step 3 — the test's hand-written `WorkdayRepository` fake** in
+   `recalculate-workdays.command.test.ts` needed `lockEmployee` too (delegates to the in-memory
+   one). Same file the plan already lists.
+3. **Step 6 — `AppModule.subscribe` cradle type widened** (`apps/api/src/shared/app-module.ts`,
+   already in step 1's list) from `TCradle & { eventBus }` to `TCradle & { eventBus, jobQueue,
+clock }`: `jobQueue` and `clock` live in `SharedCradle`, not in `AttendanceCradle`, so the
+   destructuring the plan asks for did not type-check. Runtime is unchanged
+   (`wireSubscriptions` already passes the full container cradle).
+4. **Step 5 — `lockEmployee` uses `$executeRaw` instead of `$queryRaw`**, and casts the parameter
+   (`${employeeId}::text`). `pg_advisory_xact_lock` returns `void`, which a raw query would have to
+   deserialize; `$executeRaw` only returns the row count. Same SQL and semantics. Not yet exercised
+   against Postgres (the integration test is the tester's, per the plan's test layers).
+5. **Step 4 — `RecordDevicePush`:** the "only when `inserted > 0`" check lives inside the new
+   private `enqueueRecalculations` (it receives `inserted`) instead of in `execute`, to keep
+   `execute` under the `complexity` lint limit. Same behaviour.
+6. **Step 4 — `RecalculateWorkdaysJob`** also handles a payload with neither `employeeId` nor `pin`
+   (warn + return) so the handler never calls the command without a target; the plan says the
+   data carries exactly one.
+7. **Lint warning kept:** `enqueueWorkdayRecalculation(jobQueue, target, from, to, today)` has 5
+   params (`max-params` warning, max 4). The signature is the plan's; left as specified.
 
 ## Test coverage
 

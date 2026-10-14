@@ -1,6 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { FixedClock, RecordingLogger, SequentialIdGenerator } from '@/shared/testing/fakes';
+import {
+  FixedClock,
+  RecordingJobQueue,
+  RecordingLogger,
+  SequentialIdGenerator,
+} from '@/shared/testing/fakes';
 
 import { Device, type DeviceId } from '../../domain/device';
 import type { DevicePushRecord } from '../../domain/device-record';
@@ -43,6 +48,7 @@ async function setUp(registeredSerials: readonly string[]) {
       punchRepository,
       idGenerator,
       clock,
+      jobQueue: new RecordingJobQueue(),
     }),
   };
 }

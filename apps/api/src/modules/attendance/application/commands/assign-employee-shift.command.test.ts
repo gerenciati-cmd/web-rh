@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { FixedClock } from '@/shared/testing/fakes';
+import { FixedClock, RecordingJobQueue } from '@/shared/testing/fakes';
 
 import { Shift, type ShiftId } from '../../domain/shift';
 import {
@@ -55,6 +55,7 @@ async function setUp(now = new Date('2026-10-14T12:00:00Z')) {
     shiftAssignmentRepository: new InMemoryShiftAssignmentRepository(store),
     shiftEmployeeDirectory: { find: (id: string) => Promise.resolve(EMPLOYEES.get(id) ?? null) },
     clock,
+    jobQueue: new RecordingJobQueue(),
   });
   return { command, queries: new InMemoryShiftQueries(store), clock };
 }
