@@ -1,5 +1,5 @@
 ---
-status: draft
+status: approved
 module: attendance
 min_implementer: high
 depends_on: ['001', 'employees-fechas-laborales/001']
@@ -124,7 +124,7 @@ the whole range.
      - `attendanceWorkdayRoutes`:
        - `recalculateEmployeeWorkdays`: `POST /companies/:companyId/attendance/employees/:employeeId/workdays/recalculation`,
          body range, response `WorkdayRecalculationSchema`, 200, errors
-         `['EMPLOYEE_NOT_FOUND', 'SITE_NOT_FOUND', 'EMPLOYEE_WITHOUT_RFC', 'EMPLOYEE_WITHOUT_SITE']`,
+         `['EMPLOYEE_NOT_FOUND', 'SITE_NOT_FOUND', 'EMPLOYEE_WITHOUT_RFC', 'EMPLOYEE_WITHOUT_SITE', { code: 'EMPLOYEE_INACTIVE', variant: 'employees' }]`,
          `requires('attendance.workdays:recalculate', { companyParam: 'companyId' })`. Description:
          replaces the stored jornadas of the closed dates; works for terminated colaboradores too.
        - `listEmployeeWorkdays`: `GET /companies/:companyId/attendance/employees/:employeeId/workdays`,
@@ -180,14 +180,17 @@ workdays: readonly Workday[]): Promise<void>` — deletes the employee's rows on
    - Files: `apps/api/src/modules/attendance/application/ports/workday-employee-directory.ts` (create), `apps/api/src/modules/attendance/application/queries/workday.queries.ts` (create), `apps/api/src/modules/attendance/application/commands/recalculate-workdays.command.ts` (create), `apps/api/src/modules/attendance/application/queries/list-employee-workdays.query.ts` (create)
    - Do:
      - Port `WorkdayEmployeeDirectory.find(employeeId)` →
-       `{ id, companyId, rfc: string | null, siteId: string | null, hireDate: string,
+       `{ id, companyId, active: boolean, rfc: string | null, siteId: string | null, hireDate: string,
 terminationDate: string | null } | null`.
      - `WorkdayQueries.listByEmployee(employeeId, from, to): Promise<WorkdayDto[]>` (date asc,
        with `shiftName`).
      - `RecalculateWorkdays` (deps `workdayEmployeeDirectory`, `deviceSiteDirectory`,
        `shiftAssignmentRepository`, `shiftRepository`, `punchRepository`, `workdayRepository`,
        `clock`), input `{ companyId, employeeId, from, to }`, in this order: employee missing or
-       other company → `EmployeeNotFoundError`; `rfc` null → `EmployeeWithoutRfcError`; `siteId`
+       other company → `EmployeeNotFoundError`; `active` false with `terminationDate` null (a
+       termination stored before the date field existed, finding
+       `attendance-baja-sin-fecha-en-la-jornada`) → the existing `EmployeeInactiveError` of plan
+       001, so no jornadas are built without an end; `rfc` null → `EmployeeWithoutRfcError`; `siteId`
        null → `EmployeeWithoutSiteError`; site missing → `SiteNotFoundError`; range invalid
        (`from > to` or > 62 days) → `InvalidValueError`. Build `calendar` for `from − 1 … to + 1`:
        per date the latest assignment with `effectiveFrom ≤ date`, its shift (load each distinct
@@ -262,7 +265,7 @@ from 2026-10-05 (a Monday) a Mon–Fri 09:00–18:00 shift with 60 min meal and 
 punches (local time):
 
 - [ ] Recalculating 2026-10-05…2026-10-11 → 200 `{ recalculatedDates: 7, storedWorkdays: 6,
-  pendingDates: [] }` and the list returns, ascending:
+pendingDates: [] }` and the list returns, ascending:
       Mon 08:00/18:00 → `ATTENDED`, worked 540, overtime 60, late 0;
       Tue 09:15/18:00 → `ATTENDED`, late 15, worked 465, overtime 0;
       Wed 09:10/18:00 → `ATTENDED`, late 0, worked 470;
@@ -276,7 +279,8 @@ punches (local time):
 - [ ] Adding a punch and recalculating again replaces the rows (no duplicates; the changed day
       reflects the new punch).
 - [ ] Dates before the hire date or after the termination date get no row; a terminated
-      colaborador can still be recalculated.
+      colaborador can still be recalculated. A terminated colaborador without a stored
+      termination date → 422 `EMPLOYEE_INACTIVE` (no rows written).
 - [ ] Colaborador without RFC → 422 `EMPLOYEE_WITHOUT_RFC`; of another company → 404
       `EMPLOYEE_NOT_FOUND`; `to < from` or 63 days → 400 `VALIDATION_ERROR`; HR of another
       company → 403.
