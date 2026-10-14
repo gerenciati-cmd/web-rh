@@ -378,6 +378,30 @@ export const API_ERRORS = {
       },
     },
   },
+  EMPLOYEE_WITHOUT_RFC: {
+    status: 422,
+    description:
+      'El colaborador no tiene RFC: el PIN del checador es el RFC, así que sus marcaciones no se le pueden atribuir.',
+    examples: {
+      default: {
+        code: 'EMPLOYEE_WITHOUT_RFC',
+        message: 'El colaborador no tiene RFC: sus marcaciones no se pueden atribuir',
+        details: { employeeId: EMPLOYEE_ID },
+      },
+    },
+  },
+  EMPLOYEE_WITHOUT_SITE: {
+    status: 422,
+    description:
+      'El colaborador no tiene sede asignada: no se conoce la zona horaria de sus jornadas.',
+    examples: {
+      default: {
+        code: 'EMPLOYEE_WITHOUT_SITE',
+        message: 'El colaborador no tiene sede asignada',
+        details: { employeeId: EMPLOYEE_ID },
+      },
+    },
+  },
 
   // ── identity: sesión y contraseñas ───────────────────────────────────────
   INVALID_CREDENTIALS: {

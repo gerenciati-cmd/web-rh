@@ -88,6 +88,22 @@ export class EmployeeInactiveError extends BusinessRuleViolationError {
   }
 }
 
+export class EmployeeWithoutRfcError extends BusinessRuleViolationError {
+  override readonly code = 'EMPLOYEE_WITHOUT_RFC';
+
+  constructor(employeeId: string) {
+    super('El colaborador no tiene RFC: sus marcaciones no se pueden atribuir', { employeeId });
+  }
+}
+
+export class EmployeeWithoutSiteError extends BusinessRuleViolationError {
+  override readonly code = 'EMPLOYEE_WITHOUT_SITE';
+
+  constructor(employeeId: string) {
+    super('El colaborador no tiene sede asignada', { employeeId });
+  }
+}
+
 export class DeviceWithoutSiteError extends BusinessRuleViolationError {
   override readonly code = 'DEVICE_WITHOUT_SITE';
 

@@ -17,6 +17,8 @@ export const PERMISSIONS = [
   'attendance.punches:read',
   'attendance.shifts:read',
   'attendance.shifts:manage',
+  'attendance.workdays:read',
+  'attendance.workdays:recalculate',
   'identity.users:read',
   'identity.roles:manage',
   'identity.users:invite',

@@ -1,5 +1,6 @@
 import type { PrismaDatabase } from '@/infrastructure/database/prisma-database';
 
+import type { ShiftId } from '../domain/shift';
 import type { ShiftAssignment } from '../domain/shift-assignment';
 import type { ShiftAssignmentRepository } from '../domain/shift-assignment.repository';
 
@@ -24,5 +25,20 @@ export class PrismaShiftAssignmentRepository implements ShiftAssignmentRepositor
         assignedBy: assignment.assignedBy,
       },
     });
+  }
+
+  async listByEmployee(employeeId: string): Promise<ShiftAssignment[]> {
+    const rows = await this.deps.database.client.attendanceShiftAssignment.findMany({
+      where: { employeeId },
+      orderBy: { effectiveFrom: 'asc' },
+    });
+    return rows.map((row) => ({
+      employeeId: row.employeeId,
+      companyId: row.companyId,
+      shiftId: row.shiftId as ShiftId,
+      effectiveFrom: row.effectiveFrom.toISOString().slice(0, 10),
+      assignedAt: row.assignedAt,
+      assignedBy: row.assignedBy,
+    }));
   }
 }

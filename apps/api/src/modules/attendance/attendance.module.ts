@@ -13,6 +13,7 @@ import { AssignEmployeeShift } from './application/commands/assign-employee-shif
 import { CompleteDeviceCommands } from './application/commands/complete-device-commands.command';
 import { CreateShift } from './application/commands/create-shift.command';
 import { QueueDeviceCommand } from './application/commands/queue-device-command.command';
+import { RecalculateWorkdays } from './application/commands/recalculate-workdays.command';
 import { RecordDeviceContact } from './application/commands/record-device-contact.command';
 import { RecordDevicePush } from './application/commands/record-device-push.command';
 import { RegisterDevice } from './application/commands/register-device.command';
@@ -26,13 +27,16 @@ import type { ShiftCompanyDirectory } from './application/ports/shift-company-di
 import type { ShiftEmployeeDirectory } from './application/ports/shift-employee-directory';
 import type { SiteDirectory } from './application/ports/site-directory';
 import type { SiteRoster } from './application/ports/site-roster';
+import type { WorkdayEmployeeDirectory } from './application/ports/workday-employee-directory';
 import type { AttendanceQueries } from './application/queries/attendance.queries';
 import { ListDeviceCommands } from './application/queries/list-device-commands.query';
 import { ListDevices } from './application/queries/list-devices.query';
 import { ListEmployeeShiftAssignments } from './application/queries/list-employee-shift-assignments.query';
+import { ListEmployeeWorkdays } from './application/queries/list-employee-workdays.query';
 import { ListPunches } from './application/queries/list-punches.query';
 import { ListShifts } from './application/queries/list-shifts.query';
 import type { ShiftQueries } from './application/queries/shift.queries';
+import type { WorkdayQueries } from './application/queries/workday.queries';
 import { DEVICE_COMMANDS_ENABLED, DEVICE_SITE_ASSIGNED } from './domain/device';
 import type { DeviceCommandRepository } from './domain/device-command.repository';
 import type { DeviceUserRepository } from './domain/device-user.repository';
@@ -40,11 +44,13 @@ import type { DeviceRepository } from './domain/device.repository';
 import type { PunchRepository } from './domain/punch.repository';
 import type { ShiftAssignmentRepository } from './domain/shift-assignment.repository';
 import type { ShiftRepository } from './domain/shift.repository';
+import type { WorkdayRepository } from './domain/workday.repository';
 import { createAttendanceRouter } from './http/attendance.router';
 import { createZktecoAdmsRouter } from './http/zkteco-adms.router';
 import { EmployeesPunchOwnerDirectory } from './infrastructure/employees-punch-owner-directory';
 import { EmployeesShiftEmployeeDirectory } from './infrastructure/employees-shift-employee-directory';
 import { EmployeesSiteRoster } from './infrastructure/employees-site-roster';
+import { EmployeesWorkdayEmployeeDirectory } from './infrastructure/employees-workday-employee-directory';
 import { OrganizationShiftCompanyDirectory } from './infrastructure/organization-shift-company-directory';
 import { OrganizationSiteDirectory } from './infrastructure/organization-site-directory';
 import { PrismaAttendanceQueries } from './infrastructure/prisma-attendance.queries';
@@ -55,6 +61,8 @@ import { PrismaPunchRepository } from './infrastructure/prisma-punch.repository'
 import { PrismaShiftAssignmentRepository } from './infrastructure/prisma-shift-assignment.repository';
 import { PrismaShiftQueries } from './infrastructure/prisma-shift.queries';
 import { PrismaShiftRepository } from './infrastructure/prisma-shift.repository';
+import { PrismaWorkdayQueries } from './infrastructure/prisma-workday.queries';
+import { PrismaWorkdayRepository } from './infrastructure/prisma-workday.repository';
 
 export interface AttendanceCradle {
   deviceRepository: DeviceRepository;
@@ -88,6 +96,11 @@ export interface AttendanceCradle {
   assignEmployeeShift: AssignEmployeeShift;
   listShifts: ListShifts;
   listEmployeeShiftAssignments: ListEmployeeShiftAssignments;
+  workdayRepository: WorkdayRepository;
+  workdayQueries: WorkdayQueries;
+  workdayEmployeeDirectory: WorkdayEmployeeDirectory;
+  recalculateWorkdays: RecalculateWorkdays;
+  listEmployeeWorkdays: ListEmployeeWorkdays;
 }
 
 // El bus registra el rechazo de un handler: una forma desconocida se loguea y se ignora.
@@ -134,6 +147,12 @@ export const attendanceModule: AppModule<AttendanceCradle> = {
     assignEmployeeShift: asClass(AssignEmployeeShift).singleton(),
     listShifts: asClass(ListShifts).singleton(),
     listEmployeeShiftAssignments: asClass(ListEmployeeShiftAssignments).singleton(),
+    // Jornadas
+    workdayRepository: asClass(PrismaWorkdayRepository).singleton(),
+    workdayQueries: asClass(PrismaWorkdayQueries).singleton(),
+    workdayEmployeeDirectory: asClass(EmployeesWorkdayEmployeeDirectory).singleton(),
+    recalculateWorkdays: asClass(RecalculateWorkdays).singleton(),
+    listEmployeeWorkdays: asClass(ListEmployeeWorkdays).singleton(),
   },
   // Un colaborador cambia (alta, sede, RFC, baja) → se reconcilia en los checadores; un checador
   // recibe redes o sede → se reconcilia con su sede. `DEVICE_REGISTERED` no se escucha: un equipo

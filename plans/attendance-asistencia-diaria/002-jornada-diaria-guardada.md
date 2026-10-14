@@ -1,5 +1,5 @@
 ---
-status: approved
+status: testing
 module: attendance
 min_implementer: high
 depends_on: ['001', 'employees-fechas-laborales/001']
@@ -205,7 +205,7 @@ workdays.length, pendingDates })`.
    - Observable result: `pnpm typecheck` passes.
 
 5. **Persistence: schema, migration, mapper, Prisma adapters**
-   - Files: `apps/api/prisma/schema.prisma` (modify), `apps/api/prisma/migrations/<timestamp>_create_workdays/migration.sql` (create), `apps/api/src/modules/attendance/infrastructure/workday.mapper.ts` (create), `apps/api/src/modules/attendance/infrastructure/prisma-workday.repository.ts` (create), `apps/api/src/modules/attendance/infrastructure/prisma-workday.queries.ts` (create), `apps/api/src/modules/attendance/infrastructure/prisma-shift-assignment.repository.ts` (modify), `apps/api/src/modules/attendance/infrastructure/prisma-punch.repository.ts` (modify)
+   - Files: `apps/api/prisma/schema.prisma` (modify), `apps/api/prisma/migrations/20261014205513_create_workdays/migration.sql` (create), `apps/api/src/modules/attendance/infrastructure/workday.mapper.ts` (create), `apps/api/src/modules/attendance/infrastructure/prisma-workday.repository.ts` (create), `apps/api/src/modules/attendance/infrastructure/prisma-workday.queries.ts` (create), `apps/api/src/modules/attendance/infrastructure/prisma-shift-assignment.repository.ts` (modify), `apps/api/src/modules/attendance/infrastructure/prisma-punch.repository.ts` (modify)
    - Do: follow the `db-change` skill.
      - `AttendancePunch`: add `@@index([pin, occurredAt])`.
      - New `AttendanceWorkday` → `@@map("workdays")`, `@@schema("attendance")`: `employeeId`
@@ -298,6 +298,33 @@ pendingDates: [] }` and the list returns, ascending:
 | e2e         | no      | (no e2e infrastructure yet)                                                                                                                                                                                                                                                                                                                          |
 
 ## Deviations
+
+Implementation (2026-10-14). All 7 steps done; `pnpm check` and `pnpm test:integration` green.
+
+1. **Cosmetic, out-of-list file.** Adding `PunchRepository.listInstants` (step 3) broke the
+   typecheck of an inline punch-repository double in
+   `apps/api/src/modules/attendance/application/commands/device-network-barrier.test.ts:303-316`.
+   Added a one-line `listInstants` that delegates to the in-memory repository; no assertion
+   changed.
+2. **Cosmetic, arch rule.** `in-memory-workday.store.ts` cannot import `InMemoryShiftStore`
+   (`arch:check` → `no-test-code-in-production` forbids any non-test file importing from
+   `/in-memory/`). `InMemoryWorkdayQueries` takes its second argument as a structural type
+   `{ shifts: ReadonlyMap<string, { name }> }`, which `InMemoryShiftStore` satisfies; `test-app.ts`
+   passes the shift store as the plan says.
+3. **Bookkeeping (not a deviation).** Migration folder is `20261014205513_create_workdays`; the
+   step 5 `Files:` line was updated.
+4. **Interpretation notes (no design impact), for the tester/reviewer.**
+   - `pendingDates` lists every open requested date, including ones outside employment or without
+     a shift (they would produce no row anyway); `closedDates` = every closed requested date.
+   - `ABSENT_SINGLE_PUNCH` stores the single punch in both `firstPunchAt` and `lastPunchAt`;
+     absences store `lateMinutes`/`workedMinutes`/`overtimeMinutes` = 0 and the scheduled times.
+   - The first calendar entry (`from − 1`) has no predecessor, so its boundary ignores the day
+     before it; it only influences `b(from)` through the non-decreasing rule.
+   - An assignment whose shift `findById` returns null throws (the FK makes it corruption).
+   - `PrismaWorkdayRepository.replaceDates` returns early when `dates` is empty.
+5. `pnpm plans:scope --base origin/main` also lists `employees.facade.ts`, its test and the
+   `employees-fechas-laborales` plan files: those were changed by commits already on this branch
+   (plan `employees-fechas-laborales/001`), not by this implementation.
 
 ## Test coverage
 

@@ -68,6 +68,14 @@ export class InMemoryShiftAssignmentRepository implements ShiftAssignmentReposit
     this.store.assignments.set(key, { ...assignment });
     return Promise.resolve();
   }
+
+  listByEmployee(employeeId: string): Promise<ShiftAssignment[]> {
+    const assignments = [...this.store.assignments.values()]
+      .filter((assignment) => assignment.employeeId === employeeId)
+      .sort((a, b) => compare(a.effectiveFrom, b.effectiveFrom))
+      .map((assignment) => ({ ...assignment }));
+    return Promise.resolve(assignments);
+  }
 }
 
 export class InMemoryShiftQueries implements ShiftQueries {

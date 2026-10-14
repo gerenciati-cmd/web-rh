@@ -308,6 +308,7 @@ model AttendancePunch {
   @@unique([deviceId, pin, deviceLocalTime])
   @@index([deviceId, occurredAt])
   @@index([occurredAt])
+  @@index([pin, occurredAt])
   @@map("punches")
   @@schema("attendance")
 }
@@ -327,6 +328,7 @@ model AttendanceShift {
   active           Boolean                     @default(true)
   createdAt        DateTime                    @map("created_at") @db.Timestamptz(3)
   assignments      AttendanceShiftAssignment[]
+  workdays         AttendanceWorkday[]
 
   @@unique([companyId, nameKey])
   @@map("shifts")
@@ -348,5 +350,36 @@ model AttendanceShiftAssignment {
   @@id([employeeId, effectiveFrom])
   @@index([shiftId])
   @@map("shift_assignments")
+  @@schema("attendance")
+}
+
+/// Jornada calculada de un colaborador en una fecha; se reemplaza completa al recalcular.
+model AttendanceWorkday {
+  /// referencia por id a employees, sin FK (ADR 0010)
+  employeeId       String          @map("employee_id") @db.Uuid
+  /// referencia por id a organization, sin FK (ADR 0010)
+  companyId        String          @map("company_id") @db.Uuid
+  /// Día en que empieza el turno.
+  date             DateTime        @db.Date
+  shiftId          String          @map("shift_id") @db.Uuid
+  /// Mismo módulo: la FK está permitida.
+  shift            AttendanceShift @relation(fields: [shiftId], references: [id])
+  /// `WORKDAY_STATUSES` de `@rrhh/domain`.
+  status           String          @db.VarChar(24)
+  scheduledStartAt DateTime?       @map("scheduled_start_at") @db.Timestamptz(3)
+  scheduledEndAt   DateTime?       @map("scheduled_end_at") @db.Timestamptz(3)
+  scheduledMinutes Int             @map("scheduled_minutes")
+  firstPunchAt     DateTime?       @map("first_punch_at") @db.Timestamptz(3)
+  lastPunchAt      DateTime?       @map("last_punch_at") @db.Timestamptz(3)
+  punchCount       Int             @map("punch_count")
+  lateMinutes      Int             @map("late_minutes")
+  workedMinutes    Int             @map("worked_minutes")
+  overtimeMinutes  Int             @map("overtime_minutes")
+  calculatedAt     DateTime        @map("calculated_at") @db.Timestamptz(3)
+
+  @@id([employeeId, date])
+  @@index([companyId, date])
+  @@index([shiftId])
+  @@map("workdays")
   @@schema("attendance")
 }

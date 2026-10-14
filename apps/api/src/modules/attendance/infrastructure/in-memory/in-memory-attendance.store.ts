@@ -227,6 +227,19 @@ export class InMemoryPunchRepository implements PunchRepository {
     }
     return Promise.resolve({ inserted });
   }
+
+  listInstants(pin: string, from: Date, to: Date): Promise<Date[]> {
+    const instants = [...this.store.punches.values()]
+      .filter(
+        (punch) =>
+          punch.pin === pin &&
+          punch.occurredAt.getTime() >= from.getTime() &&
+          punch.occurredAt.getTime() < to.getTime(),
+      )
+      .map((punch) => punch.occurredAt)
+      .sort((a, b) => a.getTime() - b.getTime());
+    return Promise.resolve(instants);
+  }
 }
 
 export class InMemoryAttendanceQueries implements AttendanceQueries {
