@@ -1,5 +1,5 @@
 ---
-status: review
+status: verify
 module: attendance
 min_implementer: mid
 depends_on: []
@@ -208,7 +208,7 @@ shiftId, assignedBy }`: employee missing or of another company → `EmployeeNotF
    - Observable result: `pnpm typecheck` passes.
 
 5. **Persistence: schema, migration, mapper and Prisma adapters**
-   - Files: `apps/api/prisma/schema.prisma` (modify), `apps/api/prisma/migrations/<timestamp>_create_shifts/migration.sql` (create), `apps/api/src/modules/attendance/infrastructure/shift.mapper.ts` (create), `apps/api/src/modules/attendance/infrastructure/prisma-shift.repository.ts` (create), `apps/api/src/modules/attendance/infrastructure/prisma-shift-assignment.repository.ts` (create), `apps/api/src/modules/attendance/infrastructure/prisma-shift.queries.ts` (create)
+   - Files: `apps/api/prisma/schema.prisma` (modify), `apps/api/prisma/migrations/20261014184751_create_shifts/migration.sql` (create), `apps/api/src/modules/attendance/infrastructure/shift.mapper.ts` (create), `apps/api/src/modules/attendance/infrastructure/prisma-shift.repository.ts` (create), `apps/api/src/modules/attendance/infrastructure/prisma-shift-assignment.repository.ts` (create), `apps/api/src/modules/attendance/infrastructure/prisma-shift.queries.ts` (create)
    - Do: follow the `db-change` skill. After `AttendancePunch` add:
      - `AttendanceShift` → `@@map("shifts")`, `@@schema("attendance")`: `id` uuid; `companyId`
        uuid with the "referencia por id a organization, sin FK (ADR 0010)" doc comment;
@@ -266,6 +266,13 @@ true } } }`, `orderBy: { effectiveFrom: 'desc' }`, count), paginated like
    - Do: in the `attendance` summary, after "Punches attributed by RFC.", add "Shifts per company
      (cyclic pattern) assigned to colaboradores by date."
    - Observable result: `pnpm plans:lint` and `pnpm harness:check` (part of `pnpm check`) pass.
+
+8. **Tests phase files, Deviation 2 file and doc** (added after review Low-1 and Low-4)
+   - Files: `apps/api/src/modules/attendance/domain/shift.test.ts` (create), `apps/api/src/modules/attendance/application/commands/create-shift.command.test.ts` (create), `apps/api/src/modules/attendance/application/commands/assign-employee-shift.command.test.ts` (create), `apps/api/src/modules/attendance/application/queries/list-employee-shift-assignments.query.test.ts` (create), `apps/api/tests/attendance-shifts.test.ts` (create), `apps/api/tests/integration/attendance/prisma-shift.int.test.ts` (create), `packages/contracts/src/attendance/shift.contract.test.ts` (create), `apps/api/src/modules/identity/application/session-authenticator.test.ts` (modify), `docs/architecture.md` (modify)
+   - Do: the tester's files (see Test coverage); the grant-count assertions of Deviation 2; the
+     attendance legend in the architecture overview.
+   - Observable result: `pnpm plans:scope … --base origin/main` lists no file of this plan out of
+     scope.
 
 ## Acceptance criteria
 
@@ -351,5 +358,142 @@ helper); the exact equality is covered in the application test. Empty `days` yie
 on `days` (min length and no WORK day), asserted as such.
 
 ## Review findings
+
+Reviewed 2026-10-14 (reviewer subagent). Diff `origin/main...HEAD` on
+`feat/attendance-asistencia-diaria` (commits `56cf543`, `f587712`, `30352a5`; `d691308` belongs to
+employees-desvinculacion and was not reviewed), clean worktree.
+
+**Checklist: 11/13 passed. Failed: scope and stale docs.**
+
+- [ ] `pnpm plans:scope … --base origin/main` **fails**. Out of scope: the 8 test files the
+      tester created (`shift.test.ts`, `create-shift.command.test.ts`,
+      `assign-employee-shift.command.test.ts`, `list-employee-shift-assignments.query.test.ts`,
+      `tests/attendance-shifts.test.ts`, `tests/integration/attendance/prisma-shift.int.test.ts`,
+      `shift.contract.test.ts`) and `identity/application/session-authenticator.test.ts`
+      (Deviation 2). `plans/employees-desvinculacion/README.md` comes from `d691308`, not this
+      plan. Declared but unchanged: the placeholder path
+      `migrations/<timestamp>_create_shifts/migration.sql` (the real one is
+      `20261014184751_create_shifts`). See Low-1. Hot files are append-only: `schema.prisma`
+      adds two models at the end, `test-app.ts` adds an import, a store and three `asValue`
+      lines, `contracts/src/index.ts` adds an export, an import and one `apiRoutes` key, and
+      `modules.json` changes only the attendance summary sentence that step 7 asked for.
+- [x] `pnpm check` green (19/19 turbo tasks, arch, plans, harness, hooks, bootstrap, quality).
+- [x] `pnpm test:integration`: 18 files and 242 tests passed against `rrhh_test`.
+- [x] Business rules are in `domain/shift.ts` (cycle, times, meal < duration, tolerance, name
+      key). Routers, mappers and adapters contain none. The contract repeats the rules as input
+      validation, as the plan asked.
+- [x] CQRS-lite holds. `CreateShift` goes aggregate → `ShiftRepository.add` → `Result`, and
+      `AssignEmployeeShift` → `ShiftAssignmentRepository.put`. Reads go through `ShiftQueries` →
+      contract DTOs. Neither repository has a screen method.
+- [x] Request/response types come from `@rrhh/contracts`. `openapi.json` was regenerated and
+      `openapi.test.ts` expects 36 operations.
+- [x] Errors: five new domain errors with stable codes. Their messages and detail keys match the
+      catalog examples. `error-catalog.test.ts` maps `attendance/EmployeeInactiveError` to the
+      `employees` variant.
+- [x] No money involved. Dates are `@db.Date` written as UTC midnight and read back with
+      `toISOString().slice(0, 10)`. Ids come from `IdGenerator`, and `createdAt`/`assignedAt`
+      come from `Clock`.
+- [x] New migration `20261014184751_create_shifts`: two `CREATE TABLE`, one unique index, one
+      index, and one FK `shift_assignments.shift_id → shifts.id` inside the same `attendance`
+      schema. No DROP. No FK to `organization` or `employees`; those are referenced by id only,
+      with the ADR 0010 comment.
+- [x] DI: nine registrations in `attendance.module.ts`, made once. `container.test.ts` is green.
+- [x] No secrets, `.env` contents or real personal data. Fixtures use synthetic uuids and
+      shift names.
+- [x] `## Deviations` is honest. I checked Deviation 1: `shift.contract.ts:44-62` has
+      `ShiftDayInputSchema` (`CreateAttendanceShiftDayInput`, with a default of 0) and
+      `ShiftDaySchema` (`AttendanceShiftDay`, required). Deviation 3 is visible at
+      `assign-employee-shift.command.ts:41,47`.
+- [ ] Stale docs. See Low-4.
+
+**Findings: 0 Critical, 0 High, 0 Medium, 4 Low.**
+
+- **Low-1: tester files and the Deviation 2 file are not declared in any `Files:` line.**
+  - These are the 8 files listed in the first checklist item. All of them are legitimate. The
+    test files appear in `## Test coverage`, and `session-authenticator.test.ts` appears in
+    Deviation 2.
+  - Failure scenario: `plans:scope` stays red for this plan, so it cannot be used as a gate at
+    commit or PR time. This is the same as Low-1 in the employees-desvinculacion reviews.
+  - Fix (plan only, no code): add a "tests phase" step with these paths in its `Files:` line.
+    Optionally, replace `<timestamp>` in step 5 with `20261014184751`.
+- **Low-2: the in-memory `listShifts` sorts names by UTF-16 code unit, but Postgres uses its
+  collation.**
+  - Location: `apps/api/src/modules/attendance/infrastructure/in-memory/in-memory-shift.store.ts:39-41,79`.
+  - The plan requires in-memory adapters to honour "the same orderings" as Prisma.
+    `PrismaShiftQueries` orders by `name asc` with the database collation (the dev image uses a
+    linguistic locale; **uncertain**: I did not query `datcollate`). The in-memory sort uses
+    `<`/`>`. The existing `in-memory-site.store.ts:47` uses `localeCompare` for the same
+    `orderBy: [{ name: 'asc' }, { id: 'asc' }]`.
+  - Failure scenario: with shifts "nocturno" and "Matutino Beta" plus "alfa", the HTTP test
+    container returns `["Matutino Beta", "alfa", "nocturno"]` (uppercase first), while Postgres
+    returns `["alfa", "Matutino Beta", "nocturno"]`. An HTTP test that asserts mixed-case order
+    would pass in memory and contradict production. Current tests use names with consistent
+    capitalization, so none fail today.
+  - Fix: use `localeCompare` as the site store does. Product-adjacent test adapter; small.
+- **Low-3: `SHIFT_DAY_TYPES`/`ShiftDayType` (step 1) are exported but never used, and the
+  duration formula exists twice.**
+  - Location: `packages/domain/src/attendance/shift-rules.ts:6-7` has no importers.
+    `domain/shift.ts:17-18` and `shift.mapper.ts:21-24` use string literals.
+    `durationMinutes` (`shift.contract.ts:13-24`) and `grossMinutes` (`domain/shift.ts:35-48`)
+    are two copies of the same rule.
+  - Failure scenario: a later change to the night/24-hour rule (for example, `end = start`
+    stops meaning 24 h) gets updated in one copy only. Then the contract accepts a cycle that
+    `Shift.create` rejects. That error is an `INVALID_VALUE` not declared on `createShift`.
+    It is not a bug today because the two copies are identical.
+  - Fix (optional, cosmetic): type `ShiftDay.type` from `ShiftDayType`, and move the duration
+    helper into `shift-rules.ts` so both layers import it. The README already allows shared
+    pure vocabulary under ADR 0007.
+- **Low-4: `docs/architecture.md:23` still says attendance is "† = solo marcaciones crudas
+  ZKTeco".**
+  - This was already stale before this plan (attribution and device sync came from earlier
+    series). With shifts it is further from the truth.
+  - Failure scenario: a reader of the architecture overview thinks attendance has no
+    business model beyond raw punches, and looks for shifts somewhere else.
+  - Fix: update the legend (for example "† = marcaciones, checadores y turnos; jornadas por
+    construir") and declare `docs/architecture.md` in the plan. You can instead record it as a
+    finding in `plans/hallazgos/`, since the staleness predates this plan.
+
+Bug hunt (correctness). I traced the four routes from the contract through the use case, the
+domain, both adapters and the response. **No defects found.**
+
+- Tenancy. All four routes require `companyParam: 'companyId'`, so HR of company B gets 403.
+  Within the route's company, a colaborador or shift of another company returns 404
+  (`assign-employee-shift.command.ts:41-49`, `list-employee-shift-assignments.query.ts:23-26`).
+  `listShifts` filters by `companyId`. Colaboradores cannot change company (`employee.ts` has no
+  company setter), so `listAssignments` filtering only by `employeeId` cannot leak another
+  company's rows.
+- Check order. Employee missing → inactive → shift: an inactive colaborador of another
+  company gets 404, not 422, so its state is not revealed.
+- Dates. `z.iso.date()` rejects impossible dates such as `2026-02-30`. `effectiveFrom` and
+  `cycleStartDate` are stored as UTC midnight `DATE` and read back unchanged. `dayOn` uses
+  `Date.UTC` and `Math.round`, so DST cannot shift the index, and the double modulo handles
+  dates before `cycleStartDate`.
+- Night and 24-hour days. `end ≤ start` adds 1440, so 22:00–06:00 is 480 minutes and
+  08:00–08:00 is 1440. Meal ≥ duration is rejected in both the contract and the domain.
+- Concurrency. Two concurrent creates with the same name: the unique `(company_id, name_key)`
+  index decides, and the loser gets `SHIFT_ALREADY_EXISTS` (integration test with `Promise.all`).
+  Two concurrent `PUT`s for the same date: the `upsert` keys on the compound primary key, so
+  the last write wins and the PUT stays idempotent. I believe Prisma issues a native
+  `ON CONFLICT` here, so a P2002 is unlikely; this part is **uncertain** and not covered by a
+  concurrent test.
+- Edge (not reported as a finding): `nameKey = name.toLowerCase()` can be longer than `name` for
+  a few code points (for example `İ`). A 100-character name containing one would overflow
+  `name_key VARCHAR(100)` and produce a 500. The sedes `nameKey` pattern has the same property.
+  This is very unlikely with real shift names.
+
+The status stays `review`. Low-2 is a small change to a test adapter. Low-1 and Low-4 are
+plan/doc edits, and Low-3 is optional. After a repair to `in-memory-shift.store.ts`, the repair
+handoff applies: testing → review → verify. After plan/doc-only edits, no new testing round is
+needed. The main session decides the routing.
+
+**Resolution (main session, 2026-10-14):** Low-1 → step 8 declares the 7 test files and
+`session-authenticator.test.ts`; step 5 names the real migration. Low-2 →
+`in-memory-shift.store.ts` sorts names with `localeCompare` (as `in-memory-site.store.ts`). It is
+an in-memory test adapter, not a runtime path, so it was handled as a test-only correction: no
+existing test asserts mixed-case order and `pnpm check` is green after the change. Low-3 →
+accepted as is; plan 002 decides whether jornada code shares the duration helper. Low-4 →
+`docs/architecture.md` legend updated, declared in step 8. `pnpm plans:scope --base origin/main`
+now lists only `plans/employees-desvinculacion/README.md` (commit `d691308`, the closure of
+another series on this branch). Plan to `verify`.
 
 ## Verification

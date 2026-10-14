@@ -76,7 +76,8 @@ export class InMemoryShiftQueries implements ShiftQueries {
   listShifts(companyId: string, page: PageQuery): Promise<Page<ShiftDto>> {
     const shifts = [...this.store.shifts.values()]
       .filter((shift) => shift.companyId === companyId)
-      .sort((a, b) => compare(a.name, b.name) || compare(a.id, b.id));
+      // `localeCompare` como `in-memory-site.store.ts`: Postgres ordena por collation, no por código.
+      .sort((a, b) => a.name.localeCompare(b.name) || compare(a.id, b.id));
     return Promise.resolve(
       pageOf(
         shifts.map((shift): ShiftDto => ({
