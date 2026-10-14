@@ -1,5 +1,5 @@
 ---
-status: verify
+status: done
 module: attendance
 min_implementer: high
 depends_on: ['001', 'employees-fechas-laborales/001']
