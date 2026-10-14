@@ -14,12 +14,12 @@ arrives or an assignment changes, so periods can later be closed for payroll.
 
 ## Plans
 
-| Plan                                          | Title                        | Depends on                          | Purpose                                                                                                                                      |
-| --------------------------------------------- | ---------------------------- | ----------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| [001](001-catalogo-de-turnos-y-asignacion.md) | Shift catalog and assignment | —                                   | Company-owned shifts as a cyclic pattern (work/rest days, tolerance, meal break); assign one to a colaborador from a date.                   |
-| [002](002-jornada-diaria-guardada.md)         | Stored daily jornada         | 001, employees-fechas-laborales/001 | Calculate and store each day (entry/exit, retardo, falta, horas extra measured, descanso trabajado); recalculate a range on demand; read it. |
-| 003 (not written)                             | Automatic recalculation      | 002                                 | Recalculate on new punches and assignment changes; daily close with a scheduled job (ADR).                                                   |
-| 004 (not written)                             | N retardos = 1 falta         | 002                                 | Per-company rule (N and period) that turns accumulated retardos into a falta.                                                                |
+| Plan                                          | Title                        | Depends on                          | Purpose                                                                                                                                                      |
+| --------------------------------------------- | ---------------------------- | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| [001](001-catalogo-de-turnos-y-asignacion.md) | Shift catalog and assignment | —                                   | Company-owned shifts as a cyclic pattern (work/rest days, tolerance, meal break); assign one to a colaborador from a date.                                   |
+| [002](002-jornada-diaria-guardada.md)         | Stored daily jornada         | 001, employees-fechas-laborales/001 | Calculate and store each day (entry/exit, retardo, falta, horas extra measured, descanso trabajado); recalculate a range on demand; read it.                 |
+| 003 (not written)                             | Automatic recalculation      | 002                                 | Recalculate on new punches and assignment changes; daily close with a scheduled job (ADR). Must serialize recalculations per colaborador (002 review Low-2). |
+| 004 (not written)                             | N retardos = 1 falta         | 002                                 | Per-company rule (N and period) that turns accumulated retardos into a falta.                                                                                |
 
 ## Dependency notes
 

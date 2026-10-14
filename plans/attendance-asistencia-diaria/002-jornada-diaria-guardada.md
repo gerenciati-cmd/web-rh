@@ -1,5 +1,5 @@
 ---
-status: review
+status: implementing
 module: attendance
 min_implementer: high
 depends_on: ['001', 'employees-fechas-laborales/001']
@@ -42,13 +42,17 @@ boundary `b(D)` and ends at `b(D+1)`, so windows never overlap and cover all tim
 - WORK day: `b(D) = start(D) − M`. If D−1 is a WORK day and `end(D−1) > b(D)`, then
   `b(D) = start(D)` when `end(D−1) ≥ start(D)`, else the midpoint of `end(D−1)` and `start(D)`.
 - REST or unassigned day: `b(D) = local midnight of D`; if D−1 is a WORK day,
-  `b(D) = max(b(D), end(D−1) + M)` (the exit of a night or 24 h shift stays with its day).
+  `b(D) = max(b(D), end(D−1) + M, start(D−1) + 24 h − M)` (the exit of a night or 24 h shift
+  stays with its day, and the day before a rest day keeps the same 24 h reach as any other day —
+  review Low-3, 2026-10-14).
 - Boundaries are made non-decreasing: `b(D) = max(b(D), b(D−1))`.
 
 `start(D)` is D's `start` in the sede's time zone; `end(D)` is `end` on D, or on D+1 when
 `end ≤ start` (plan 001 rule). Examples: a 09:00–18:00 day captures 05:00 to 05:00 of the next
-WORK day; a 22:00–06:00 night shift captures 18:00 D to 18:00 D+1 (next WORK at 22:00), or to
-10:00 D+1 if D+1 is a rest day.
+day, also when the next day is a rest day (a Friday exit at 00:30 Saturday is Friday's
+overtime); a 22:00–06:00 night shift captures 18:00 D to 18:00 D+1, whether D+1 is a WORK day at
+22:00 or a rest day; a 24x24 08:00–08:00 shift followed by a rest day captures 04:00 D to 12:00
+D+1.
 
 **Day rules.** First punch in the window = entry, last = exit (decision 4). WORK day: 0 punches →
 `ABSENT_NO_PUNCHES`; 1 → `ABSENT_SINGLE_PUNCH` (decision 7); ≥ 2 → `ATTENDED` with
@@ -258,6 +262,12 @@ select: { occurredAt: true }, orderBy: { occurredAt: 'asc' } })`.
      turnos y jornadas".
    - Observable result: `pnpm check` passes.
 
+8. **Tests phase files and Deviation 1** (added after review Low-1)
+   - Files: `apps/api/src/modules/attendance/domain/local-date.test.ts` (create), `apps/api/src/modules/attendance/domain/workday-calculator.test.ts` (create), `apps/api/src/modules/attendance/application/commands/recalculate-workdays.command.test.ts` (create), `apps/api/src/modules/attendance/application/queries/list-employee-workdays.query.test.ts` (create), `apps/api/tests/attendance-workdays.test.ts` (create), `apps/api/tests/integration/attendance/prisma-workday.int.test.ts` (create), `packages/contracts/src/attendance/workday.contract.test.ts` (create), `apps/api/src/modules/attendance/application/commands/device-network-barrier.test.ts` (modify)
+   - Do: the tester's files (see Test coverage) and the `listInstants` delegate of Deviation 1.
+   - Observable result: `pnpm plans:scope … --base origin/main` lists no file of this plan out of
+     scope.
+
 ## Acceptance criteria
 
 Scenario: colaborador with RFC on a sede in `America/Cancun`, hired before 2026-10-05, assigned
@@ -377,5 +387,137 @@ midnight, so the Friday window ends 00:00 Saturday (tested in `windowBoundaries 
 de un día laborable`). Consecutive WORK days do end at 05:00 of the next day.
 
 ## Review findings
+
+Reviewed 2026-10-14 (reviewer subagent). Diff `origin/main...HEAD` on
+`feat/attendance-jornada-diaria` (commits `46034d7` feat, `cfcdad7` tests; the
+`employees-fechas-laborales/001` commits were reviewed under that plan and are excluded), clean
+worktree.
+
+**Checklist: 12/13 passed. Failed: scope.**
+
+- [ ] `pnpm plans:scope … --base origin/main` **fails**. Out of scope for this plan: the 9 test
+      files the tester created (`recalculate-workdays.command.test.ts`,
+      `list-employee-workdays.query.test.ts`, `local-date.test.ts`, `workday-calculator.test.ts`,
+      `tests/attendance-workdays.test.ts`, `tests/integration/attendance/prisma-workday.int.test.ts`,
+      `workday.contract.test.ts`) and `device-network-barrier.test.ts` (Deviation 1, declared).
+      `employees.facade.ts`, its test and the `employees-fechas-laborales` plan files belong to
+      the other plan (Deviation 5). See Low-1. Hot files are append-only: `schema.prisma` adds one
+      index line to `AttendancePunch`, one back-relation line to `AttendanceShift` and a new model
+      at the end; `test-app.ts` adds an import, a store and two `asValue` lines;
+      `contracts/src/index.ts` adds an export, an import and one `apiRoutes` key; `modules.json`
+      changes only the attendance summary sentence step 7 asked for.
+- [x] `pnpm check` green (19/19 turbo tasks; api 1345 passed / 5 skipped, contracts 389, domain
+      98; format, arch, plans, harness, hooks, bootstrap, quality).
+- [x] `pnpm test:integration`: 19 files, 261 tests passed against `rrhh_test`.
+- [x] Business rules live in `domain/workday-calculator.ts` (window, statuses, late, worked,
+      overtime, employment bounds, closed/pending). Router, mapper and adapters contain none; the
+      contract repeats the range rule as input validation, and the command re-checks it.
+- [x] CQRS-lite. `RecalculateWorkdays` returns `Result` and writes through
+      `WorkdayRepository.replaceDates`. The new repository methods (`listByEmployee`,
+      `listInstants`) are command inputs, not screen methods. Reads go through `WorkdayQueries` →
+      `WorkdayDto`. `Workday` is a plain value as the plan specifies (no aggregate), like
+      `ShiftAssignment`.
+- [x] Request/response types come from `@rrhh/contracts`; `openapi.json` regenerated,
+      `openapi.test.ts` expects 38.
+- [x] Errors: `EmployeeWithoutRfcError` / `EmployeeWithoutSiteError` have stable codes, and their
+      messages and `{ employeeId }` match the catalog examples (`errors.ts:91-105` vs
+      `contracts/src/errors.ts`). `EMPLOYEE_INACTIVE` reuses the plan 001 error.
+- [x] No money. `date` is `@db.Date` written as UTC midnight and read back with
+      `toISOString().slice(0, 10)`. Instants are `Timestamptz(3)`. `now`/`calculatedAt` come from
+      `Clock`. No ids are generated (composite PK).
+- [x] New migration `20261014205513_create_workdays`: one `CREATE TABLE`, three indexes (one on
+      `punches(pin, occurred_at)`), one FK `workdays.shift_id → shifts.id` inside the
+      `attendance` schema. No DROP. `employee_id`/`company_id` have no FK and carry the ADR 0010
+      comment.
+- [x] DI: five registrations in `attendance.module.ts`, made once; the in-memory overrides in
+      `test-app.ts`; `container.test.ts` green.
+- [x] No secrets, `.env` contents or real personal data. Fixtures use synthetic RFCs and uuids.
+- [x] `## Deviations` is honest. Checked Deviation 2: `in-memory-workday.store.ts:11-13` declares
+      `ShiftNames` structurally and `test-app.ts` passes the shift store. Checked Deviation 4:
+      `ABSENT_SINGLE_PUNCH` gets `firstPunchAt = lastPunchAt` (`workday-calculator.ts:150-160`).
+- [x] Docs: `docs/architecture.md` legend and `modules.json` summary updated; no other doc lists
+      attendance permissions or endpoints.
+
+**Findings: 0 Critical, 0 High, 0 Medium, 3 Low.**
+
+- **Low-1: the tester's files are not declared in any `Files:` line.**
+  - These are the 7 test files listed in the first checklist item. All are legitimate and all
+    appear in `## Test coverage`. `device-network-barrier.test.ts` appears in Deviation 1.
+  - Failure scenario: `plans:scope` stays red for this plan, so it cannot be used as a gate at
+    commit or PR time. This is the same as Low-1 of plan 001.
+  - Fix (plan only, no code): add a "tests phase" step whose `Files:` line lists these paths and
+    `device-network-barrier.test.ts`.
+- **Low-2: two concurrent recalculations of the same colaborador and overlapping dates can end
+  in a 500.** (Likely, not reproduced.)
+  - Location: `apps/api/src/modules/attendance/infrastructure/prisma-workday.repository.ts:17-26`.
+  - What fails: `replaceDates` runs `deleteMany` and then `createMany` under the default READ
+    COMMITTED. When the dates have no rows yet, both transactions delete nothing and both insert
+    the same `(employee_id, date)`. When rows exist, the second `DELETE` waits on the first and
+    then does not see the rows the first inserted. In both cases the second `createMany` hits
+    the primary key (P2002), which nothing maps, so the request returns 500 and its result is
+    lost. Stored data stays consistent because the loser rolls back.
+  - Failure scenario: HR double-clicks "recalcular", or (more likely) plan 003 fires a
+    recalculation per incoming punch batch and another from the daily close for the same
+    colaborador at the same time. One of them fails with 500 or a failed job.
+  - Fix options: serialize per colaborador, for example `pg_advisory_xact_lock` on the employee
+    id inside the transaction, or retry once on P2002. If you prefer to leave it to plan 003,
+    which introduces the concurrent callers, record that decision in the README or plan 003.
+- **Low-3: the window docblock contradicts the rule the code implements, for the last WORK day
+  before a REST day.** (Design question for the architect.)
+  - Location: `apps/api/src/modules/attendance/domain/workday-calculator.ts:79-82` (and the same
+    example in this plan's Context, "The punch window").
+  - What fails: the docblock says a 09:00–18:00 day "capta de 05:00 a 05:00 del siguiente día
+    laborable". The numbered rule the code applies (`workday-calculator.ts:56-58`) starts a REST
+    day at `max(local midnight, end(D−1) + M)` = `max(00:00, 22:00)` = 00:00. So Friday's
+    window ends at 00:00 Saturday, while Monday–Thursday windows end at 05:00 the next day. The
+    tester recorded the same observation in `## Test coverage`.
+  - Failure scenario: a Mon–Fri 09:00–18:00 colaborador who works overtime on Friday until
+    00:30 Saturday ends up with Friday `ABSENT_SINGLE_PUNCH` (a falta) and Saturday
+    `REST_WORKED` with 1 punch and 0 worked minutes. The same hours on a Thursday would give
+    `ATTENDED` with overtime. This is a falta that feeds plan 004.
+  - Fix: the architect decides. Option one: change the REST-after-WORK boundary so that a day
+    shift's window reaches past midnight, as the example says. Note that `end(D−1) + M` alone
+    is 22:00, which is earlier than midnight, so this needs a new rule and not just removing the
+    midnight floor. Option two: keep the current rule and correct the docblock and the Context
+    example to say the window ends at midnight before a rest day.
+
+Bug hunt (correctness). I traced both routes from the contract through the use case, the
+calculator, both adapters and the response. Beyond Low-2 and Low-3, **no defects found.**
+
+- Tenancy. Both routes require `companyParam: 'companyId'`, so HR of another company gets 403.
+  Within the company, a colaborador of another company gets 404 before any other check
+  (`recalculate-workdays.command.ts:72-75`, `list-employee-workdays.query.ts:28-31`), so an
+  inactive or RFC-less colaborador of another company does not reveal its state. Zod strips
+  unknown body/query keys, so `{ ...params, ...body }` cannot override `companyId`.
+- Punch attribution. `listInstants` filters by PIN only, across devices and companies. The RFC
+  is globally unique (`schema.prisma:83`), so this cannot pick up another person's punches. The
+  current-RFC limitation is accepted in Context.
+- Dates and time zones. `addDays`/`daysBetween` use `Date.UTC` with `Math.round`. The
+  `localDateTimeToUtc` two-pass offset is deterministic in DST gaps and does not return `err`
+  for them, so `localInstant` only throws on an invalid zone, which a validated sede cannot
+  have. The range limit is inclusive in both the contract and the command (62 accepted, 63
+  rejected). `dayOn` handles dates before `cycleStartDate`.
+- Calculation. Late is `floor`, and only counts above tolerance (equal is not late). Worked is
+  clamped at 0 after the meal. Overtime is `worked − workMinutes(day)`. REST_WORKED uses the full
+  span. Night shift: entry 21:50 D and exit 06:05 D+1 fall in `[18:00 D, 10:00 D+1)`, giving 465
+  worked, 450 scheduled and 15 overtime, as the acceptance criteria require.
+- Persistence. Closed dates outside employment or without a plan are still in `closedDates`, so
+  a stale row is deleted. Pending dates keep their stored row. The delete and the insert run in
+  one transaction. An empty `dates` returns early, which is safe because `workdays ⊆ dates`.
+- Edge (not a finding, noted in Deviation 4): the `from − 1` entry has no predecessor, so for
+  unusual cycles (a 24 h shift on `from − 2` ending late on `from − 1`, which is REST) `b(from)`
+  can differ by a few hours from the result of a wider range. This needs a cycle that does not
+  occur in the documented examples.
+
+**Repair handoff (main session, 2026-10-14):** Low-1 → step 8 declares the 7 test files and
+`device-network-barrier.test.ts`. Low-3 → the architect changed the rule (Context, "The punch
+window"): a REST or unassigned day after a WORK day starts at
+`max(midnight, end(D−1) + M, start(D−1) + 24 h − M)`, so the day before a rest day keeps the same
+reach as any other day. This is a product change in `workday-calculator.ts`: status back to
+`implementing`, then testing → review → verify again. Low-2 → not fixed here: plan 003, which
+introduces the concurrent callers (punch triggers and the daily close), must serialize
+recalculations per colaborador (for example `pg_advisory_xact_lock` on the employee id inside
+`replaceDates`, or one queue job per colaborador); recorded in the README's plan 003 row. Until
+then a double click can at worst answer 500 while the stored rows stay consistent.
 
 ## Verification
