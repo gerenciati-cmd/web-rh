@@ -136,3 +136,15 @@ no behaviour change, so no new testing round). The consumer side is planned in
 `employees.facade.test.ts`. `pnpm check` green after the change. Plan to `verify`.
 
 ## Verification
+
+**PASS (with NOT VERIFIED in the running app)** — 2026-10-14, main session, at `687b632`.
+
+- Suites: `pnpm check` green (19/19 turbo tasks, arch, plans, harness, quality), including
+  `employees.facade.test.ts` 10/10 with the two new cases (active → `hireDate` `2026-01-01`,
+  `terminationDate` null; terminated → `terminationDate` `2026-02-10`, `active` false). No schema
+  or infrastructure change, so no integration run is needed.
+- Acceptance criterion 2: the diff against `origin/main` touches only `employees.facade.ts`, its
+  test and plan files; no other module changed.
+- **NOT VERIFIED in the running app**: `EmployeesApi` has no HTTP route; its first consumer is
+  `attendance-asistencia-diaria/002`, whose verification exercises it end to end (hire and
+  termination bounds of the jornadas).
