@@ -1,5 +1,5 @@
 ---
-status: testing
+status: review
 module: attendance
 min_implementer: mid
 depends_on: []
@@ -326,6 +326,29 @@ Commands: `pnpm check` green; `pnpm test:integration` 229/229 green (no new inte
 tester phase). Migration `20261014184751_create_shifts` applied to the dev DB.
 
 ## Test coverage
+
+Baseline (`pnpm check`, before tests): green. No GAP and no NOT CONFIRMED: every plan promise found
+in the code behaved as described. Counts: domain 31, application 16, contract 33, http 29,
+integration 13 (122 tests, all new).
+
+| Behavior                                                                           | Source                                            | Layer       | Test                                                    | State     |
+| ---------------------------------------------------------------------------------- | ------------------------------------------------- | ----------- | ------------------------------------------------------- | --------- |
+| Name trimmed, `nameKey` lowercase, active, no events                               | `shift.ts` `Shift.create`                         | domain      | `shift.test.ts › Shift.create`                          | CONFIRMED |
+| Rejects empty/oversized name, bad date, tolerance, cycle 0/29, no WORK, bad time   | `shift.ts` `validateDays`, `create`               | domain      | `shift.test.ts › rechaza %s con INVALID_VALUE`          | CONFIRMED |
+| Meal break < duration (day, night); accepts 59 of 60                               | `shift.ts` `grossMinutes`                         | domain      | `shift.test.ts`                                         | CONFIRMED |
+| `dayOn` for 7/2/14-day cycles, dates before `cycleStartDate`                       | `shift.ts` `dayOn`                                | domain      | `shift.test.ts › Shift.dayOn`                           | CONFIRMED |
+| `workMinutes` day, night, 24 h                                                     | `shift.ts` `workMinutes`                          | domain      | `shift.test.ts › workMinutes`                           | CONFIRMED |
+| `CreateShift`: persists, company missing, duplicate, other company, invalid cycle  | `create-shift.command.ts`                         | application | `create-shift.command.test.ts`                          | CONFIRMED |
+| `AssignEmployeeShift`: each error, replace, history order, `assignedAt` from clock | `assign-employee-shift.command.ts`                | application | `assign-employee-shift.command.test.ts`                 | CONFIRMED |
+| `ListEmployeeShiftAssignments` 404 (missing / other company), empty page           | `list-employee-shift-assignments.query.ts`        | application | `list-employee-shift-assignments.query.test.ts`         | CONFIRMED |
+| `CreateShiftSchema` refinements, defaults, ranges; read schema; route access       | `shift.contract.ts`                               | contract    | `shift.contract.test.ts`                                | CONFIRMED |
+| 4 routes: 201/204/200, 400, 401, 403 other-company HR, 404, 409, 422, pagination   | `attendance.router.ts`, `shift.contract.ts`       | http        | `tests/attendance-shifts.test.ts`                       | CONFIRMED |
+| Unique `(companyId, nameKey)` incl. concurrent race, JSONB round trip              | `prisma-shift.repository.ts`, `schema.prisma:315` | integration | `tests/integration/attendance/prisma-shift.int.test.ts` | CONFIRMED |
+| Upsert by `(employeeId, effectiveFrom)`; query ordering and pagination             | `prisma-shift-assignment.repository.ts`, queries  | integration | `tests/integration/attendance/prisma-shift.int.test.ts` | CONFIRMED |
+
+Notes: `assignedBy` in http is asserted as a uuid (the caller's id is not exposed by the test
+helper); the exact equality is covered in the application test. Empty `days` yields two issues, both
+on `days` (min length and no WORK day), asserted as such.
 
 ## Review findings
 
