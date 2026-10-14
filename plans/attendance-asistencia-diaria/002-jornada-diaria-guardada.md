@@ -621,3 +621,35 @@ calculator is next touched (plan 003 or later), to avoid a full repair round for
 Observation B → the old row is marked SUPERSEDED.
 
 ## Verification
+
+**PASS** — 2026-10-14, main session, at `46107b1` (includes the Low-3 repair), against the dev
+API on `localhost:3000` at 16:35 America/Cancun.
+
+- Suites: `pnpm check` green (re-review run, 1356 api tests); `pnpm test:integration` 19 files /
+  261 tests passed; `pnpm --filter @rrhh/api db:deploy` → "No pending migrations to apply" (17,
+  including `20261014205513_create_workdays`).
+- HTTP script as HOLDING_ADMIN (`scratchpad/verify-workdays.mjs`, run by the user with their
+  credentials in env vars; checador `VERIFJDMOXYX` without networks on Luis's sede, punches pushed
+  through `POST /iclock/cdata?table=ATTLOG` with Luis's RFC as PIN), **26/26 PASS**:
+  - Acceptance week (Oficina IIT5B from 2026-10-05) → `{ recalculatedDates: 7, storedWorkdays: 6,
+pendingDates: [] }`; Mon `ATTENDED` 540/OT 60; Tue late 15, worked 465; Wed late 0, worked
+    470; Thu `ABSENT_SINGLE_PUNCH`; Fri `ABSENT_NO_PUNCHES`; Sat `REST_WORKED` 120/120 with null
+    schedule; Sun no row; `shiftName` present; `scheduledStartAt` 14:00Z = 09:00 Cancún.
+  - Extra punch Tue 08:50 and recalculation → still 6 rows; Tue late 0, worked 490, OT 10,
+    punchCount 3.
+  - Night shift (Nocturno IIT5B from 2026-10-12), 21:50 and 06:05 → 10-12 `ATTENDED` 465 /
+    scheduled 450 / OT 15; no row on 10-13; `pendingDates` `["2026-10-13", "2026-10-14"]` (rest
+    window open until 18:00 of 10-14) and no row today.
+  - Hire bound (assignment from 2026-01-05, hired 2026-01-10) → only 01-12 and 01-13
+    `ABSENT_NO_PUNCHES`.
+  - Eva (terminated 2026-10-12, no assignment) → 200, 0 rows. Colaborador of another company →
+    404 `EMPLOYEE_NOT_FOUND` (recalculation and list); `to < from` and 63 days → 400.
+- DB (read-only SELECT): `attendance.workdays` for Luis has exactly the 9 rows above, matching the
+  API.
+- **NOT VERIFIED in the running app** (covered by `tests/attendance-workdays.test.ts` and the
+  application tests, green in `pnpm check`): 422 `EMPLOYEE_WITHOUT_RFC`; 422 `EMPLOYEE_INACTIVE`
+  for a termination without a date (no such row exists); 403 for HR of another company (needs an
+  HR user through invitation); a termination bound that cuts stored rows (assignments cannot be
+  given to a terminated colaborador, plan 001 rule).
+- Data left in the dev DB: checador `VERIFJDMOXYX`, 12 synthetic punches with Luis's RFC, Luis's
+  assignments 2026-01-05 / 2026-10-05 (Oficina) and 2026-10-12 (Nocturno), and his 9 workdays.
