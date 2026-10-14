@@ -6,4 +6,6 @@ export interface ShiftAssignmentRepository {
    * turno, fecha y autor de la asignación.
    */
   put(assignment: ShiftAssignment): Promise<void>;
+  /** Historial de asignaciones del colaborador, de la `effectiveFrom` más antigua a la más reciente. */
+  listByEmployee(employeeId: string): Promise<ShiftAssignment[]>;
 }

@@ -3,7 +3,7 @@
   "info": {
     "title": "API RRHH APS Holding",
     "version": "1",
-    "description": "API de RRHH del holding. Toda la entrada y salida es JSON.\n\n## Autenticación\n\nCasi todas las rutas exigen sesión. Para probar aquí: llama a `POST /auth/login` con `client: \"mobile\"`, copia el `token` de la respuesta y pégalo en **Authentication → bearerAuth**. El cliente web usa una cookie httpOnly en su lugar.\n\n## Forma de los errores\n\nTodo error responde `{ \"code\", \"message\", \"details\"? }`. `code` es estable y es lo que debe usar un cliente para decidir qué hacer; `message` está en español y puede cambiar.\n\n## Paginación\n\nLos listados aceptan `page` (por defecto 1) y `pageSize` (por defecto 20, máximo 100) y responden `{ items, total, page, pageSize }`.\n\n## Códigos de error\n\n| Código | Status | Cuándo ocurre |\n| --- | --- | --- |\n| `VALIDATION_ERROR` | 400 | La solicitud no cumple el contrato: `details.location` dice dónde (params, query o body) y `details.issues` qué campos fallan. |\n| `MALFORMED_JSON` | 400 | El cuerpo de la petición no es JSON válido. |\n| `PAYLOAD_TOO_LARGE` | 413 | El cuerpo de la petición supera el límite: 1 MB en `/api/v1` (5 MB en las rutas `/iclock` de los checadores). |\n| `AUTHENTICATION_REQUIRED` | 401 | La ruta exige sesión y la solicitud no trae una sesión válida o ya expiró. |\n| `FORBIDDEN` | 403 | La sesión es válida, pero no tiene el permiso que exige la ruta (o no para esa empresa). |\n| `ROUTE_NOT_FOUND` | 404 | No existe una ruta con ese método y path. |\n| `INTERNAL_ERROR` | 500 | Error inesperado del servidor; el detalle solo queda en los logs. |\n| `INVALID_VALUE` | 422 | Un valor no cumple una regla del dominio. Hoy las rutas repiten esas reglas en el contrato, así que normalmente responde antes `VALIDATION_ERROR` (400); queda como red de seguridad y ninguna ruta lo declara. El `message` cambia según la regla. |\n| `BUSINESS_RULE_VIOLATION` | 422 | Se infringe una regla de negocio sin código propio; el `message` dice cuál. Hoy: registrar una contratación con demasiada anticipación. |\n| `COMPANY_NOT_FOUND` | 404 | La empresa indicada no existe. |\n| `COMPANY_ALREADY_EXISTS` | 409 | Ya hay una empresa con ese identificador tributario. |\n| `COMPANY_INACTIVE` | 422 | La empresa está inactiva y no admite la operación. |\n| `SITE_ALREADY_EXISTS` | 409 | Ya hay una sede con ese nombre. |\n| `EMPLOYEE_ALREADY_EXISTS` | 409 | El colaborador ya está registrado en esa empresa (mismo documento de identidad). |\n| `EMPLOYEE_NOT_FOUND` | 404 | El colaborador no existe (también cuando pertenece a otra empresa: responde igual). |\n| `EMPLOYEE_RFC_ALREADY_REGISTERED` | 409 | Otro colaborador ya tiene ese RFC. |\n| `RFC_NOT_APPLICABLE` | 422 | El RFC solo aplica a colaboradores de México. |\n| `EMPLOYEE_ALREADY_TERMINATED` | 422 | El colaborador ya fue dado de baja. |\n| `TERMINATION_DATE_IN_FUTURE` | 422 | La fecha de baja es posterior a hoy (fecha UTC); no hay bajas programadas. |\n| `TERMINATION_BEFORE_HIRE` | 422 | La fecha de baja es anterior a la fecha de contratación. |\n| `SITE_NOT_FOUND` | 404 | La sede indicada no existe. |\n| `SITE_INACTIVE` | 422 | La sede está inactiva y no se le puede asignar nada. |\n| `SITE_COUNTRY_MISMATCH` | 422 | La sede es de un país distinto al de la razón social. |\n| `DEVICE_NOT_FOUND` | 404 | El checador indicado no existe. |\n| `DEVICE_ALREADY_REGISTERED` | 409 | Ya hay un equipo con ese número de serie. |\n| `DEVICE_NOT_ALLOWED` | 422 | El equipo no está autorizado (no registrado) para enviar datos. |\n| `DEVICE_NETWORK_UNRESTRICTED` | 422 | El checador no tiene redes permitidas: no puede recibir comandos. |\n| `DEVICE_WITHOUT_SITE` | 422 | El checador no tiene sede asignada: no hay colaboradores que sincronizar. |\n| `SHIFT_NOT_FOUND` | 404 | El turno indicado no existe (también cuando es de otra empresa: responde igual). |\n| `SHIFT_ALREADY_EXISTS` | 409 | Ya hay un turno con ese nombre en la empresa (sin distinguir mayúsculas). |\n| `INVALID_CREDENTIALS` | 401 | Correo o contraseña incorrectos; es el mismo error si el correo no existe (no revela cuentas). |\n| `LOGIN_TEMPORARILY_BLOCKED` | 429 | Demasiados intentos fallidos; `details.retryAfterSeconds` (y el encabezado `Retry-After`) dicen cuánto esperar. |\n| `WEAK_PASSWORD` | 422 | La contraseña no cumple la política de longitud. |\n| `PASSWORD_RESET_NOT_VALID` | 422 | El enlace de restablecimiento no es válido: desconocido, expirado, usado, reemplazado o de un usuario deshabilitado (mismo cuerpo en todos los casos). |\n| `USER_ALREADY_EXISTS` | 409 | Ya existe un usuario con ese correo. |\n| `USER_NOT_FOUND` | 404 | El usuario indicado no existe. |\n| `USER_DISABLED` | 422 | El usuario está deshabilitado y no admite la operación. |\n| `EMAIL_ALREADY_REGISTERED` | 409 | Ya existe un usuario con ese correo. |\n| `EMPLOYEE_INACTIVE` | 422 | El colaborador está desvinculado: no se le puede invitar, cambiar su sede o RFC ni asignarle un turno. |\n| `EMPLOYEE_ALREADY_HAS_ACCESS` | 409 | El colaborador ya tiene una cuenta vinculada. |\n| `INVITATION_NOT_VALID` | 422 | La invitación no es válida: token desconocido, expirado, usado o reemplazado (mismo cuerpo en todos los casos). |\n| `ROLE_NOT_ASSIGNABLE` | 422 | Ese rol existe pero todavía no se puede asignar por la API. |\n| `INVALID_ROLE_SCOPE` | 422 | El alcance no corresponde al rol: HOLDING_ADMIN no lleva empresa; HR requiere una. |\n| `ROLE_ALREADY_ASSIGNED` | 409 | El usuario ya tiene ese rol activo (en esa empresa). |\n| `ROLE_ASSIGNMENT_NOT_FOUND` | 404 | La asignación de rol no existe para ese usuario. |\n| `LAST_HOLDING_ADMIN` | 422 | Revocarla dejaría al holding sin ningún administrador. |"
+    "description": "API de RRHH del holding. Toda la entrada y salida es JSON.\n\n## Autenticación\n\nCasi todas las rutas exigen sesión. Para probar aquí: llama a `POST /auth/login` con `client: \"mobile\"`, copia el `token` de la respuesta y pégalo en **Authentication → bearerAuth**. El cliente web usa una cookie httpOnly en su lugar.\n\n## Forma de los errores\n\nTodo error responde `{ \"code\", \"message\", \"details\"? }`. `code` es estable y es lo que debe usar un cliente para decidir qué hacer; `message` está en español y puede cambiar.\n\n## Paginación\n\nLos listados aceptan `page` (por defecto 1) y `pageSize` (por defecto 20, máximo 100) y responden `{ items, total, page, pageSize }`.\n\n## Códigos de error\n\n| Código | Status | Cuándo ocurre |\n| --- | --- | --- |\n| `VALIDATION_ERROR` | 400 | La solicitud no cumple el contrato: `details.location` dice dónde (params, query o body) y `details.issues` qué campos fallan. |\n| `MALFORMED_JSON` | 400 | El cuerpo de la petición no es JSON válido. |\n| `PAYLOAD_TOO_LARGE` | 413 | El cuerpo de la petición supera el límite: 1 MB en `/api/v1` (5 MB en las rutas `/iclock` de los checadores). |\n| `AUTHENTICATION_REQUIRED` | 401 | La ruta exige sesión y la solicitud no trae una sesión válida o ya expiró. |\n| `FORBIDDEN` | 403 | La sesión es válida, pero no tiene el permiso que exige la ruta (o no para esa empresa). |\n| `ROUTE_NOT_FOUND` | 404 | No existe una ruta con ese método y path. |\n| `INTERNAL_ERROR` | 500 | Error inesperado del servidor; el detalle solo queda en los logs. |\n| `INVALID_VALUE` | 422 | Un valor no cumple una regla del dominio. Hoy las rutas repiten esas reglas en el contrato, así que normalmente responde antes `VALIDATION_ERROR` (400); queda como red de seguridad y ninguna ruta lo declara. El `message` cambia según la regla. |\n| `BUSINESS_RULE_VIOLATION` | 422 | Se infringe una regla de negocio sin código propio; el `message` dice cuál. Hoy: registrar una contratación con demasiada anticipación. |\n| `COMPANY_NOT_FOUND` | 404 | La empresa indicada no existe. |\n| `COMPANY_ALREADY_EXISTS` | 409 | Ya hay una empresa con ese identificador tributario. |\n| `COMPANY_INACTIVE` | 422 | La empresa está inactiva y no admite la operación. |\n| `SITE_ALREADY_EXISTS` | 409 | Ya hay una sede con ese nombre. |\n| `EMPLOYEE_ALREADY_EXISTS` | 409 | El colaborador ya está registrado en esa empresa (mismo documento de identidad). |\n| `EMPLOYEE_NOT_FOUND` | 404 | El colaborador no existe (también cuando pertenece a otra empresa: responde igual). |\n| `EMPLOYEE_RFC_ALREADY_REGISTERED` | 409 | Otro colaborador ya tiene ese RFC. |\n| `RFC_NOT_APPLICABLE` | 422 | El RFC solo aplica a colaboradores de México. |\n| `EMPLOYEE_ALREADY_TERMINATED` | 422 | El colaborador ya fue dado de baja. |\n| `TERMINATION_DATE_IN_FUTURE` | 422 | La fecha de baja es posterior a hoy (fecha UTC); no hay bajas programadas. |\n| `TERMINATION_BEFORE_HIRE` | 422 | La fecha de baja es anterior a la fecha de contratación. |\n| `SITE_NOT_FOUND` | 404 | La sede indicada no existe. |\n| `SITE_INACTIVE` | 422 | La sede está inactiva y no se le puede asignar nada. |\n| `SITE_COUNTRY_MISMATCH` | 422 | La sede es de un país distinto al de la razón social. |\n| `DEVICE_NOT_FOUND` | 404 | El checador indicado no existe. |\n| `DEVICE_ALREADY_REGISTERED` | 409 | Ya hay un equipo con ese número de serie. |\n| `DEVICE_NOT_ALLOWED` | 422 | El equipo no está autorizado (no registrado) para enviar datos. |\n| `DEVICE_NETWORK_UNRESTRICTED` | 422 | El checador no tiene redes permitidas: no puede recibir comandos. |\n| `DEVICE_WITHOUT_SITE` | 422 | El checador no tiene sede asignada: no hay colaboradores que sincronizar. |\n| `SHIFT_NOT_FOUND` | 404 | El turno indicado no existe (también cuando es de otra empresa: responde igual). |\n| `SHIFT_ALREADY_EXISTS` | 409 | Ya hay un turno con ese nombre en la empresa (sin distinguir mayúsculas). |\n| `EMPLOYEE_WITHOUT_RFC` | 422 | El colaborador no tiene RFC: el PIN del checador es el RFC, así que sus marcaciones no se le pueden atribuir. |\n| `EMPLOYEE_WITHOUT_SITE` | 422 | El colaborador no tiene sede asignada: no se conoce la zona horaria de sus jornadas. |\n| `INVALID_CREDENTIALS` | 401 | Correo o contraseña incorrectos; es el mismo error si el correo no existe (no revela cuentas). |\n| `LOGIN_TEMPORARILY_BLOCKED` | 429 | Demasiados intentos fallidos; `details.retryAfterSeconds` (y el encabezado `Retry-After`) dicen cuánto esperar. |\n| `WEAK_PASSWORD` | 422 | La contraseña no cumple la política de longitud. |\n| `PASSWORD_RESET_NOT_VALID` | 422 | El enlace de restablecimiento no es válido: desconocido, expirado, usado, reemplazado o de un usuario deshabilitado (mismo cuerpo en todos los casos). |\n| `USER_ALREADY_EXISTS` | 409 | Ya existe un usuario con ese correo. |\n| `USER_NOT_FOUND` | 404 | El usuario indicado no existe. |\n| `USER_DISABLED` | 422 | El usuario está deshabilitado y no admite la operación. |\n| `EMAIL_ALREADY_REGISTERED` | 409 | Ya existe un usuario con ese correo. |\n| `EMPLOYEE_INACTIVE` | 422 | El colaborador está desvinculado: no se le puede invitar, cambiar su sede o RFC ni asignarle un turno. |\n| `EMPLOYEE_ALREADY_HAS_ACCESS` | 409 | El colaborador ya tiene una cuenta vinculada. |\n| `INVITATION_NOT_VALID` | 422 | La invitación no es válida: token desconocido, expirado, usado o reemplazado (mismo cuerpo en todos los casos). |\n| `ROLE_NOT_ASSIGNABLE` | 422 | Ese rol existe pero todavía no se puede asignar por la API. |\n| `INVALID_ROLE_SCOPE` | 422 | El alcance no corresponde al rol: HOLDING_ADMIN no lleva empresa; HR requiere una. |\n| `ROLE_ALREADY_ASSIGNED` | 409 | El usuario ya tiene ese rol activo (en esa empresa). |\n| `ROLE_ASSIGNMENT_NOT_FOUND` | 404 | La asignación de rol no existe para ese usuario. |\n| `LAST_HOLDING_ADMIN` | 422 | Revocarla dejaría al holding sin ningún administrador. |"
   },
   "servers": [
     {
@@ -3143,6 +3143,230 @@
           }
         }
       }
+    },
+    "/companies/{companyId}/attendance/employees/{employeeId}/workdays/recalculation": {
+      "post": {
+        "operationId": "recalculateEmployeeWorkdays",
+        "summary": "Recalcula las jornadas de un colaborador en un rango de fechas",
+        "description": "Calcula las jornadas de un colaborador a partir de su turno y sus marcaciones, y reemplaza las guardadas en las fechas cerradas del rango. Las fechas aún abiertas se reportan como pendientes y no se calculan. Funciona también para colaboradores desvinculados (solo hasta su fecha de baja).\n\n**Quién puede:** administrador del holding, o RH si la empresa está en su alcance.\n\n**Necesita:** un rango `from`–`to` de hasta 62 días. El colaborador debe tener RFC (sus marcaciones se atribuyen por RFC) y sede asignada (da la zona horaria).",
+        "tags": [
+          "attendanceWorkdays"
+        ],
+        "x-permission": "attendance.workdays:recalculate",
+        "x-company-param": "companyId",
+        "parameters": [
+          {
+            "name": "companyId",
+            "in": "path",
+            "required": true,
+            "description": "Id de la empresa del colaborador",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "description": "Id de la empresa del colaborador"
+            }
+          },
+          {
+            "name": "employeeId",
+            "in": "path",
+            "required": true,
+            "description": "Id del colaborador",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "description": "Id del colaborador"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecalculateAttendanceWorkdaysInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Recalcula las jornadas de un colaborador en un rango de fechas",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttendanceWorkdayRecalculation"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "EMPLOYEE_NOT_FOUND, SITE_NOT_FOUND",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "EMPLOYEE_NOT_FOUND": {
+                    "$ref": "#/components/examples/EMPLOYEE_NOT_FOUND"
+                  },
+                  "SITE_NOT_FOUND": {
+                    "$ref": "#/components/examples/SITE_NOT_FOUND"
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "EMPLOYEE_WITHOUT_RFC, EMPLOYEE_WITHOUT_SITE, EMPLOYEE_INACTIVE",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "EMPLOYEE_WITHOUT_RFC": {
+                    "$ref": "#/components/examples/EMPLOYEE_WITHOUT_RFC"
+                  },
+                  "EMPLOYEE_WITHOUT_SITE": {
+                    "$ref": "#/components/examples/EMPLOYEE_WITHOUT_SITE"
+                  },
+                  "EMPLOYEE_INACTIVE__employees": {
+                    "$ref": "#/components/examples/EMPLOYEE_INACTIVE__employees"
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/companies/{companyId}/attendance/employees/{employeeId}/workdays": {
+      "get": {
+        "operationId": "listEmployeeWorkdays",
+        "summary": "Jornadas guardadas de un colaborador",
+        "description": "Devuelve las jornadas guardadas de un colaborador en un rango de fechas, en orden ascendente. Las fechas sin jornada (descanso sin marcaciones, sin turno, fuera de su contratación o aún sin calcular) no aparecen.\n\n**Quién puede:** administrador del holding, o RH si la empresa está en su alcance.\n\n**Necesita:** un rango `from`–`to` de hasta 62 días. No modifica datos.",
+        "tags": [
+          "attendanceWorkdays"
+        ],
+        "x-permission": "attendance.workdays:read",
+        "x-company-param": "companyId",
+        "parameters": [
+          {
+            "name": "companyId",
+            "in": "path",
+            "required": true,
+            "description": "Id de la empresa del colaborador",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "description": "Id de la empresa del colaborador"
+            }
+          },
+          {
+            "name": "employeeId",
+            "in": "path",
+            "required": true,
+            "description": "Id del colaborador",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "description": "Id del colaborador"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": true,
+            "description": "Primera fecha del rango (YYYY-MM-DD)",
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$",
+              "description": "Primera fecha del rango (YYYY-MM-DD)"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": true,
+            "description": "Última fecha del rango, inclusive (máximo 62 días)",
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$",
+              "description": "Última fecha del rango, inclusive (máximo 62 días)"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Jornadas guardadas de un colaborador",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/AttendanceWorkday"
+                      }
+                    }
+                  },
+                  "required": [
+                    "items"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "description": "EMPLOYEE_NOT_FOUND",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                },
+                "examples": {
+                  "EMPLOYEE_NOT_FOUND": {
+                    "$ref": "#/components/examples/EMPLOYEE_NOT_FOUND"
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -3774,6 +3998,173 @@
           }
         ]
       },
+      "AttendanceWorkday": {
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": "string",
+            "format": "date",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$",
+            "description": "Fecha de la jornada (YYYY-MM-DD, día en que empieza el turno)"
+          },
+          "shiftId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "description": "Turno que aplicaba ese día"
+          },
+          "shiftName": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "ATTENDED",
+              "ABSENT_NO_PUNCHES",
+              "ABSENT_SINGLE_PUNCH",
+              "REST_WORKED"
+            ],
+            "description": "Estado de la jornada: `ATTENDED` = día laborable con entrada y salida; `ABSENT_NO_PUNCHES` = falta, día laborable sin marcaciones; `ABSENT_SINGLE_PUNCH` = falta, día laborable con una sola marcación; `REST_WORKED` = descanso trabajado, marcaciones en un día de descanso."
+          },
+          "scheduledStartAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Entrada programada (UTC); null en descanso trabajado"
+          },
+          "scheduledEndAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Salida programada (UTC); null en descanso trabajado"
+          },
+          "scheduledMinutes": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "description": "Minutos de jornada programados, sin la comida (0 en descanso trabajado)"
+          },
+          "firstPunchAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Primera marcación del día (entrada); null sin marcaciones"
+          },
+          "lastPunchAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Última marcación del día (salida); null sin marcaciones"
+          },
+          "punchCount": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991,
+            "description": "Marcaciones atribuidas al día"
+          },
+          "lateMinutes": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991,
+            "description": "Minutos de retardo desde la entrada programada; 0 dentro de la tolerancia"
+          },
+          "workedMinutes": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991,
+            "description": "Minutos trabajados: salida − entrada, menos la comida en días laborables"
+          },
+          "overtimeMinutes": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991,
+            "description": "Minutos trabajados por encima de la jornada (solo medidos, sin autorización)"
+          },
+          "calculatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
+            "description": "Cuándo se calculó la jornada"
+          }
+        },
+        "required": [
+          "date",
+          "shiftId",
+          "shiftName",
+          "status",
+          "scheduledStartAt",
+          "scheduledEndAt",
+          "scheduledMinutes",
+          "firstPunchAt",
+          "lastPunchAt",
+          "punchCount",
+          "lateMinutes",
+          "workedMinutes",
+          "overtimeMinutes",
+          "calculatedAt"
+        ],
+        "additionalProperties": false
+      },
+      "AttendanceWorkdayRecalculation": {
+        "type": "object",
+        "properties": {
+          "recalculatedDates": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991,
+            "description": "Fechas cerradas que se recalcularon (con o sin jornada guardada)"
+          },
+          "storedWorkdays": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991,
+            "description": "Jornadas guardadas"
+          },
+          "pendingDates": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "date",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+            },
+            "description": "Fechas aún abiertas (su ventana de marcaciones no ha terminado): no se calcularon"
+          }
+        },
+        "required": [
+          "recalculatedDates",
+          "storedWorkdays",
+          "pendingDates"
+        ],
+        "additionalProperties": false
+      },
       "Company": {
         "type": "object",
         "properties": {
@@ -4242,6 +4633,27 @@
         },
         "required": [
           "command"
+        ]
+      },
+      "RecalculateAttendanceWorkdaysInput": {
+        "type": "object",
+        "properties": {
+          "from": {
+            "type": "string",
+            "format": "date",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$",
+            "description": "Primera fecha del rango (YYYY-MM-DD)"
+          },
+          "to": {
+            "type": "string",
+            "format": "date",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$",
+            "description": "Última fecha del rango, inclusive (máximo 62 días)"
+          }
+        },
+        "required": [
+          "from",
+          "to"
         ]
       },
       "RegisterAttendanceDeviceInput": {
@@ -4889,6 +5301,26 @@
           "message": "Ya existe un turno con ese nombre en la empresa",
           "details": {
             "name": "Matutino"
+          }
+        }
+      },
+      "EMPLOYEE_WITHOUT_RFC": {
+        "summary": "EMPLOYEE_WITHOUT_RFC",
+        "value": {
+          "code": "EMPLOYEE_WITHOUT_RFC",
+          "message": "El colaborador no tiene RFC: sus marcaciones no se pueden atribuir",
+          "details": {
+            "employeeId": "0191a2b3-0000-7000-8000-00000000f001"
+          }
+        }
+      },
+      "EMPLOYEE_WITHOUT_SITE": {
+        "summary": "EMPLOYEE_WITHOUT_SITE",
+        "value": {
+          "code": "EMPLOYEE_WITHOUT_SITE",
+          "message": "El colaborador no tiene sede asignada",
+          "details": {
+            "employeeId": "0191a2b3-0000-7000-8000-00000000f001"
           }
         }
       },

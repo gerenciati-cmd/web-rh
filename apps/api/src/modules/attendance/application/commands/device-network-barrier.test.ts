@@ -311,6 +311,8 @@ describe('RecordDevicePush: barrera de red', () => {
         expect(assigned.ok).toBe(true);
         return setup.punchRepository.saveNew(punches);
       },
+      listInstants: (pin: string, from: Date, to: Date) =>
+        setup.punchRepository.listInstants(pin, from, to),
     };
     const push = new RecordDevicePush({
       logger: setup.logger,

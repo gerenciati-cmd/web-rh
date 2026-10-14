@@ -18,4 +18,13 @@ export class PrismaPunchRepository implements PunchRepository {
     });
     return { inserted: result.count };
   }
+
+  async listInstants(pin: string, from: Date, to: Date): Promise<Date[]> {
+    const rows = await this.deps.database.client.attendancePunch.findMany({
+      where: { pin, occurredAt: { gte: from, lt: to } },
+      select: { occurredAt: true },
+      orderBy: { occurredAt: 'asc' },
+    });
+    return rows.map((row) => row.occurredAt);
+  }
 }

@@ -30,6 +30,10 @@ export const ROLE_DEFINITIONS: Readonly<Record<Role, RoleDefinition>> = {
       // attendance-asistencia-diaria, decisión 11).
       'attendance.shifts:read',
       'attendance.shifts:manage',
+      // Consulta y recalcula las jornadas de los colaboradores de sus empresas (README de
+      // attendance-asistencia-diaria, decisión 11).
+      'attendance.workdays:read',
+      'attendance.workdays:recalculate',
       'identity.users:invite',
       'identity.users:reset-password',
     ],

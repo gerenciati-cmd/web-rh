@@ -14,17 +14,19 @@ arrives or an assignment changes, so periods can later be closed for payroll.
 
 ## Plans
 
-| Plan                                          | Title                        | Depends on | Purpose                                                                                                                    |
-| --------------------------------------------- | ---------------------------- | ---------- | -------------------------------------------------------------------------------------------------------------------------- |
-| [001](001-catalogo-de-turnos-y-asignacion.md) | Shift catalog and assignment | —          | Company-owned shifts as a cyclic pattern (work/rest days, tolerance, meal break); assign one to a colaborador from a date. |
-| 002 (not written)                             | Stored daily jornada         | 001        | Build and store each day: entry/exit, retardo, falta, incomplete, horas extra measured; recalculate on new punches.        |
-| 003 (not written)                             | N retardos = 1 falta         | 002        | Per-company rule (N and period) that turns accumulated retardos into a falta.                                              |
+| Plan                                          | Title                        | Depends on                          | Purpose                                                                                                                                                      |
+| --------------------------------------------- | ---------------------------- | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| [001](001-catalogo-de-turnos-y-asignacion.md) | Shift catalog and assignment | —                                   | Company-owned shifts as a cyclic pattern (work/rest days, tolerance, meal break); assign one to a colaborador from a date.                                   |
+| [002](002-jornada-diaria-guardada.md)         | Stored daily jornada         | 001, employees-fechas-laborales/001 | Calculate and store each day (entry/exit, retardo, falta, horas extra measured, descanso trabajado); recalculate a range on demand; read it.                 |
+| 003 (not written)                             | Automatic recalculation      | 002                                 | Recalculate on new punches and assignment changes; daily close with a scheduled job (ADR). Must serialize recalculations per colaborador (002 review Low-2). |
+| 004 (not written)                             | N retardos = 1 falta         | 002                                 | Per-company rule (N and period) that turns accumulated retardos into a falta.                                                                                |
 
 ## Dependency notes
 
 002 resolves "which shift day applies to a colaborador on date D" with what 001 stores
-(`Shift.dayOn` and the assignment history), so 001 must be `done` first. 003 reads the retardos
-that 002 stores.
+(`Shift.dayOn` and the assignment history), so 001 must be `done` first. It also needs the hire
+and termination dates from `employees-fechas-laborales/001` (decision 18). 003 calls the
+recalculation of 002 from its triggers; 004 reads the retardos that 002 stores.
 
 ## Decisions with the user
 
@@ -53,7 +55,23 @@ that 002 stores.
 12. (2026-10-14) A shift is a **cyclic pattern**: N days, each a working day (entry, exit) or a
     rest day, anchored to a start date. A night shift (22:00–06:00) belongs to the day it starts.
 13. (2026-10-14) Series split: 001 catalog + assignment, 002 stored jornada, 003 the N-retardos
-    rule.
+    rule. Superseded by decision 19.
+14. (2026-10-14) **Horas extra = time worked above the day's jornada**, not only after the shift's
+    end: worked = exit − entry − meal; overtime = worked − the shift day's work minutes.
+    Arriving early counts (09:00–18:00 with 60 min meal: 08:00–18:00 → 1 h extra; 09:30–19:30 →
+    0 extra and a 30 min retardo). Refines decision 9.
+15. (2026-10-14) **Retardo minutes are counted from the shift's start**; the tolerance only
+    decides whether there is a retardo (09:00, tolerance 10, entry 09:15 → 15 min).
+16. (2026-10-14) Punches on a rest day are stored as **descanso trabajado**, with all their
+    worked time measured as overtime; its pay (prima dominical, double pay) belongs to payroll.
+17. (2026-10-14) The window that assigns a night shift's punches to its day is a **theoretical
+    rule for now** (proposed by the architect, plan 002 "The punch window"), with a fixed 4 h
+    margin that can become configurable later.
+18. (2026-10-14) Jornadas exist only **between the hire date and the termination date**; the
+    dates come from employees (`employees-fechas-laborales/001`).
+19. (2026-10-14) Series re-split: 002 calculation + storage + on-demand recalculation of a range +
+    read; 003 automatic recalculation (new punches, assignment changes, daily close with a
+    scheduled job and its ADR); 004 the N-retardos rule.
 
 ## Delivered
 
@@ -67,3 +85,6 @@ that 002 stores.
 - **Separate models for fixed / rotating / night shifts**: three shapes to store and resolve; the
   cyclic pattern covers all three (a fixed Mon–Fri shift is a 7-day cycle anchored on a Monday).
   Discarded by decision 12.
+- **Overtime only after the shift's end**: discarded by decision 14.
+- **Recalculating each punch as it arrives, inside plan 002**: needs the triggers and the daily
+  close anyway (faltas have no punch to trigger them). Moved to plan 003 by decision 19.
