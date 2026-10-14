@@ -1,5 +1,5 @@
 ---
-status: implementing
+status: testing
 module: attendance
 min_implementer: high
 depends_on: ['001', 'employees-fechas-laborales/001']
@@ -335,6 +335,20 @@ Implementation (2026-10-14). All 7 steps done; `pnpm check` and `pnpm test:integ
 5. `pnpm plans:scope --base origin/main` also lists `employees.facade.ts`, its test and the
    `employees-fechas-laborales` plan files: those were changed by commits already on this branch
    (plan `employees-fechas-laborales/001`), not by this implementation.
+
+Repair (2026-10-14, review Low-3). `windowBoundaries` now starts a REST or unassigned day after a
+WORK day at `max(midnight, end(D−1) + M, start(D−1) + 24 h − M)`, per the corrected Context rule;
+the `calculateWorkdays` docblock carries the new examples (09:00–18:00 → 05:00 to 05:00 also
+before a rest day; 22:00–06:00 → 18:00 to 18:00 before a rest day; 24x24 08:00–08:00 → 04:00 D to
+12:00 D+1). Only `workday-calculator.ts` changed in product code.
+
+6. **Existing tests that encoded the old rule (assertions adjusted, no new tests).** In
+   `workday-calculator.test.ts`: (a) "descanso después de un día laborable" expected the rest day
+   to start at 00:00, now 05:00 (title updated to match); (b) "descanso después de un turno
+   nocturno" expected 10:00, now 18:00 (title updated); (c) "un turno nocturno de hoy sigue
+   abierto…" checked the close at 09:59/10:00 of D+1, now 17:59/18:00 (title and comment
+   updated). New tests for the corrected rule (Friday exit 00:30 Saturday, 24x24 before a rest
+   day) are left to the tester.
 
 ## Test coverage
 

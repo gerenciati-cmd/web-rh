@@ -92,12 +92,12 @@ describe('windowBoundaries', () => {
     expect(boundariesOf(entries)).toEqual([iso('2026-10-05', '05:00'), iso('2026-10-06', '05:00')]);
   });
 
-  it('descanso después de un día laborable: la ventana del descanso empieza a medianoche', () => {
+  it('descanso después de un día laborable: la ventana del descanso empieza 24 h − 4 h después de la entrada previa', () => {
     const entries = calendar('2026-10-09', 2, (date) =>
       plan(date === '2026-10-09' ? OFFICE : REST),
     );
 
-    expect(boundariesOf(entries)).toEqual([iso('2026-10-09', '05:00'), iso('2026-10-10', '00:00')]);
+    expect(boundariesOf(entries)).toEqual([iso('2026-10-09', '05:00'), iso('2026-10-10', '05:00')]);
   });
 
   it('turno nocturno seguido de otro: capta de 18:00 de D a 18:00 de D+1', () => {
@@ -106,12 +106,12 @@ describe('windowBoundaries', () => {
     expect(boundariesOf(entries)).toEqual([iso('2026-10-05', '18:00'), iso('2026-10-06', '18:00')]);
   });
 
-  it('descanso después de un turno nocturno: la salida se queda con su día hasta las 10:00', () => {
+  it('descanso después de un turno nocturno: la salida se queda con su día hasta las 18:00', () => {
     const entries = calendar('2026-10-05', 3, (date) => plan(date === '2026-10-06' ? REST : NIGHT));
 
     expect(boundariesOf(entries)).toEqual([
       iso('2026-10-05', '18:00'),
-      iso('2026-10-06', '10:00'),
+      iso('2026-10-06', '18:00'),
       iso('2026-10-07', '18:00'),
     ]);
   });
@@ -529,15 +529,15 @@ describe('calculateWorkdays', () => {
       ]);
     });
 
-    it('un turno nocturno de hoy sigue abierto hasta que pasa su salida más el margen', () => {
+    it('un turno nocturno de hoy sigue abierto hasta que cierra su ventana de 24 h', () => {
       const night = (date: string) => plan(date === '2026-10-05' ? NIGHT : REST);
       const options = { first: '2026-10-04', count: 4, planOf: night };
 
-      // La ventana de D+1 empieza a las 10:00 (salida 06:00 + 4 h).
-      expect(run({ ...options, now: at('2026-10-06', '09:59') }).pendingDates).toContain(
+      // La ventana del descanso D+1 empieza a las 18:00 (entrada 22:00 + 24 h − 4 h).
+      expect(run({ ...options, now: at('2026-10-06', '17:59') }).pendingDates).toContain(
         '2026-10-05',
       );
-      expect(run({ ...options, now: at('2026-10-06', '10:00') }).pendingDates).not.toContain(
+      expect(run({ ...options, now: at('2026-10-06', '18:00') }).pendingDates).not.toContain(
         '2026-10-05',
       );
     });

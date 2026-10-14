@@ -12,6 +12,7 @@ export interface PlannedDate {
 
 const MS_PER_MINUTE = 60_000;
 const MARGIN_MS = PUNCH_WINDOW_MARGIN_MINUTES * MS_PER_MINUTE;
+const DAY_MS = 24 * 60 * MS_PER_MINUTE;
 
 function workDayOf(entry: PlannedDate | undefined): WorkShiftDay | null {
   return entry?.plan?.day.type === 'WORK' ? entry.plan.day : null;
@@ -42,6 +43,8 @@ export function windowBoundaries(calendar: readonly PlannedDate[], timeZone: str
     const previousWork = workDayOf(previous);
     const previousEnd =
       previous && previousWork ? scheduledEnd(previous.date, previousWork, timeZone) : null;
+    const previousStart =
+      previous && previousWork ? scheduledStart(previous.date, previousWork, timeZone) : null;
     const work = workDayOf(entry);
 
     let boundary: number;
@@ -54,8 +57,15 @@ export function windowBoundaries(calendar: readonly PlannedDate[], timeZone: str
       }
     } else {
       boundary = localInstant(entry.date, '00:00', timeZone).getTime();
-      // La salida de un turno nocturno o de 24 h se queda con su día.
-      if (previousEnd) boundary = Math.max(boundary, previousEnd.getTime() + MARGIN_MS);
+      // La salida de un turno nocturno o de 24 h se queda con su día, y el día previo a un
+      // descanso conserva el mismo alcance de 24 h que cualquier otro (revisión Low-3).
+      if (previousEnd && previousStart) {
+        boundary = Math.max(
+          boundary,
+          previousEnd.getTime() + MARGIN_MS,
+          previousStart.getTime() + DAY_MS - MARGIN_MS,
+        );
+      }
     }
     const last = boundaries.at(-1);
     if (last) boundary = Math.max(boundary, last.getTime());
@@ -77,9 +87,10 @@ export function windowBoundaries(calendar: readonly PlannedDate[], timeZone: str
  * - Marcaciones en día de descanso = descanso trabajado, todo medido como horas extra (decisión
  *   16). Descanso sin marcaciones y días sin turno no generan jornada.
  * - La ventana de marcaciones es la regla teórica de margen fijo (decisión 17): un turno de 09:00
- *   a 18:00 capta de 05:00 a 05:00 del siguiente día laborable; uno nocturno de 22:00 a 06:00
- *   capta de 18:00 de D a 18:00 de D+1 (siguiente laborable a las 22:00), o a 10:00 de D+1 si
- *   D+1 es descanso.
+ *   a 18:00 capta de 05:00 a 05:00 del día siguiente, también si ese día es descanso (una salida
+ *   del viernes a las 00:30 del sábado es tiempo extra del viernes); uno nocturno de 22:00 a 06:00
+ *   capta de 18:00 de D a 18:00 de D+1, sea D+1 laborable a las 22:00 o descanso; uno de 24x24 de
+ *   08:00 a 08:00 seguido de descanso capta de 04:00 de D a 12:00 de D+1.
  * - Solo hay jornadas entre la contratación y la baja, inclusive (decisión 18), y solo de fechas
  *   cerradas (su ventana ya terminó); las abiertas se reportan como pendientes.
  */
