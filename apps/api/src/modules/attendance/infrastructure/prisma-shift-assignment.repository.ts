@@ -41,4 +41,11 @@ export class PrismaShiftAssignmentRepository implements ShiftAssignmentRepositor
       assignedBy: row.assignedBy,
     }));
   }
+
+  async listAssignedEmployees(): Promise<{ employeeId: string; companyId: string }[]> {
+    return this.deps.database.client.attendanceShiftAssignment.findMany({
+      distinct: ['employeeId'],
+      select: { employeeId: true, companyId: true },
+    });
+  }
 }

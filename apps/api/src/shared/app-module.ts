@@ -1,8 +1,8 @@
 import type { Resolver } from 'awilix';
 import type { Router } from 'express';
 
-import type { JobHandler } from './application/jobs';
-import type { EventBus } from './application/ports';
+import type { JobHandler, JobQueue, ScheduledJob } from './application/jobs';
+import type { Clock, EventBus } from './application/ports';
 
 /**
  * Contrato que cumple cada módulo de negocio para enchufarse al monolito.
@@ -25,8 +25,19 @@ export interface AppModule<TCradle extends object> {
    * registra a nivel debug para no ahogar los logs. Los errores conservan su nivel.
    */
   readonly quietRequestPaths?: readonly string[];
-  /** Suscripciones a eventos de otros módulos (comunicación desacoplada). */
-  readonly subscribe?: (cradle: TCradle & { eventBus: EventBus }) => void;
+  /**
+   * Suscripciones a eventos de otros módulos (comunicación desacoplada). Además del cradle del
+   * módulo recibe los puertos compartidos que un handler necesita para reaccionar (encolar un job
+   * con la fecha actual).
+   */
+  readonly subscribe?: (
+    cradle: TCradle & { eventBus: EventBus; jobQueue: JobQueue; clock: Clock },
+  ) => void;
   /** Handlers de jobs asíncronos que ejecuta el worker. */
   readonly jobs?: (cradle: TCradle) => JobHandler[];
+  /**
+   * Jobs recurrentes; el worker los programa al arrancar (ADR 0016). Cada uno necesita su
+   * handler en `jobs`.
+   */
+  readonly schedules?: readonly ScheduledJob[];
 }

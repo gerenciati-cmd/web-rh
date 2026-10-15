@@ -1,7 +1,7 @@
 import type { WorkdayRecalculationDto } from '@rrhh/contracts';
 import { err, InvalidValueError, MAX_WORKDAY_RANGE_DAYS, ok, type DomainError } from '@rrhh/domain';
 
-import type { Clock } from '@/shared/application/ports';
+import type { Clock, TransactionRunner } from '@/shared/application/ports';
 import type { Command } from '@/shared/application/use-case';
 
 import {
@@ -40,6 +40,7 @@ interface Deps {
   shiftRepository: ShiftRepository;
   punchRepository: PunchRepository;
   workdayRepository: WorkdayRepository;
+  transactionRunner: TransactionRunner;
   clock: Clock;
 }
 
@@ -92,29 +93,37 @@ export class RecalculateWorkdays implements Command<
       );
     }
 
-    const calendar = await this.buildCalendar(employee.id, input.from, span);
-    const boundaries = windowBoundaries(calendar, site.timeZone);
-    const first = boundaries[1];
-    const last = boundaries.at(-1);
-    if (!first || !last) throw new Error('Calendario de jornadas incompleto');
-    const punches = await this.deps.punchRepository.listInstants(employee.rfc, first, last);
+    const rfc = employee.rfc;
+    const timeZone = site.timeZone;
+    // Recálculos concurrentes del mismo colaborador (jobs automáticos y el endpoint manual)
+    // chocaban en la llave primaria al borrar e insertar (revisión del plan 002, Low-2): el
+    // candado por colaborador dentro de la transacción los pone en fila.
+    return this.deps.transactionRunner.run(async () => {
+      await this.deps.workdayRepository.lockEmployee(employee.id);
+      const calendar = await this.buildCalendar(employee.id, input.from, span);
+      const boundaries = windowBoundaries(calendar, timeZone);
+      const first = boundaries[1];
+      const last = boundaries.at(-1);
+      if (!first || !last) throw new Error('Calendario de jornadas incompleto');
+      const punches = await this.deps.punchRepository.listInstants(rfc, first, last);
 
-    const { workdays, closedDates, pendingDates } = calculateWorkdays({
-      employeeId: employee.id,
-      companyId: employee.companyId,
-      calendar,
-      timeZone: site.timeZone,
-      punches,
-      employedFrom: employee.hireDate,
-      employedUntil: employee.terminationDate,
-      now: this.deps.clock.now(),
-    });
-    await this.deps.workdayRepository.replaceDates(employee.id, closedDates, workdays);
+      const { workdays, closedDates, pendingDates } = calculateWorkdays({
+        employeeId: employee.id,
+        companyId: employee.companyId,
+        calendar,
+        timeZone,
+        punches,
+        employedFrom: employee.hireDate,
+        employedUntil: employee.terminationDate,
+        now: this.deps.clock.now(),
+      });
+      await this.deps.workdayRepository.replaceDates(employee.id, closedDates, workdays);
 
-    return ok({
-      recalculatedDates: closedDates.length,
-      storedWorkdays: workdays.length,
-      pendingDates,
+      return ok({
+        recalculatedDates: closedDates.length,
+        storedWorkdays: workdays.length,
+        pendingDates,
+      });
     });
   }
 

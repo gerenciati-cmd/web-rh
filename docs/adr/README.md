@@ -23,5 +23,6 @@ cómo se comunican los módulos o cualquier decisión difícil de revertir.
 | 0013 | [Registro de equipos en base de datos como autenticación del dispositivo](0013-registro-de-equipos-en-base-de-datos.md)     | Aceptado                      |
 | 0014 | [Comandos salientes al checador con el serial como única credencial](0014-comandos-salientes-con-serial-como-credencial.md) | Reemplazado en parte por 0015 |
 | 0015 | [Barrera de red por checador en `/iclock`](0015-barrera-de-red-por-checador.md)                                             | Aceptado                      |
+| 0016 | [Jobs programados declarados por módulo](0016-jobs-programados.md)                                                          | Aceptado                      |
 
 Plantilla: [0000-plantilla.md](0000-plantilla.md).

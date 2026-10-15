@@ -1,10 +1,19 @@
 import { Queue } from 'bullmq';
 
-import type { EnqueueOptions, JobQueue } from '@/shared/application/jobs';
+import type {
+  EnqueueOptions,
+  JobQueue,
+  JobScheduler,
+  ScheduledJob,
+} from '@/shared/application/jobs';
 
 export const DEFAULT_QUEUE = 'default';
 
-export class BullMqJobQueue implements JobQueue {
+/** Historial que se conserva en Valkey para depurar; sin tope, un job programado lo crece sin fin. */
+export const KEEP_COMPLETED_JOBS = 1_000;
+export const KEEP_FAILED_JOBS = 5_000;
+
+export class BullMqJobQueue implements JobQueue, JobScheduler {
   #queue: Queue | undefined;
 
   constructor(private readonly deps: { redisUrl: string }) {}
@@ -20,10 +29,23 @@ export class BullMqJobQueue implements JobQueue {
       attempts: 3,
       backoff: { type: 'exponential', delay: 1_000 },
       // Un job sensible no deja su payload en Valkey (los demás conservan historial para depurar).
-      removeOnComplete: options?.sensitive ? true : 1_000,
-      removeOnFail: options?.sensitive ? true : 5_000,
+      removeOnComplete: options?.sensitive ? true : KEEP_COMPLETED_JOBS,
+      removeOnFail: options?.sensitive ? true : KEEP_FAILED_JOBS,
       ...(options?.delayMs ? { delay: options.delayMs } : {}),
     });
+  }
+
+  /** Id estable = nombre del job: reprogramar al reiniciar el worker no duplica (ADR 0016). */
+  async upsert(job: ScheduledJob): Promise<void> {
+    await this.queue.upsertJobScheduler(
+      job.name,
+      { pattern: job.pattern, tz: job.timeZone },
+      {
+        name: job.name,
+        data: {},
+        opts: { removeOnComplete: KEEP_COMPLETED_JOBS, removeOnFail: KEEP_FAILED_JOBS },
+      },
+    );
   }
 
   async close(): Promise<void> {

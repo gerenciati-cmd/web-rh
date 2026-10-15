@@ -6,7 +6,12 @@ import { createApp } from '@/http/app';
 import { RecordDeviceContact } from '@/modules/attendance/application/commands/record-device-contact.command';
 import { RecordDevicePush } from '@/modules/attendance/application/commands/record-device-push.command';
 import { Device, type DeviceId } from '@/modules/attendance/domain/device';
-import { FixedClock, RecordingLogger, SequentialIdGenerator } from '@/shared/testing/fakes';
+import {
+  FixedClock,
+  RecordingJobQueue,
+  RecordingLogger,
+  SequentialIdGenerator,
+} from '@/shared/testing/fakes';
 
 import { buildTestContainer, signInAs } from './test-app';
 
@@ -45,7 +50,14 @@ describe('ADMS /iclock', () => {
     container.register({
       recordDeviceContact: asValue(new RecordDeviceContact({ logger, deviceRepository, clock })),
       recordDevicePush: asValue(
-        new RecordDevicePush({ logger, deviceRepository, punchRepository, idGenerator, clock }),
+        new RecordDevicePush({
+          logger,
+          deviceRepository,
+          punchRepository,
+          idGenerator,
+          clock,
+          jobQueue: new RecordingJobQueue(),
+        }),
       ),
     });
     return createApp(container);

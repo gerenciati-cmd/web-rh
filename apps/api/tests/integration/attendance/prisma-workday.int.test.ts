@@ -336,6 +336,29 @@ describe('PrismaShiftAssignmentRepository.listByEmployee', () => {
   });
 });
 
+describe('PrismaShiftAssignmentRepository.listAssignedEmployees', () => {
+  it('devuelve cada colaborador con asignaciones una sola vez, con su empresa', async () => {
+    const shift = await savedShift('Oficina');
+    await assignments.put(assignment(shift, '2026-01-05'));
+    await assignments.put(assignment(shift, '2026-11-02'));
+    await assignments.put(assignment(shift, '2026-11-02', OTHER_EMPLOYEE));
+
+    const list = await assignments.listAssignedEmployees();
+
+    expect(list).toHaveLength(2);
+    expect(list).toEqual(
+      expect.arrayContaining([
+        { employeeId: EMPLOYEE, companyId: COMPANY },
+        { employeeId: OTHER_EMPLOYEE, companyId: COMPANY },
+      ]),
+    );
+  });
+
+  it('sin asignaciones devuelve una lista vacía', async () => {
+    expect(await assignments.listAssignedEmployees()).toEqual([]);
+  });
+});
+
 describe('PrismaPunchRepository.listInstants', () => {
   const PIN = 'GOMA850101AB1';
 

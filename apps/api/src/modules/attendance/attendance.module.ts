@@ -22,6 +22,11 @@ import { SyncDevice } from './application/commands/sync-device.command';
 import { SyncEmployee } from './application/commands/sync-employee.command';
 import { TakeDeviceCommand } from './application/commands/take-device-command.command';
 import { DeviceUserSync } from './application/device-user-sync';
+import { CLOSE_WORKDAYS_SCHEDULE, CloseWorkdaysJob } from './application/jobs/close-workdays.job';
+import {
+  enqueueWorkdayRecalculation,
+  RecalculateWorkdaysJob,
+} from './application/jobs/recalculate-workdays.job';
 import type { PunchOwnerDirectory } from './application/ports/punch-owner-directory';
 import type { ShiftCompanyDirectory } from './application/ports/shift-company-directory';
 import type { ShiftEmployeeDirectory } from './application/ports/shift-employee-directory';
@@ -44,6 +49,7 @@ import type { DeviceRepository } from './domain/device.repository';
 import type { PunchRepository } from './domain/punch.repository';
 import type { ShiftAssignmentRepository } from './domain/shift-assignment.repository';
 import type { ShiftRepository } from './domain/shift.repository';
+import { utcDate } from './domain/workday-recalculation';
 import type { WorkdayRepository } from './domain/workday.repository';
 import { createAttendanceRouter } from './http/attendance.router';
 import { createZktecoAdmsRouter } from './http/zkteco-adms.router';
@@ -101,12 +107,20 @@ export interface AttendanceCradle {
   workdayEmployeeDirectory: WorkdayEmployeeDirectory;
   recalculateWorkdays: RecalculateWorkdays;
   listEmployeeWorkdays: ListEmployeeWorkdays;
+  recalculateWorkdaysJob: RecalculateWorkdaysJob;
+  closeWorkdaysJob: CloseWorkdaysJob;
 }
 
 // El bus registra el rechazo de un handler: una forma desconocida se loguea y se ignora.
 function payloadId(payload: unknown, field: string, eventName: string): string {
   const value = (payload as Record<string, unknown> | null)?.[field];
   if (typeof value !== 'string') throw new Error(`El evento ${eventName} no trae ${field} válido`);
+  return value;
+}
+
+function payloadDate(payload: unknown, field: string, eventName: string): Date {
+  const value = (payload as Record<string, unknown> | null)?.[field];
+  if (!(value instanceof Date)) throw new Error(`El evento ${eventName} no trae ${field} válido`);
   return value;
 }
 
@@ -153,11 +167,13 @@ export const attendanceModule: AppModule<AttendanceCradle> = {
     workdayEmployeeDirectory: asClass(EmployeesWorkdayEmployeeDirectory).singleton(),
     recalculateWorkdays: asClass(RecalculateWorkdays).singleton(),
     listEmployeeWorkdays: asClass(ListEmployeeWorkdays).singleton(),
+    recalculateWorkdaysJob: asClass(RecalculateWorkdaysJob).singleton(),
+    closeWorkdaysJob: asClass(CloseWorkdaysJob).singleton(),
   },
   // Un colaborador cambia (alta, sede, RFC, baja) → se reconcilia en los checadores; un checador
   // recibe redes o sede → se reconcilia con su sede. `DEVICE_REGISTERED` no se escucha: un equipo
   // nuevo no tiene redes permitidas y no puede recibir comandos (decisión 19).
-  subscribe: ({ eventBus, syncEmployee, syncDevice }) => {
+  subscribe: ({ eventBus, syncEmployee, syncDevice, jobQueue, clock }) => {
     for (const eventName of [
       EMPLOYEE_HIRED,
       EMPLOYEE_SITE_ASSIGNED,
@@ -170,6 +186,19 @@ export const attendanceModule: AppModule<AttendanceCradle> = {
         });
       });
     }
+    // Una baja recalcula desde su fecha hasta hoy: borra las jornadas posteriores (decisión 19).
+    eventBus.subscribe(EMPLOYEE_TERMINATED, async (event) => {
+      const employeeId = payloadId(event.payload, 'employeeId', EMPLOYEE_TERMINATED);
+      const terminationDate = payloadDate(event.payload, 'terminationDate', EMPLOYEE_TERMINATED);
+      const today = utcDate(clock.now());
+      await enqueueWorkdayRecalculation(
+        jobQueue,
+        { employeeId },
+        utcDate(terminationDate),
+        today,
+        today,
+      );
+    });
     for (const eventName of [DEVICE_COMMANDS_ENABLED, DEVICE_SITE_ASSIGNED]) {
       eventBus.subscribe(eventName, async (event) => {
         // Un `err` ya lo registra el caso de uso (queuedBy null): no se lanza.
@@ -180,6 +209,11 @@ export const attendanceModule: AppModule<AttendanceCradle> = {
       });
     }
   },
+  jobs: ({ recalculateWorkdaysJob, closeWorkdaysJob }) => [
+    recalculateWorkdaysJob,
+    closeWorkdaysJob,
+  ],
+  schedules: [CLOSE_WORKDAYS_SCHEDULE],
   router: createAttendanceRouter,
   deviceRouter: createZktecoAdmsRouter,
   // El checador pregunta por comandos cada ~10 s (`Delay=10`).

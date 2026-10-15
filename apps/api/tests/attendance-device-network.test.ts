@@ -6,7 +6,12 @@ import { loadEnv } from '@/config/env';
 import { API_PREFIX, createApp } from '@/http/app';
 import { RecordDeviceContact } from '@/modules/attendance/application/commands/record-device-contact.command';
 import { RecordDevicePush } from '@/modules/attendance/application/commands/record-device-push.command';
-import { FixedClock, RecordingLogger, SequentialIdGenerator } from '@/shared/testing/fakes';
+import {
+  FixedClock,
+  RecordingJobQueue,
+  RecordingLogger,
+  SequentialIdGenerator,
+} from '@/shared/testing/fakes';
 
 import { buildTestContainer, createTestSite, signInAs, testEnv } from './test-app';
 
@@ -63,6 +68,7 @@ describe('barrera de red de los checadores (HTTP)', () => {
           punchRepository,
           idGenerator: new SequentialIdGenerator(),
           clock,
+          jobQueue: new RecordingJobQueue(),
         }),
       ),
     });

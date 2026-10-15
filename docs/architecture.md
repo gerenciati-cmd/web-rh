@@ -132,6 +132,8 @@ transacción activa (AsyncLocalStorage) o el cliente raíz, así los repositorio
   Para eventos que no pueden perderse, migrar a Transactional Outbox ([ADR 0005](adr/0005-eventos.md)).
 - `JobQueue` (BullMQ sobre Valkey): trabajo pesado o diferido (cálculo de nómina, reportes,
   cierres de asistencia). Los módulos declaran `jobs` en su `AppModule`; `src/main/worker.ts` los ejecuta.
+  También pueden declarar jobs recurrentes en `schedules`, que el worker programa al arrancar
+  ([ADR 0016](adr/0016-jobs-programados.md)).
 - **Jobs sensibles**: si el payload lleva un secreto (p. ej. el token de un enlace de activación),
   se encola con `{ sensitive: true }`: BullMQ lo elimina de Valkey al terminar, con éxito o con fallo.
   El correo sale siempre por un job (`EmailSender` en el worker), nunca dentro de la petición HTTP.

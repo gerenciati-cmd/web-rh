@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { FixedClock } from '@/shared/testing/fakes';
+import { FixedClock, RecordingJobQueue } from '@/shared/testing/fakes';
 
 import { Shift, type ShiftId } from '../../domain/shift';
 import {
@@ -50,13 +50,15 @@ async function setUp(now = new Date('2026-10-14T12:00:00Z')) {
     await shiftRepository.add(shift.value);
   }
   const clock = new FixedClock(now);
+  const jobQueue = new RecordingJobQueue();
   const command = new AssignEmployeeShift({
     shiftRepository,
     shiftAssignmentRepository: new InMemoryShiftAssignmentRepository(store),
     shiftEmployeeDirectory: { find: (id: string) => Promise.resolve(EMPLOYEES.get(id) ?? null) },
     clock,
+    jobQueue,
   });
-  return { command, queries: new InMemoryShiftQueries(store), clock };
+  return { command, queries: new InMemoryShiftQueries(store), clock, jobQueue };
 }
 
 const input = {
@@ -153,12 +155,72 @@ describe('AssignEmployeeShift', () => {
     expect(!result.ok && result.error.code).toBe('SHIFT_NOT_FOUND');
   });
 
-  it('turno de otra empresa: SHIFT_NOT_FOUND y no asigna', async () => {
-    const { command, queries } = await setUp();
+  it('turno de otra empresa: SHIFT_NOT_FOUND y no asigna ni encola', async () => {
+    const { command, queries, jobQueue } = await setUp();
 
     const result = await command.execute({ ...input, shiftId: FOREIGN_SHIFT });
 
     expect(!result.ok && result.error.code).toBe('SHIFT_NOT_FOUND');
     expect((await queries.listAssignments(EMPLOYEE, PAGE)).total).toBe(0);
+    expect(jobQueue.jobs).toEqual([]);
+  });
+
+  // Plan attendance-asistencia-diaria/003, decisión 19: cambiar la asignación recalcula.
+  describe('recálculo automático', () => {
+    it('una fecha pasada encola el recálculo de esa fecha a hoy (hoy = 2026-10-14)', async () => {
+      const { command, jobQueue } = await setUp();
+
+      await command.execute({ ...input, effectiveFrom: '2026-10-05' });
+
+      expect(jobQueue.jobs).toEqual([
+        {
+          name: 'attendance.recalculate-workdays',
+          data: { employeeId: EMPLOYEE, from: '2026-10-05', to: '2026-10-14' },
+          options: undefined,
+        },
+      ]);
+    });
+
+    it('la fecha de hoy encola un recálculo de un solo día', async () => {
+      const { command, jobQueue } = await setUp();
+
+      await command.execute({ ...input, effectiveFrom: '2026-10-14' });
+
+      expect(jobQueue.jobs.map((job) => job.data)).toEqual([
+        { employeeId: EMPLOYEE, from: '2026-10-14', to: '2026-10-14' },
+      ]);
+    });
+
+    it('una fecha futura asigna pero no encola nada', async () => {
+      const { command, jobQueue, queries } = await setUp();
+
+      const result = await command.execute({ ...input, effectiveFrom: '2026-11-02' });
+
+      expect(result.ok).toBe(true);
+      expect((await queries.listAssignments(EMPLOYEE, PAGE)).total).toBe(1);
+      expect(jobQueue.jobs).toEqual([]);
+    });
+
+    it('una fecha anterior al piso de 62 fechas se acota a hoy − 61', async () => {
+      const { command, jobQueue } = await setUp();
+
+      await command.execute({ ...input, effectiveFrom: '2026-01-05' });
+
+      expect(jobQueue.jobs.map((job) => job.data)).toEqual([
+        { employeeId: EMPLOYEE, from: '2026-08-14', to: '2026-10-14' },
+      ]);
+    });
+
+    it('un colaborador inexistente no encola nada', async () => {
+      const { command, jobQueue } = await setUp();
+
+      await command.execute({
+        ...input,
+        employeeId: FOREIGN_EMPLOYEE,
+        effectiveFrom: '2026-10-05',
+      });
+
+      expect(jobQueue.jobs).toEqual([]);
+    });
   });
 });

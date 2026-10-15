@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 
 import { API_PREFIX, createApp } from '@/http/app';
 import { RecordDevicePush } from '@/modules/attendance/application/commands/record-device-push.command';
-import { FixedClock, RecordingLogger } from '@/shared/testing/fakes';
+import { FixedClock, RecordingJobQueue, RecordingLogger } from '@/shared/testing/fakes';
 
 import { buildTestContainer, createTestSite, signInAs } from './test-app';
 
@@ -55,6 +55,7 @@ describe('desfase de reloj del checador (HTTP)', () => {
           punchRepository,
           idGenerator,
           clock: new FixedClock(RECEIVED_AT),
+          jobQueue: new RecordingJobQueue(),
         }),
       ),
     });

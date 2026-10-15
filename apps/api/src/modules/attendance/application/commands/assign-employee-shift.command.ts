@@ -1,5 +1,6 @@
 import { err, ok, type DomainError } from '@rrhh/domain';
 
+import type { JobQueue } from '@/shared/application/jobs';
 import type { Clock } from '@/shared/application/ports';
 import type { Command } from '@/shared/application/use-case';
 
@@ -11,6 +12,8 @@ import {
 import type { ShiftId } from '../../domain/shift';
 import type { ShiftAssignmentRepository } from '../../domain/shift-assignment.repository';
 import type { ShiftRepository } from '../../domain/shift.repository';
+import { utcDate } from '../../domain/workday-recalculation';
+import { enqueueWorkdayRecalculation } from '../jobs/recalculate-workdays.job';
 import type { ShiftEmployeeDirectory } from '../ports/shift-employee-directory';
 
 export interface AssignEmployeeShiftInput {
@@ -26,6 +29,7 @@ interface Deps {
   shiftAssignmentRepository: ShiftAssignmentRepository;
   shiftEmployeeDirectory: ShiftEmployeeDirectory;
   clock: Clock;
+  jobQueue: JobQueue;
 }
 
 /**
@@ -48,14 +52,25 @@ export class AssignEmployeeShift implements Command<AssignEmployeeShiftInput, un
       return err<DomainError>(new ShiftNotFoundError(input.shiftId));
     }
 
+    const now = this.deps.clock.now();
     await this.deps.shiftAssignmentRepository.put({
       employeeId: input.employeeId,
       companyId: input.companyId,
       shiftId: shift.id,
       effectiveFrom: input.effectiveFrom,
-      assignedAt: this.deps.clock.now(),
+      assignedAt: now,
       assignedBy: input.assignedBy,
     });
+    // Las jornadas desde esa fecha se calcularon con el turno anterior (decisión 19). Una fecha
+    // futura no encola nada: el cierre horario la toma cuando llegue.
+    const today = utcDate(now);
+    await enqueueWorkdayRecalculation(
+      this.deps.jobQueue,
+      { employeeId: input.employeeId },
+      input.effectiveFrom,
+      today,
+      today,
+    );
     return ok(undefined);
   }
 }

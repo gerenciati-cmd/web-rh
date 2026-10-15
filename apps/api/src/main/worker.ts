@@ -22,6 +22,15 @@ for (const module of modules) {
   for (const handler of moduleJobs) handlers.set(handler.name, handler);
 }
 
+// Jobs recurrentes declarados por los módulos (ADR 0016): upsert idempotente al arrancar.
+const schedules: string[] = [];
+for (const module of modules) {
+  for (const job of module.schedules ?? []) {
+    await container.cradle.jobScheduler.upsert(job);
+    schedules.push(job.name);
+  }
+}
+
 const worker = new Worker(
   DEFAULT_QUEUE,
   async (job) => {
@@ -33,7 +42,7 @@ const worker = new Worker(
 );
 
 worker.on('ready', () => {
-  logger.info({ queue: DEFAULT_QUEUE, jobs: [...handlers.keys()] }, 'worker listo');
+  logger.info({ queue: DEFAULT_QUEUE, jobs: [...handlers.keys()], schedules }, 'worker listo');
 });
 worker.on('failed', (job, err) => {
   logger.error({ err, job: job?.name, jobId: job?.id }, 'job falló');

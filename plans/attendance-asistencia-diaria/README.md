@@ -18,7 +18,7 @@ arrives or an assignment changes, so periods can later be closed for payroll.
 | --------------------------------------------- | ---------------------------- | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | [001](001-catalogo-de-turnos-y-asignacion.md) | Shift catalog and assignment | —                                   | Company-owned shifts as a cyclic pattern (work/rest days, tolerance, meal break); assign one to a colaborador from a date.                                   |
 | [002](002-jornada-diaria-guardada.md)         | Stored daily jornada         | 001, employees-fechas-laborales/001 | Calculate and store each day (entry/exit, retardo, falta, horas extra measured, descanso trabajado); recalculate a range on demand; read it.                 |
-| 003 (not written)                             | Automatic recalculation      | 002                                 | Recalculate on new punches and assignment changes; daily close with a scheduled job (ADR). Must serialize recalculations per colaborador (002 review Low-2). |
+| [003](003-recalculo-automatico.md)            | Automatic recalculation      | 002                                 | Recalculate on new punches and assignment changes; daily close with a scheduled job (ADR). Must serialize recalculations per colaborador (002 review Low-2). |
 | 004 (not written)                             | N retardos = 1 falta         | 002                                 | Per-company rule (N and period) that turns accumulated retardos into a falta.                                                                                |
 
 ## Dependency notes
@@ -72,6 +72,13 @@ recalculation of 002 from its triggers; 004 reads the retardos that 002 stores.
 19. (2026-10-14) Series re-split: 002 calculation + storage + on-demand recalculation of a range +
     read; 003 automatic recalculation (new punches, assignment changes, daily close with a
     scheduled job and its ADR); 004 the N-retardos rule.
+20. (2026-10-14) **Automatic recalculation reaches at most 62 days back** (e.g. a shift assigned
+    six months back is recalculated only for the last 62 days); older dates are recalculated by
+    hand with the 002 endpoint, so periods that may already be paid are not rewritten silently.
+21. (2026-10-14) The **close sweep runs every hour**, recalculating the last days of every
+    colaborador with a shift, so a falta appears at most about an hour after its window closes.
+22. (2026-10-14) **No company-wide (bulk) recalculation** in this series for now; it is added
+    when there is a UI that needs it.
 
 ## Delivered
 
@@ -88,3 +95,7 @@ recalculation of 002 from its triggers; 004 reads the retardos that 002 stores.
 - **Overtime only after the shift's end**: discarded by decision 14.
 - **Recalculating each punch as it arrives, inside plan 002**: needs the triggers and the daily
   close anyway (faltas have no punch to trigger them). Moved to plan 003 by decision 19.
+- **Unlimited retroactive automatic recalculation**: would rewrite periods that may already be
+  paid. Discarded by decision 20.
+- **A once-a-day close**: faltas would appear only the next day. Discarded by decision 21.
+- **Company-wide recalculation endpoint**: discarded for now by decision 22.

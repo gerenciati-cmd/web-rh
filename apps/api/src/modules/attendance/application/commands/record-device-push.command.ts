@@ -1,5 +1,6 @@
 import { err, ok } from '@rrhh/domain';
 
+import type { JobQueue } from '@/shared/application/jobs';
 import type { Clock, IdGenerator, Logger } from '@/shared/application/ports';
 import type { Command } from '@/shared/application/use-case';
 
@@ -7,8 +8,11 @@ import type { Device } from '../../domain/device';
 import type { DevicePushRecord } from '../../domain/device-record';
 import type { DeviceRepository } from '../../domain/device.repository';
 import { DeviceNotAllowedError } from '../../domain/errors';
+import { addDays } from '../../domain/local-date';
 import { Punch, type PunchId } from '../../domain/punch';
 import type { PunchRepository } from '../../domain/punch.repository';
+import { utcDate } from '../../domain/workday-recalculation';
+import { enqueueWorkdayRecalculation } from '../jobs/recalculate-workdays.job';
 
 export interface RecordDevicePushInput {
   serialNumber: string;
@@ -28,6 +32,7 @@ interface Deps {
   punchRepository: PunchRepository;
   idGenerator: IdGenerator;
   clock: Clock;
+  jobQueue: JobQueue;
 }
 
 /**
@@ -114,6 +119,7 @@ export class RecordDevicePush implements Command<
 
       // Una línea ya guardada es un reenvío del historial (handshake con Stamp=None), no tiempo real.
       offsetRecorded = inserted === 1 && this.measureClockOffset(device, valid, receivedAt);
+      await this.enqueueRecalculations(serialNumber, valid, inserted, receivedAt);
     }
 
     const seen = device.markSeen(clock.now(), sourceIp);
@@ -122,6 +128,50 @@ export class RecordDevicePush implements Command<
 
     // `accepted` cuenta todo lo procesado, también lo rechazado: el equipo no debe reenviar esas líneas.
     return ok({ accepted: records.length });
+  }
+
+  /**
+   * Un recálculo por PIN, de la fecha UTC de su primera marcación − 1 (la salida de un turno
+   * nocturno pertenece al día anterior; México va detrás de UTC) a la de la última (decisión 20).
+   * Un lote sin líneas nuevas no encola nada; el repositorio no dice cuáles eran nuevas, así que
+   * con al menos una se usa todo el lote. Si encolar falla solo se registra: el equipo no debe
+   * reenviar marcaciones que ya se guardaron.
+   */
+  private async enqueueRecalculations(
+    serialNumber: string,
+    punches: readonly Punch[],
+    inserted: number,
+    receivedAt: Date,
+  ): Promise<void> {
+    if (inserted === 0) return;
+    const spans = new Map<string, { min: Date; max: Date }>();
+    for (const punch of punches) {
+      const span = spans.get(punch.pin);
+      if (!span) {
+        spans.set(punch.pin, { min: punch.occurredAt, max: punch.occurredAt });
+        continue;
+      }
+      if (punch.occurredAt < span.min) span.min = punch.occurredAt;
+      if (punch.occurredAt > span.max) span.max = punch.occurredAt;
+    }
+
+    const today = utcDate(receivedAt);
+    for (const [pin, { min, max }] of spans) {
+      try {
+        await enqueueWorkdayRecalculation(
+          this.deps.jobQueue,
+          { pin },
+          addDays(utcDate(min), -1),
+          utcDate(max),
+          today,
+        );
+      } catch (error) {
+        this.deps.logger.error(
+          { err: error, serialNumber, pin },
+          'asistencia: no se pudo encolar el recálculo',
+        );
+      }
+    }
   }
 
   /** Solo un envío en tiempo real (una línea válida y nueva) es comparable con la hora de recepción. */

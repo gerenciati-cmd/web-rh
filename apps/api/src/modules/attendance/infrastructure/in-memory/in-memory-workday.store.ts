@@ -39,6 +39,11 @@ export class InMemoryWorkdayRepository implements WorkdayRepository {
     }
     return Promise.resolve();
   }
+
+  /** Los tests corren en un solo hilo y `replaceDates` es síncrono: no hay nada que serializar. */
+  lockEmployee(_employeeId: string): Promise<void> {
+    return Promise.resolve();
+  }
 }
 
 export class InMemoryWorkdayQueries implements WorkdayQueries {

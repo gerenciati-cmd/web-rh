@@ -22,7 +22,7 @@ import { employeesModule, type EmployeesCradle } from './modules/employees';
 import { identityModule, type IdentityCradle } from './modules/identity';
 import { organizationModule, type OrganizationCradle } from './modules/organization';
 import type { EmailSender } from './shared/application/email';
-import type { JobQueue } from './shared/application/jobs';
+import type { JobQueue, JobScheduler } from './shared/application/jobs';
 import type {
   Clock,
   EventBus,
@@ -53,6 +53,7 @@ export interface SharedCradle {
   transactionRunner: TransactionRunner;
   eventBus: EventBus;
   jobQueue: JobQueue;
+  jobScheduler: JobScheduler;
   emailSender: EmailSender;
   clock: Clock;
   idGenerator: IdGenerator;
@@ -82,6 +83,10 @@ export function buildContainer(env: Env, logger: PinoLogger): AppContainer {
     transactionRunner: asClass(PrismaTransactionRunner).singleton(),
     eventBus: asClass(InMemoryEventBus).singleton(),
     jobQueue: asClass(BullMqJobQueue)
+      .singleton()
+      .disposer((queue) => queue.close()),
+    // Instancia propia (otra conexión perezosa a Valkey) en vez de reinterpretar `jobQueue`.
+    jobScheduler: asClass(BullMqJobQueue)
       .singleton()
       .disposer((queue) => queue.close()),
     emailSender: asClass(SmtpEmailSender)
