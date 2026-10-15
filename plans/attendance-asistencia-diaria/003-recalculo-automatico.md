@@ -1,5 +1,5 @@
 ---
-status: review
+status: testing
 module: attendance
 min_implementer: high
 depends_on: ['002']
@@ -216,7 +216,7 @@ today, today)` — add `jobQueue` and `clock` to the destructured cradle.
 
 8. **Tests phase files and Deviation 1** (added by the main session before review, as the
    Low-1 of plans 001 and 002)
-   - Files: `apps/api/src/modules/attendance/domain/workday-recalculation.test.ts` (create), `apps/api/src/modules/attendance/application/jobs/recalculate-workdays.job.test.ts` (create), `apps/api/src/modules/attendance/application/jobs/close-workdays.job.test.ts` (create), `apps/api/tests/attendance-recalculation.test.ts` (create), `apps/api/tests/integration/attendance/prisma-workday-lock.int.test.ts` (create), `apps/api/tests/integration/attendance/prisma-workday.int.test.ts` (modify), `apps/api/tests/attendance-clock-offset.test.ts` (modify), `apps/api/tests/attendance-device-network.test.ts` (modify), `apps/api/tests/zkteco-adms.test.ts` (modify)
+   - Files: `apps/api/src/modules/attendance/domain/workday-recalculation.test.ts` (create), `apps/api/src/modules/attendance/application/jobs/recalculate-workdays.job.test.ts` (create), `apps/api/src/modules/attendance/application/jobs/close-workdays.job.test.ts` (create), `apps/api/tests/attendance-recalculation.test.ts` (create), `apps/api/tests/integration/attendance/prisma-workday-lock.int.test.ts` (create), `apps/api/tests/integration/attendance/prisma-workday.int.test.ts` (modify), `apps/api/tests/attendance-clock-offset.test.ts` (modify), `apps/api/tests/attendance-device-network.test.ts` (modify), `apps/api/tests/zkteco-adms.test.ts` (modify), `apps/api/src/infrastructure/queue/bullmq-job-queue.test.ts` (create)
    - Do: the tester's files (see Test coverage) and the mechanical `jobQueue` argument of
      Deviation 1.
    - Observable result: `pnpm plans:scope … --base origin/main` lists no file out of scope.
@@ -326,5 +326,101 @@ Valkey scheduler upsert and the worker start-up log (need Valkey and a running w
 decision that an RFC change does not trigger a recalculation (absence of code, nothing to assert).
 
 ## Review findings
+
+Reviewed 2026-10-14 (reviewer subagent). Diff `origin/main...HEAD` on
+`feat/attendance-recalculo-automatico` (commits `82d6f06` feat, `84f9467` tests), clean worktree.
+
+**Checklist: 13/13 passed.**
+
+- [x] `pnpm plans:scope … --base origin/main`: 37 changed, all in scope. Hot files are
+      append-only: `container.ts` widens one type import, adds the `jobScheduler` field to
+      `SharedCradle` and one registration. `modules.json` changes only the attendance summary
+      sentence that step 7 asks for.
+- [x] `pnpm check` green: 19/19 turbo tasks, plus format, arch, plans, harness, hooks, bootstrap
+      and quality. Lint has 2 warnings and both are declared: `max-params` (Deviation 7) and
+      `complexity` in `workday-calculator.ts` (out of scope).
+- [x] `pnpm test:integration`: 20 files, 269 tests passed against `rrhh_test`.
+- [x] Business rules: range clamping and the sweep window are in
+      `domain/workday-recalculation.ts`. The jobs and the trigger code only orchestrate: they
+      resolve the target, pick the per-PIN min/max and skip ended colaboradores, as the plan
+      specifies.
+- [x] CQRS-lite: `RecalculateWorkdays` still returns `Result` and writes through
+      `WorkdayRepository`. `lockEmployee` and `listAssignedEmployees` feed commands and jobs;
+      neither is a screen method.
+- [x] No contract change. No hand-written request or response types.
+- [x] Errors: the job logs the stable `code` of an `err` and completes. Exceptions propagate to
+      BullMQ, where `attempts: 3` applies (`bullmq-job-queue.ts:24-31`).
+- [x] Dates: the trigger code uses UTC dates from `Clock` (`utcDate(clock.now())` and
+      `receivedAt`). No money. No ids.
+- [x] No schema change and no migration.
+- [x] DI: `recalculateWorkdaysJob`, `closeWorkdaysJob` and `jobScheduler` are each registered
+      once. `container.test.ts` is green.
+- [x] No secrets, `.env` contents or real personal data. Fixtures use the seed's synthetic RFCs
+      and placeholder UUIDs.
+- [x] `## Deviations` is honest. Deviation 4 checked: `prisma-workday.repository.ts:33-34` uses
+      `$executeRaw` with `${employeeId}::text`. Deviation 3 checked: `app-module.ts`
+      `subscribe` cradle now includes `jobQueue` and `clock`, and `wireSubscriptions` passes the
+      full cradle (`container.ts:110-113`).
+- [x] Docs: `architecture.md` (worker `schedules`), ADR 0016 and its README row, the
+      `modules.json` summary and the series README (decisions 20–22, plan link) are updated. No
+      other doc describes jobs or attendance recalculation.
+
+**Findings: 0 Critical, 0 High, 0 Medium, 1 Low (needs a code change), 3 Observations (no change
+required; the main session decides).**
+
+- **Low-1: jobs from the `attendance.close-workdays` scheduler are kept in Valkey forever.**
+  - Location: `apps/api/src/infrastructure/queue/bullmq-job-queue.ts:35-41` (`upsert`).
+  - What fails: `upsertJobScheduler` gets a template of only `{ name, data }`. The `Queue` has no
+    `defaultJobOptions`, so BullMQ merges `{}` into the template
+    (`node_modules/bullmq/dist/esm/classes/queue.js:247`) and the scheduled jobs get no
+    `removeOnComplete` or `removeOnFail`. BullMQ's default is to keep every finished job.
+    `enqueue` caps retention at 1 000 completed and 5 000 failed jobs (`:28-29`), and
+    `architecture.md` describes that cap as the platform's retention policy.
+  - Failure scenario: the hourly close produces about 8 760 completed job hashes a year. They
+    are never trimmed, and each future `ScheduledJob` adds its own unbounded backlog. The growth
+    is small per job, but it never stops, and it is inconsistent with ADR 0016's claim that a
+    scheduled job is "un `JobHandler` común".
+  - Fix: pass `opts: { removeOnComplete: 1_000, removeOnFail: 5_000 }` in the template, ideally
+    shared with `enqueue`. Add a unit test that asserts the template options with a stubbed
+    `Queue`, or an integration check if Valkey is available.
+- **Observation A (uncertain, not reproduced): `/iclock` latency when Valkey is down.**
+  - Location: `record-device-push.command.ts:122` runs before `saveContact` (`:127`).
+  - What happens: the enqueue is awaited inside the device request. A BullMQ `Queue` on ioredis
+    with default options queues commands offline and retries the connection. During an outage,
+    `queue.add` may take seconds or longer to reject. The push is not failed, as the plan
+    requires, but it can be held long enough for the device to time out and resend.
+  - Effect: the resend is all duplicates, so nothing is enqueued and that trigger is lost. The
+    hourly sweep repairs the last 3 dates. This is within the plan's stated outbox limitation.
+    Mentioned only because the device path is new to this risk; `enableOfflineQueue: false` or
+    a timeout on the enqueue would bound it.
+- **Observation B (uncertain): the advisory-lock wait counts toward Prisma's interactive
+  transaction timeout.**
+  - Location: `recalculate-workdays.command.ts:101-102` and `prisma-database.ts`
+    `inTransaction`, which uses `$transaction(fn)` with Prisma's defaults: 5 s timeout, 2 s
+    `maxWait`.
+  - What happens: a waiter holds its transaction open while it waits for the lock. If several
+    recalculations of the same colaborador pile up, for example a history re-upload batch plus
+    the sweep plus a manual 62-day call with worker concurrency 5, the last waiter can exceed
+    5 s and fail with a transaction-timeout error. The job retries; the manual call would
+    return 500.
+  - Evidence: the tester's 5-way concurrent integration test passes, so this did not happen at
+    the current scale.
+- **Observation C: an `AssignEmployeeShift` enqueue failure surfaces as a 500 after the assignment
+  is saved** (`assign-employee-shift.command.ts:56-73`).
+  - This is the same pattern as `invite-employee.command.ts:129`, and the plan accepts it under
+    "Transactional outbox" in Out of scope. HR sees an error. The assignment exists, but its
+    recalculation older than the sweep window is lost until HR retries or recalculates by hand.
+
+Status stays `review` for Low-1.
+
+**Repair handoff (main session, 2026-10-14):** Low-1 → fixed inline (implementer role, a
+three-line change in a file of step 1): `bullmq-job-queue.ts` exports `KEEP_COMPLETED_JOBS`
+(1 000) and `KEEP_FAILED_JOBS` (5 000), uses them in `enqueue` and passes them as
+`opts.removeOnComplete` / `opts.removeOnFail` in the `upsertJobScheduler` template; `pnpm
+typecheck` green. Being product code, it runs testing → review → verify again: the tester adds
+`bullmq-job-queue.test.ts` (declared in step 8) asserting both option sets with a mocked
+`Queue`. Observations A–C → accepted as recorded (the sweep repairs a lost punch trigger; the
+lock wait vs the 5 s transaction timeout and the post-save enqueue failure are within the plan's
+accepted limits); revisit B if logs show transaction timeouts.
 
 ## Verification
