@@ -1,5 +1,5 @@
 ---
-status: review
+status: verify
 module: attendance
 min_implementer: high
 depends_on: ['002']
@@ -426,5 +426,34 @@ typecheck` green. Being product code, it runs testing → review → verify agai
 `Queue`. Observations A–C → accepted as recorded (the sweep repairs a lost punch trigger; the
 lock wait vs the 5 s transaction timeout and the post-save enqueue failure are within the plan's
 accepted limits); revisit B if logs show transaction timeouts.
+
+**Re-review (reviewer subagent, 2026-10-15).** Scope: the repair diff `84f9467..e92d01e`
+(commits `997a3d6` fix and `e92d01e` test). Worktree was clean.
+
+- [x] Nothing else changed. Outside the plan file, the diff touches only
+      `bullmq-job-queue.ts` (step 1) and the new `bullmq-job-queue.test.ts` (step 8).
+      `pnpm plans:scope … --base origin/main` reports every change in scope (38 changed). The
+      hot files did not change in this round.
+- [x] Low-1 is resolved. `upsert` now sends
+      `opts: { removeOnComplete: KEEP_COMPLETED_JOBS, removeOnFail: KEEP_FAILED_JOBS }` in the
+      scheduler template (`bullmq-job-queue.ts:40-48`). The installed BullMQ types accept these
+      fields: `JobSchedulerTemplateOptions = Omit<JobsOptions, 'jobId' | 'repeat' | 'delay' |
+  'deduplication'>`, which keeps `removeOnComplete`/`removeOnFail`. `enqueue` uses the
+      same constants, so it behaves as before: 1 000/5 000, or `true` when `sensitive`. The
+      constants carry a docblock that explains why the cap exists.
+- [x] The test is sound. It mocks `bullmq`, asserts the exact template arguments of the
+      scheduler, checks the caps in `enqueue` and the `sensitive` case, and checks that the
+      queue connects lazily.
+- [x] I ran the full `pnpm check` myself and it passed. Format passed. Turbo ran 19/19
+      tasks. API: 107 files, 1418 passed, 5 skipped. Arch, plans, harness, hooks, bootstrap and
+      quality all passed, with 0 node:test failures. The only lint warnings are the 2 already
+      declared (`max-params` for Deviation 7, and `complexity` in the out-of-scope
+      `workday-calculator.ts`).
+- I did not run `pnpm test:integration` again. The repair adds no Prisma or schema code, and
+  the Valkey side stays NOT CONFIRMED and goes to the verifier, as the Test coverage table
+  records.
+
+**Findings: 0 Critical, 0 High, 0 Medium, 0 Low.** Low-1 is closed. Observations A to C stay
+accepted, as the repair handoff records. Status moves to `verify`.
 
 ## Verification
