@@ -438,7 +438,7 @@ accepted limits); revisit B if logs show transaction timeouts.
       `opts: { removeOnComplete: KEEP_COMPLETED_JOBS, removeOnFail: KEEP_FAILED_JOBS }` in the
       scheduler template (`bullmq-job-queue.ts:40-48`). The installed BullMQ types accept these
       fields: `JobSchedulerTemplateOptions = Omit<JobsOptions, 'jobId' | 'repeat' | 'delay' |
-  'deduplication'>`, which keeps `removeOnComplete`/`removeOnFail`. `enqueue` uses the
+'deduplication'>`, which keeps `removeOnComplete`/`removeOnFail`. `enqueue` uses the
       same constants, so it behaves as before: 1 000/5 000, or `true` when `sensitive`. The
       constants carry a docblock that explains why the cap exists.
 - [x] The test is sound. It mocks `bullmq`, asserts the exact template arguments of the
@@ -457,3 +457,39 @@ accepted limits); revisit B if logs show transaction timeouts.
 accepted, as the repair handoff records. Status moves to `verify`.
 
 ## Verification
+
+**PASS** — 2026-10-15, main session, at `0330001`, against the dev API (`pnpm dev:api`) and the
+dev worker (`pnpm --filter @rrhh/api dev:worker`) on Valkey `rrhh-redis-1`.
+
+- Suites: `pnpm check` green (re-review run, 1418 api tests); `pnpm test:integration` 20 files /
+  269 tests passed. No schema change in this plan.
+- Criterion 1 (scheduler): worker start-up logged `worker listo` with jobs
+  `attendance.recalculate-workdays`, `attendance.close-workdays` and `schedules:
+["attendance.close-workdays"]`. Valkey (read-only `ZRANGE bull:default:repeat`, `HGETALL
+bull:default:repeat:attendance.close-workdays`): `pattern 5 * * * *`, `tz America/Cancun`,
+  `opts {"removeOnComplete":1000,"removeOnFail":5000}` — Low-1 confirmed in real Valkey.
+- HTTP script as HOLDING_ADMIN (`scratchpad/verify-auto-recalc.mjs`, run by the user; synthetic
+  colaboradora Rosa `ROSA010305AB1` hired 2026-10-01 in company RW2AU, checador
+  `VERIFJDMOXYX`), **16/16 PASS**, never calling the recalculation endpoint for Rosa:
+  - Assignment from 2026-10-01 → within 0.6 s the worker stored the 10 working days 10-01…10-14
+    as `ABSENT_NO_PUNCHES`, 10-15 pending (log: `from 2026-10-01 to 2026-10-15`,
+    `recalculatedDates 14, storedWorkdays 10, pendingDates 1`).
+  - ATTLOG 09:05/18:30 on 10-12 → 10-12 `ATTENDED`, worked 505, OT 25, late 0 (log: `from
+2026-10-11 to 2026-10-12`).
+  - Re-sending the same lines and assigning from 2027-01-04 → **no** job: the worker log has no
+    recalculation between the script's marks (15:24:13.8–16.8 and 16.8–19.8).
+  - Termination 2026-10-13 → 10-14 deleted, 10-13 kept (log: `from 2026-10-13 to 2026-10-15`,
+    `recalculatedDates 2, storedWorkdays 1`).
+  - Two simultaneous `POST …/workdays/recalculation` for Luis (10-05…10-11) → 200 and 200, rows
+    identical to before.
+- Criterion 6 (hourly close): at 16:05:00 UTC (11:05 Cancún) the scheduler fired
+  `asistencia: cierre de jornadas` with `enqueued: 2, from 2026-10-13, to 2026-10-15` (Luis and
+  Rosa, whose termination is on `from`); both recalculations ran (Luis: 10-13 rest closed with no
+  row, 10-14 night and 10-15 pending).
+- **NOT VERIFIED in the running app** (covered by the application/HTTP tests, green in `pnpm
+check`): a falta created by the sweep itself for a day whose window closes between two sweeps
+  (Luis's 10-14 night shift closes at 18:00 Cancún, after this run); a job for a colaborador
+  without RFC completing with a warning (no such colaborador in the dev DB).
+- Data left in the dev DB: colaboradora Rosa (terminated 2026-10-13) with assignments 2026-10-01
+  and 2027-01-04 and her 9 workdays, 4 punches with her RFC; Valkey keeps the
+  `attendance.close-workdays` scheduler (it is meant to stay).
