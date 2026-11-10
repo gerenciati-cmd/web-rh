@@ -14,12 +14,13 @@ arrives or an assignment changes, so periods can later be closed for payroll.
 
 ## Plans
 
-| Plan                                          | Title                        | Depends on                          | Purpose                                                                                                                                                      |
-| --------------------------------------------- | ---------------------------- | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| [001](001-catalogo-de-turnos-y-asignacion.md) | Shift catalog and assignment | —                                   | Company-owned shifts as a cyclic pattern (work/rest days, tolerance, meal break); assign one to a colaborador from a date.                                   |
-| [002](002-jornada-diaria-guardada.md)         | Stored daily jornada         | 001, employees-fechas-laborales/001 | Calculate and store each day (entry/exit, retardo, falta, horas extra measured, descanso trabajado); recalculate a range on demand; read it.                 |
-| [003](003-recalculo-automatico.md)            | Automatic recalculation      | 002                                 | Recalculate on new punches and assignment changes; daily close with a scheduled job (ADR). Must serialize recalculations per colaborador (002 review Low-2). |
-| 004 (not written)                             | N retardos = 1 falta         | 002                                 | Per-company rule (N and period) that turns accumulated retardos into a falta.                                                                                |
+| Plan                                          | Title                          | Depends on                          | Purpose                                                                                                                                                                           |
+| --------------------------------------------- | ------------------------------ | ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [001](001-catalogo-de-turnos-y-asignacion.md) | Shift catalog and assignment   | —                                   | Company-owned shifts as a cyclic pattern (work/rest days, tolerance, meal break); assign one to a colaborador from a date.                                                        |
+| [002](002-jornada-diaria-guardada.md)         | Stored daily jornada           | 001, employees-fechas-laborales/001 | Calculate and store each day (entry/exit, retardo, falta, horas extra measured, descanso trabajado); recalculate a range on demand; read it.                                      |
+| [003](003-recalculo-automatico.md)            | Automatic recalculation        | 002                                 | Recalculate on new punches and assignment changes; daily close with a scheduled job (ADR). Must serialize recalculations per colaborador (002 review Low-2).                      |
+| 004 (not written)                             | N retardos = 1 falta           | 002                                 | Per-company rule (N and period) that turns accumulated retardos into a falta.                                                                                                     |
+| [005](005-mis-jornadas-del-colaborador.md)    | The colaborador's own jornadas | 002, 003, identity-acceso/007       | `/me/attendance/workdays?month` (current or previous month) and `/me/attendance/today` (today's shift and punches), resolved from the actor only. For mobile-app-colaborador/003. |
 
 ## Dependency notes
 
@@ -79,6 +80,12 @@ recalculation of 002 from its triggers; 004 reads the retardos that 002 stores.
     colaborador with a shift, so a falta appears at most about an hour after its window closes.
 22. (2026-10-14) **No company-wide (bulk) recalculation** in this series for now; it is added
     when there is a UI that needs it.
+23. (2026-11-10) The colaborador **sees everything HR sees about their own jornadas**: entry and
+    exit, retardo, falta, worked minutes, measured horas extra and descanso trabajado (plan 005).
+24. (2026-11-10) The colaborador can consult **the current month and the previous one**, in the
+    site's time zone. Older months stay with HR (plan 005).
+25. (2026-11-10) The colaborador also sees **today's shift** (expected entry and exit, or rest)
+    and today's punches so far. Today has no stored jornada until its window closes (plan 005).
 
 ## Delivered
 
