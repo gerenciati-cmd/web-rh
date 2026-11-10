@@ -4,6 +4,7 @@ import {
   attendancePunchRoutes,
   attendanceShiftRoutes,
   attendanceWorkdayRoutes,
+  myAttendanceRoutes,
 } from '@rrhh/contracts';
 import { Router } from 'express';
 
@@ -18,10 +19,12 @@ import type { RecalculateWorkdays } from '../application/commands/recalculate-wo
 import type { RegisterDevice } from '../application/commands/register-device.command';
 import type { SetDeviceNetworks } from '../application/commands/set-device-networks.command';
 import type { SyncDevice } from '../application/commands/sync-device.command';
+import type { GetMyAttendanceToday } from '../application/queries/get-my-attendance-today.query';
 import type { ListDeviceCommands } from '../application/queries/list-device-commands.query';
 import type { ListDevices } from '../application/queries/list-devices.query';
 import type { ListEmployeeShiftAssignments } from '../application/queries/list-employee-shift-assignments.query';
 import type { ListEmployeeWorkdays } from '../application/queries/list-employee-workdays.query';
+import type { ListMyWorkdays } from '../application/queries/list-my-workdays.query';
 import type { ListPunches } from '../application/queries/list-punches.query';
 import type { ListShifts } from '../application/queries/list-shifts.query';
 
@@ -41,6 +44,8 @@ export function createAttendanceRouter(deps: {
   listEmployeeShiftAssignments: ListEmployeeShiftAssignments;
   recalculateWorkdays: RecalculateWorkdays;
   listEmployeeWorkdays: ListEmployeeWorkdays;
+  listMyWorkdays: ListMyWorkdays;
+  getMyAttendanceToday: GetMyAttendanceToday;
 }): Router {
   const router = Router();
 
@@ -126,6 +131,20 @@ export function createAttendanceRouter(deps: {
 
   bindRoute(router, attendanceWorkdayRoutes.listEmployeeWorkdays, async ({ params, query }) =>
     unwrap(await deps.listEmployeeWorkdays.execute({ ...params, ...query })),
+  );
+
+  // El colaborador sale del actor (`authorize` ya exigió uno), nunca de la ruta.
+  bindRoute(router, myAttendanceRoutes.listMyWorkdays, async ({ query }, ctx) =>
+    unwrap(
+      await deps.listMyWorkdays.execute({
+        employeeId: ctx.actor?.employeeId ?? null,
+        month: query.month,
+      }),
+    ),
+  );
+
+  bindRoute(router, myAttendanceRoutes.getMyAttendanceToday, async (_request, ctx) =>
+    unwrap(await deps.getMyAttendanceToday.execute({ employeeId: ctx.actor?.employeeId ?? null })),
   );
 
   return router;

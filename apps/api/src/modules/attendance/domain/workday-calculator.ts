@@ -18,12 +18,12 @@ function workDayOf(entry: PlannedDate | undefined): WorkShiftDay | null {
   return entry?.plan?.day.type === 'WORK' ? entry.plan.day : null;
 }
 
-function scheduledStart(date: string, day: WorkShiftDay, timeZone: string): Date {
+export function scheduledStart(date: string, day: WorkShiftDay, timeZone: string): Date {
   return localInstant(date, day.start, timeZone);
 }
 
 /** Salida programada: el mismo día, o el siguiente si la salida es menor o igual a la entrada. */
-function scheduledEnd(date: string, day: WorkShiftDay, timeZone: string): Date {
+export function scheduledEnd(date: string, day: WorkShiftDay, timeZone: string): Date {
   return localInstant(day.end <= day.start ? addDays(date, 1) : date, day.end, timeZone);
 }
 

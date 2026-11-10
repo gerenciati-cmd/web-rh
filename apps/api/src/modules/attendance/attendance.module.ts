@@ -34,10 +34,12 @@ import type { SiteDirectory } from './application/ports/site-directory';
 import type { SiteRoster } from './application/ports/site-roster';
 import type { WorkdayEmployeeDirectory } from './application/ports/workday-employee-directory';
 import type { AttendanceQueries } from './application/queries/attendance.queries';
+import { GetMyAttendanceToday } from './application/queries/get-my-attendance-today.query';
 import { ListDeviceCommands } from './application/queries/list-device-commands.query';
 import { ListDevices } from './application/queries/list-devices.query';
 import { ListEmployeeShiftAssignments } from './application/queries/list-employee-shift-assignments.query';
 import { ListEmployeeWorkdays } from './application/queries/list-employee-workdays.query';
+import { ListMyWorkdays } from './application/queries/list-my-workdays.query';
 import { ListPunches } from './application/queries/list-punches.query';
 import { ListShifts } from './application/queries/list-shifts.query';
 import type { ShiftQueries } from './application/queries/shift.queries';
@@ -107,6 +109,8 @@ export interface AttendanceCradle {
   workdayEmployeeDirectory: WorkdayEmployeeDirectory;
   recalculateWorkdays: RecalculateWorkdays;
   listEmployeeWorkdays: ListEmployeeWorkdays;
+  listMyWorkdays: ListMyWorkdays;
+  getMyAttendanceToday: GetMyAttendanceToday;
   recalculateWorkdaysJob: RecalculateWorkdaysJob;
   closeWorkdaysJob: CloseWorkdaysJob;
 }
@@ -167,6 +171,8 @@ export const attendanceModule: AppModule<AttendanceCradle> = {
     workdayEmployeeDirectory: asClass(EmployeesWorkdayEmployeeDirectory).singleton(),
     recalculateWorkdays: asClass(RecalculateWorkdays).singleton(),
     listEmployeeWorkdays: asClass(ListEmployeeWorkdays).singleton(),
+    listMyWorkdays: asClass(ListMyWorkdays).singleton(),
+    getMyAttendanceToday: asClass(GetMyAttendanceToday).singleton(),
     recalculateWorkdaysJob: asClass(RecalculateWorkdaysJob).singleton(),
     closeWorkdaysJob: asClass(CloseWorkdaysJob).singleton(),
   },
