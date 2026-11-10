@@ -89,6 +89,10 @@ recalculation of 002 from its triggers; 004 reads the retardos that 002 stores.
 
 ## Delivered
 
+- **The colaborador's own jornadas** (005): `GET /me/attendance/workdays?month` (current or
+  previous month) and `GET /me/attendance/today` (today's shift and punches in the site zone),
+  resolved only from the actor; the shift calendar is shared with the recalculation.
+
 ## Considered and discarded
 
 - **Using the checador's status key (entrada/salida/comida)**: the real device sends `0` by

@@ -1,5 +1,5 @@
 ---
-status: approved
+status: done
 module: attendance
 min_implementer: mid
 depends_on: ['002', '003', 'identity-acceso/007']
@@ -293,8 +293,130 @@ after the jornada closes; today shows the plan and the raw punches.
 
 ## Deviations
 
+- Cosmético: `packages/contracts/src/openapi.test.ts` tenía el conteo de operaciones fijo (38); se actualizó a 40 (las dos rutas nuevas) para que el catálogo y el OpenAPI sigan en verde. Fuera de la lista del plan; sin impacto de diseño.
+- Cosmético: `GetMyAttendanceToday` extrae `punchesInWindow` como método privado (bajar la complejidad ciclomática del lint); comportamiento idéntico al paso 7.
+
 ## Test coverage
+
+Línea base (`pnpm check` antes de escribir tests): verde. Los 4 archivos nuevos y 1 ampliado
+pasan por separado; ningún test se debilitó ni quedó marcado `GAP` / `NOT CONFIRMED`: todo el
+comportamiento del plan está implementado y confirmado por ejecución. Capa integración: no aplica
+(sin adaptador ni esquema nuevos, como declara el plan). La unicidad de códigos del catálogo de
+errores contra las clases reales ya la cubre el test genérico `tests/error-catalog.test.ts`, que
+recorre los `errors.ts` del módulo (incluye las dos clases nuevas).
+
+| Comportamiento                                                                       | Fuente                                                        | Capa             | Test                                                                           | Estado    |
+| ------------------------------------------------------------------------------------ | ------------------------------------------------------------- | ---------------- | ------------------------------------------------------------------------------ | --------- |
+| `localDateOf`: fecha local de un instante (Cancún UTC−5, CDMX UTC−6, medianoche)     | `domain/local-date.ts` `localDateOf`                          | domain           | `local-date.test.ts › localDateOf`                                             | CONFIRMED |
+| `ListMyWorkdays`: null → `ACCOUNT_NOT_LINKED`; empleado/sede/sin sede                | `list-my-workdays.query.ts:41-50`                             | application      | `list-my-workdays.query.test.ts` (4 tests de error)                            | CONFIRMED |
+| Mes actual y anterior permitidos; antiguo, futuro y otro año → `MONTH_NOT_AVAILABLE` | `list-my-workdays.query.ts:52-57`                             | application      | `list-my-workdays.query.test.ts › mes actual / anterior / it.each`             | CONFIRMED |
+| Enero → diciembre previo; "hoy" por zona de la sede                                  | `list-my-workdays.query.ts:52-54`                             | application      | `› en enero…`, `› "hoy" se decide en la zona…`                                 | CONFIRMED |
+| Último día del mes (28, 29, 30, 31) inclusivo, primero del siguiente fuera           | `list-my-workdays.query.ts:59-65`                             | application      | `› it.each` de 5 meses                                                         | CONFIRMED |
+| Solo jornadas propias del colaborador                                                | `list-my-workdays.query.ts:67-69`                             | application      | `› mes actual: solo las propias`                                               | CONFIRMED |
+| `GetMyAttendanceToday`: errores de cuenta, empleado, sede                            | `get-my-attendance-today.query.ts:45-54`                      | application      | `› acceso y datos del colaborador`                                             | CONFIRMED |
+| Día laborable: turno, instantes, minutos, comida, tolerancia                         | `get-my-attendance-today.query.ts:78-88`                      | application      | `› día laborable`                                                              | CONFIRMED |
+| Ventana de hoy: marcaciones dentro/fuera, orden ascendente, solo del RFC propio      | `get-my-attendance-today.query.ts:108-122`                    | application      | `› lista las marcaciones…`, `› solo muestra…`                                  | CONFIRMED |
+| Sin RFC → sin marcaciones, turno visible                                             | `get-my-attendance-today.query.ts:105-106`                    | application      | `› sin RFC…`                                                                   | CONFIRMED |
+| Turno nocturno 22:00–06:00: salida al día siguiente y ventana                        | `workday-calculator.ts:26-28`, `:34-39`                       | application      | `› turno nocturno`                                                             | CONFIRMED |
+| Descanso → `{ type: 'REST' }`; sin asignación / asignación futura → `shift: null`    | `get-my-attendance-today.query.ts:62-69, 78`                  | application      | `› día de descanso`, `› sin turno que aplique`                                 | CONFIRMED |
+| Turno asignado inexistente lanza `Error` (corrupción)                                | `employee-calendar.ts`, `get-my-attendance-today.query.ts:72` | application      | `› turno asignado inexistente`                                                 | CONFIRMED |
+| Antes del ingreso / después de la baja → `shift: null`; bordes inclusivos            | `get-my-attendance-today.query.ts:58-61`                      | application      | `› fuera de la contratación` (4 tests)                                         | CONFIRMED |
+| `RecalculateWorkdays` sigue verde tras extraer el calendario                         | `employee-calendar.ts`                                        | application/http | `recalculate-workdays` y `attendance-workdays.test.ts` existentes, sin cambios | CONFIRMED |
+| `MyWorkdaysQuerySchema`: regex `YYYY-MM` (acepta 01–12, rechaza 13, 00, formatos)    | `my-attendance.contract.ts:8-13`                              | contract         | `my-attendance.contract.test.ts › MyWorkdaysQuerySchema`                       | CONFIRMED |
+| `MyTodaySchema`: unión discriminada `day`, `shift` null, ISO y uuid                  | `my-attendance.contract.ts:15-45`                             | contract         | `my-attendance.contract.test.ts › MyTodaySchema`                               | CONFIRMED |
+| Rutas: permiso `read-own`, sin ids en la ruta, errores existen en el catálogo        | `my-attendance.contract.ts:55-92`                             | contract         | `my-attendance.contract.test.ts › myAttendanceRoutes`                          | CONFIRMED |
+| Catálogo: `ACCOUNT_NOT_LINKED` y `MONTH_NOT_AVAILABLE` (422, ejemplo, detalles)      | `errors.ts:405-426`                                           | contract         | `my-attendance.contract.test.ts › catálogo…`                                   | CONFIRMED |
+| `/me/attendance/workdays`: 200, mismos campos que personal, mes anterior, 422/400    | `attendance.router.ts`, contrato                              | http             | `tests/attendance-my-workdays.test.ts › GET /me/attendance/workdays`           | CONFIRMED |
+| Ninguna entrada elige al colaborador (un `employeeId` en la consulta se ignora)      | `attendance.router.ts` (`ctx.actor?.employeeId`)              | http             | `› ninguna entrada elige al colaborador…`                                      | CONFIRMED |
+| `/me/attendance/today`: laborable con marcaciones, descanso, sin turno               | `attendance.router.ts`, `get-my-attendance-today`             | http             | `› GET /me/attendance/today` (3 tests)                                         | CONFIRMED |
+| 401 anónimo, 403 RR. HH., 422 `ACCOUNT_NOT_LINKED` (HOLDING_ADMIN), 422 sin sede     | `bind-route.ts`, `list-my-workdays` / `today`                 | http             | `› acceso y errores de cuenta` (2 rutas cada uno)                              | CONFIRMED |
+
+Conteo (casos expandidos): domain 5; application 17 (`ListMyWorkdays`) + 18
+(`GetMyAttendanceToday`); contract 24; http 22. Sin hallazgos fuera de alcance.
 
 ## Review findings
 
+Revisión 2026-11-10 (reviewer, subagente). Diff revisado: `git diff 78b89ee` + archivos untracked
+del plan (se excluyen `apps/mobile/.gitignore` y `docs/referencia/`, ajenos al plan).
+
+**Checklist: 13/13 PASS.**
+
+- [x] Alcance: `pnpm plans:scope` contra `origin/main` falla porque cuenta los commits previos de la
+      rama (identity-acceso/007, ya `done`, y anteriores). Limitado a los cambios sobre `78b89ee`:
+      los 14 archivos declarados + tests del tester (`local-date.test.ts`, dos `*.query.test.ts`,
+      `my-attendance.contract.test.ts`, `tests/attendance-my-workdays.test.ts`) + `openapi.test.ts`
+      (declarado en Deviations). Hot files (`contracts/src/index.ts`, `modules.json`) solo agregan.
+- [x] `pnpm check` verde (formato, tipos, lint, tests, arch, planes, harness, hooks, quality).
+- [x] `pnpm test:integration` verde (20 archivos, 269 tests) — no cambió `infrastructure/`, pero se
+      corrió por el criterio de aceptación y por el refactor del calendario del recálculo.
+- [x] Reglas de negocio: cálculo de ventanas/horarios sigue en `domain/workday-calculator.ts`; el
+      router solo toma `ctx.actor?.employeeId` y hace `unwrap`.
+- [x] CQRS-lite: ambos son lecturas; `ListMyWorkdays` usa `WorkdayQueries`; `GetMyAttendanceToday`
+      lee por repositorios existentes como el plan prescribe (sin métodos nuevos de pantalla).
+- [x] Tipos de request/response salen de `@rrhh/contracts` (`MyWorkdaysDto`, `MyTodayDto`).
+- [x] Errores esperados: `Result` + `AccountNotLinkedError`/`MonthNotAvailableError`
+      (`BusinessRuleViolationError`, 422, códigos estables, en el catálogo).
+- [x] Fechas/tiempo: `Clock` para "ahora", fecha local vía `localDateOf` con la zona de la sede.
+- [x] Esquema: sin cambios, sin migración.
+- [x] DI: dos singletons nuevos, `tests/container.test.ts` verde.
+- [x] Sin secretos ni datos personales reales (CURP/RFC de fixtures sintéticos, correos `.example`).
+- [x] Deviations honestas: verificado `openapi.test.ts` (38 → 40) y el método privado
+      `punchesInWindow` (`get-my-attendance-today.query.ts:99-115`), mismo rango `[b(1), b(2))`.
+- [x] Docs: `modules.json` actualizado; no hay otra doc que describa rutas `/me` o `read-own`.
+
+**Bug hunt:** trazado contrato → `bindRoute`/`authorize` (sin `companyParam`: permiso global de
+`read-own`, el colaborador sale solo del actor, la query extra se descarta por `z.object`) → casos
+de uso → `buildEmployeeCalendar`/`windowBoundaries` → DTO. Verificado: mes anterior en enero
+(`addDays` del día 1), último día del mes con `Date.UTC(y, m, 1)` (diciembre → enero siguiente),
+"hoy" en la zona de la sede, ventana de hoy idéntica a la que usa el recálculo (calendario
+`[ayer, hoy, mañana]`, `b[1]..b[2]`), refactor del calendario verbatim. Sin tenencia cruzada
+posible: no hay id en la entrada.
+
+**Findings que requieren cambio: ninguno.**
+
+Observaciones (sin acción, para el usuario / verificación):
+
+- Info — `get-my-attendance-today.query.ts:61-66`: un colaborador con `active: false` y
+  `terminationDate: null` (baja anterior a guardar la fecha) recibe turno y marcaciones de hoy,
+  mientras `RecalculateWorkdays` lo rechaza con `EMPLOYEE_INACTIVE`. Incierto si puede ocurrir:
+  depende de que una baja deshabilite la sesión (identity), no verificado aquí. El plan no pide el
+  chequeo, así que no es desviación.
+- Info — por diseño del plan ("Punches outside today's window" fuera de alcance): a las 02:00 de
+  un turno nocturno 22:00–06:00 iniciado ayer, `/me/attendance/today` muestra el turno de hoy y no
+  las marcaciones del turno en curso (pertenecen a la ventana de ayer, que aún no tiene jornada
+  guardada). Conviene que mobile-app-colaborador/003 lo tenga presente al diseñar la pantalla.
+
 ## Verification
+
+Verifier (inline, sesión principal), 2026-11-10 (martes). Resultado: **PASS**.
+
+- Suites: `pnpm check` verde (api 1489 + 5 skipped, contracts 415, domain 98, mobile 78; los 2
+  warnings de lint son previos). `pnpm test:integration` verde en la revisión (20 archivos, 269
+  tests); sin cambios de código desde entonces.
+- App corriendo: API (`pnpm dev`, puerto 3000) y worker sobre la base de desarrollo.
+- Datos, por los casos de uso reales (script temporal fuera del repo) y por el protocolo del
+  equipo:
+  - colaboradora sembrada Ana Rojas (activada en la verificación de identity-acceso/007), sede
+    Cancún Centro (`America/Cancun`);
+  - equipo `VERIFYCARIBE1` en su sede, turno "Oficina 9 a 18" (L-V 09:00-18:00, comida 60,
+    tolerancia 10) asignado desde 2026-10-01;
+  - 16 marcaciones por `POST /iclock/cdata?table=ATTLOG` (respuesta `OK: 16`) del 29-10 al 10-11,
+    y recálculo 2026-10-01..2026-11-09 (40 fechas, 29 jornadas guardadas).
+- Criterios de aceptación, con el token móvil de Ana:
+  - [x] Suites verdes (arriba).
+  - [x] `GET /me/attendance/workdays?month=2026-11` → 200 con sus 7 jornadas de noviembre:
+        asistencia, entrada temprana con 90 min extra (02-11), falta por una marcación (03-11),
+        falta sin marcaciones (04-11), descanso trabajado con 240 min (07-11). Mismos campos que la
+        ruta de personal (`WorkdaySchema`); los domingos de descanso sin marcaciones no se guardan.
+  - [x] `month=2026-10` → 200 (22 jornadas, retardo de 22 min el 30-10). `2026-09` y `2026-12`
+        → 422 `MONTH_NOT_AVAILABLE`; `2026-13` y `2026-1` → 400 `VALIDATION_ERROR`.
+  - [x] `GET /me/attendance/today` → 200 con `date: 2026-11-10`, `timeZone: America/Cancun`,
+        turno WORK de 14:00Z a 23:00Z (09:00-18:00 locales), 480 min, comida 60, tolerancia 10, y
+        la marcación de hoy 08:57 local. Antes de asignar el turno respondía `shift: null`.
+        Día de descanso: cubierto por los tests http (hoy es martes).
+  - [x] Ninguna ruta acepta id: `?employeeId=<otro>` se ignora y devuelve sus propias jornadas.
+  - [x] Anónimo → 401. HR → 403, HOLDING_ADMIN sin vínculo → 422 `ACCOUNT_NOT_LINKED` y sin sede
+        → 422 `EMPLOYEE_WITHOUT_SITE`: cubiertos por los tests http; en la app no se ejercitaron
+        porque las contraseñas del staff viven en `.env`, que no se lee.
+- Los datos de Ana (turno, marcaciones, jornadas) quedan en la base de desarrollo para verificar
+  mobile-app-colaborador/003.
