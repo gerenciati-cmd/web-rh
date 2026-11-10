@@ -114,7 +114,12 @@ describe('SessionAuthenticator', () => {
 
     const actor = await authenticator.authenticate(token);
 
-    expect(actor).toEqual({ userId: USER_ID, sessionId: session.id, grants: [] });
+    expect(actor).toEqual({
+      userId: USER_ID,
+      sessionId: session.id,
+      employeeId: null,
+      grants: [],
+    });
     expect(recordActivitySpy).not.toHaveBeenCalled();
   });
 
@@ -143,6 +148,50 @@ describe('SessionAuthenticator', () => {
     expect(actor?.grants.map((grant) => grant.permission)).not.toContain(
       'organization.companies:create',
     );
+  });
+
+  it('usuario vinculado a un colaborador: el actor lleva su employeeId', async () => {
+    userRepository.users.set(
+      USER_ID,
+      User.restore(USER_ID, {
+        email: mustEmail('ana@aps.cl'),
+        passwordHash: 'hash',
+        employeeId: 'employee-1',
+        status: 'ACTIVE',
+      }),
+    );
+    const { token } = issueSession();
+
+    const actor = await authenticator.authenticate(token);
+
+    expect(actor?.employeeId).toBe('employee-1');
+  });
+
+  it('colaborador con rol EMPLOYEE: concesión read-own en su empresa y su employeeId', async () => {
+    userRepository.users.set(
+      USER_ID,
+      User.restore(USER_ID, {
+        email: mustEmail('ana@aps.cl'),
+        passwordHash: 'hash',
+        employeeId: 'employee-1',
+        status: 'ACTIVE',
+      }),
+    );
+    const { token } = issueSession();
+    const grant = RoleAssignment.grantSelf({
+      id: 'a1' as RoleAssignmentId,
+      userId: USER_ID,
+      companyId: 'company-a',
+      now,
+    });
+    roleAssignmentRepository.assignments.set('a1', grant);
+
+    const actor = await authenticator.authenticate(token);
+
+    expect(actor?.employeeId).toBe('employee-1');
+    expect(actor?.grants).toEqual([
+      { permission: 'attendance.workdays:read-own', companyId: 'company-a' },
+    ]);
   });
 
   it('HOLDING_ADMIN: una concesión de holding (companyId null) por cada permiso', async () => {
@@ -184,7 +233,12 @@ describe('SessionAuthenticator', () => {
 
     const actor = await authenticator.authenticate(token);
 
-    expect(actor).toEqual({ userId: USER_ID, sessionId: session.id, grants: [] });
+    expect(actor).toEqual({
+      userId: USER_ID,
+      sessionId: session.id,
+      employeeId: null,
+      grants: [],
+    });
     expect(recordActivitySpy).toHaveBeenCalledTimes(1);
     expect(saveSpy).not.toHaveBeenCalled();
     expect(sessionRepository.sessions.get(session.id)?.snapshot.lastSeenAt).toEqual(clock.now());
