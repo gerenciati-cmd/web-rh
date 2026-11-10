@@ -17,20 +17,20 @@ The web app adopts the same identity later, in its own series.
 
 ## Plans
 
-| Plan | Title                                             | Depends on                            | Purpose                                                                                                                                                                                                |
-| ---- | ------------------------------------------------- | ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| 001  | "Caribe" theme and base UI                        | —                                     | Tokens (light/dark), IBM Plex Sans/Mono, `AppText`/`Tile`/`Chip`/`Button`/`ShellHeader`, dark floating dock, Inicio and Empresas restyled.                                                             |
-| 002  | [Mobile login and session](002-login-y-sesion.md) | 001, identity-acceso/001              | Login screen with "Recordarme", session in `expo-secure-store`, protected routes, expired-session handling, "Yo" tab with logout; Empresas tab removed. Covers the mobile half of identity-acceso 004. |
-| 003  | My attendance (not written)                       | 002, attendance-asistencia-diaria/002 | The colaborador's jornada of today and the month (entry, retardo, falta, descanso, horas extra) read from the API.                                                                                     |
+| Plan                        | Title                                             | Depends on                            | Purpose                                                                                                                                                                                                |
+| --------------------------- | ------------------------------------------------- | ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 001                         | "Caribe" theme and base UI                        | —                                     | Tokens (light/dark), IBM Plex Sans/Mono, `AppText`/`Tile`/`Chip`/`Button`/`ShellHeader`, dark floating dock, Inicio and Empresas restyled.                                                             |
+| 002                         | [Mobile login and session](002-login-y-sesion.md) | 001, identity-acceso/001              | Login screen with "Recordarme", session in `expo-secure-store`, protected routes, expired-session handling, "Yo" tab with logout; Empresas tab removed. Covers the mobile half of identity-acceso 004. |
+| [003](003-mi-asistencia.md) | Mi asistencia                                     | 002, attendance-asistencia-diaria/005 | Inicio becomes "Hoy" (today's shift and punches) and a new Asistencia tab lists this or last month's jornadas with a summary; times in the site zone.                                                  |
 
 ## Dependency notes
 
 - 001 touches only `apps/mobile`, with no API or contract change, so it can start at once.
 - 002 builds its screens with 001's components.
-- 003 needs a signed-in user (002). Open question for 003, to be checked in recon when it is
-  written: identity-acceso decision 13 says the Colaborador role grants nothing until its data
-  exists. Plan 003 must confirm which endpoint and permission let colaboradores read their own
-  jornadas. If none exists, an API plan comes first.
+- 003 needs a signed-in user (002) and the own-data API: identity-acceso/007 (`Actor.employeeId`, the
+  `attendance.workdays:read-own` permission for EMPLOYEE), then attendance-asistencia-diaria/005
+  (`/me/attendance/workdays` and `/me/attendance/today`). Order: identity 007 → attendance 005 →
+  mobile 003.
 
 ## Decisions with the user
 
