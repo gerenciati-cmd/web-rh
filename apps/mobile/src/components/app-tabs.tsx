@@ -15,6 +15,11 @@ import { DOCK, FONT_FAMILY, RADIUS } from '@/constants/theme';
 import { usePalette } from '@/hooks/use-palette';
 
 const HOME_ICON: SymbolViewProps['name'] = { ios: 'house', android: 'home', web: 'home' };
+const ATTENDANCE_ICON: SymbolViewProps['name'] = {
+  ios: 'calendar',
+  android: 'calendar_month',
+  web: 'calendar_month',
+};
 const ME_ICON: SymbolViewProps['name'] = {
   ios: 'person.crop.circle',
   android: 'person',
@@ -29,6 +34,9 @@ export function AppTabs() {
         <Dock>
           <TabTrigger name="index" href="/" asChild>
             <DockButton icon={HOME_ICON} label="Inicio" />
+          </TabTrigger>
+          <TabTrigger name="asistencia" href="/asistencia" asChild>
+            <DockButton icon={ATTENDANCE_ICON} label="Asistencia" />
           </TabTrigger>
           <TabTrigger name="yo" href="/yo" asChild>
             <DockButton icon={ME_ICON} label="Yo" />
