@@ -19,6 +19,8 @@ export const PERMISSIONS = [
   'attendance.shifts:manage',
   'attendance.workdays:read',
   'attendance.workdays:recalculate',
+  // Solo las jornadas propias del llamante: el colaborador se resuelve del actor, nunca del path.
+  'attendance.workdays:read-own',
   'identity.users:read',
   'identity.roles:manage',
   'identity.users:invite',

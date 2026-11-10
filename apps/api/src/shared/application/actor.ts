@@ -9,6 +9,11 @@ export type { Grant };
 export interface Actor {
   userId: string;
   sessionId: string;
+  /**
+   * Colaborador vinculado al usuario; `null` para personal sin ficha. Las rutas de datos propios
+   * leen al colaborador solo de aquí, nunca del path.
+   */
+  employeeId: string | null;
   grants: readonly Grant[];
 }
 
