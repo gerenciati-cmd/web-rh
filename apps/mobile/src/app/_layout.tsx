@@ -10,13 +10,13 @@ import {
   IBMPlexSans_700Bold,
 } from '@expo-google-fonts/ibm-plex-sans';
 import { useFonts } from 'expo-font';
-import { DarkTheme, DefaultTheme, ThemeProvider } from 'expo-router';
+import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useColorScheme } from 'react-native';
 
 import { AnimatedSplashOverlay } from '@/components/animated-icon';
-import { AppTabs } from '@/components/app-tabs';
 import { FONT_FAMILY, PALETTE } from '@/constants/theme';
+import { SessionProvider, useSession } from '@/features/identity/session/session-provider';
 
 void SplashScreen.preventAutoHideAsync().catch(() => {
   // El splash nativo puede haberse ocultado al recargar; la UI puede continuar.
@@ -46,7 +46,30 @@ const DARK_NAV_THEME = {
   },
 };
 
-export default function TabLayout() {
+function RootNavigator() {
+  const { status } = useSession();
+
+  // El splash nativo sigue visible hasta que se restaura la sesión guardada.
+  if (status === 'loading') {
+    return null;
+  }
+
+  return (
+    <>
+      <AnimatedSplashOverlay />
+      <Stack screenOptions={{ headerShown: false }}>
+        <Stack.Protected guard={status === 'signedIn'}>
+          <Stack.Screen name="(app)" />
+        </Stack.Protected>
+        <Stack.Protected guard={status !== 'signedIn'}>
+          <Stack.Screen name="login" />
+        </Stack.Protected>
+      </Stack>
+    </>
+  );
+}
+
+export default function RootLayout() {
   const colorScheme = useColorScheme();
   const [loaded, error] = useFonts({
     [FONT_FAMILY.sans.regular]: IBMPlexSans_400Regular,
@@ -65,8 +88,9 @@ export default function TabLayout() {
 
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DARK_NAV_THEME : LIGHT_NAV_THEME}>
-      <AnimatedSplashOverlay />
-      <AppTabs />
+      <SessionProvider>
+        <RootNavigator />
+      </SessionProvider>
     </ThemeProvider>
   );
 }

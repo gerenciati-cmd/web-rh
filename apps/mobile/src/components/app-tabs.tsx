@@ -15,10 +15,10 @@ import { DOCK, FONT_FAMILY, RADIUS } from '@/constants/theme';
 import { usePalette } from '@/hooks/use-palette';
 
 const HOME_ICON: SymbolViewProps['name'] = { ios: 'house', android: 'home', web: 'home' };
-const COMPANIES_ICON: SymbolViewProps['name'] = {
-  ios: 'building.2',
-  android: 'apartment',
-  web: 'apartment',
+const ME_ICON: SymbolViewProps['name'] = {
+  ios: 'person.crop.circle',
+  android: 'person',
+  web: 'person',
 };
 
 export function AppTabs() {
@@ -30,8 +30,8 @@ export function AppTabs() {
           <TabTrigger name="index" href="/" asChild>
             <DockButton icon={HOME_ICON} label="Inicio" />
           </TabTrigger>
-          <TabTrigger name="empresas" href="/empresas" asChild>
-            <DockButton icon={COMPANIES_ICON} label="Empresas" />
+          <TabTrigger name="yo" href="/yo" asChild>
+            <DockButton icon={ME_ICON} label="Yo" />
           </TabTrigger>
         </Dock>
       </TabList>

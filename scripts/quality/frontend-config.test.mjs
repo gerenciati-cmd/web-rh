@@ -74,7 +74,7 @@ export default missing;`);
     );
   });
   test(`${app}: export del framework permitido, componente común prohibido`, async () => {
-    const route = app === 'web' ? 'src/app/page.tsx' : 'src/app/index.tsx';
+    const route = app === 'web' ? 'src/app/page.tsx' : 'src/app/(app)/index.tsx';
     const messages = await lint('export default function Page() { return null; }', route);
     assert.equal(
       messages.filter((message) => message.severity === 2).length,
