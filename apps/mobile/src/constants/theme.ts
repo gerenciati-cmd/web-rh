@@ -4,49 +4,38 @@ import '@/global.css';
 
 import { Platform } from 'react-native';
 
+import { FONT_FAMILY, PALETTE } from './tokens';
+
+export { DOCK, DOCK_CLEARANCE, FONT_FAMILY, PALETTE, RADIUS } from './tokens';
+export type { PaletteKey, Scheme } from './tokens';
+
+/** Claves heredadas de la plantilla, mapeadas sobre la paleta "Caribe". */
 export const COLORS = {
   light: {
-    text: '#000000',
-    background: '#ffffff',
-    backgroundElement: '#F0F0F3',
-    backgroundSelected: '#E0E1E6',
-    textSecondary: '#60646C',
+    text: PALETTE.light.ink,
+    background: PALETTE.light.paper,
+    backgroundElement: PALETTE.light.sunk,
+    backgroundSelected: PALETTE.light.line,
+    textSecondary: PALETTE.light.ink2,
   },
   dark: {
-    text: '#ffffff',
-    background: '#000000',
-    backgroundElement: '#212225',
-    backgroundSelected: '#2E3135',
-    textSecondary: '#B0B4BA',
+    text: PALETTE.dark.ink,
+    background: PALETTE.dark.paper,
+    backgroundElement: PALETTE.dark.sunk,
+    backgroundSelected: PALETTE.dark.line,
+    textSecondary: PALETTE.dark.ink2,
   },
 } as const;
 
 export type ThemeColor = keyof typeof COLORS.light;
 
-export const FONTS = Platform.select({
-  ios: {
-    /** iOS `UIFontDescriptorSystemDesignDefault` */
-    sans: 'system-ui',
-    /** iOS `UIFontDescriptorSystemDesignSerif` */
-    serif: 'ui-serif',
-    /** iOS `UIFontDescriptorSystemDesignRounded` */
-    rounded: 'ui-rounded',
-    /** iOS `UIFontDescriptorSystemDesignMonospaced` */
-    mono: 'ui-monospace',
-  },
-  default: {
-    sans: 'normal',
-    serif: 'serif',
-    rounded: 'normal',
-    mono: 'monospace',
-  },
-  web: {
-    sans: 'var(--font-display)',
-    serif: 'var(--font-serif)',
-    rounded: 'var(--font-rounded)',
-    mono: 'var(--font-mono)',
-  },
-});
+/** Mismas familias en toda plataforma: IBM Plex se carga en runtime con `useFonts`. */
+export const FONTS = {
+  sans: FONT_FAMILY.sans.regular,
+  serif: FONT_FAMILY.sans.regular,
+  rounded: FONT_FAMILY.sans.regular,
+  mono: FONT_FAMILY.mono.regular,
+};
 
 export const SPACING = {
   half: 2,

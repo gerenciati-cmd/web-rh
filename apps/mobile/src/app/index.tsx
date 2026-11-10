@@ -1,98 +1,40 @@
-import * as Device from 'expo-device';
-import { Platform, StyleSheet } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { Link } from 'expo-router';
+import { ScrollView, StyleSheet, View } from 'react-native';
 
-import { AnimatedIcon } from '@/components/animated-icon';
-import { HintRow } from '@/components/hint-row';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { WebBadge } from '@/components/web-badge';
-import { BOTTOM_TAB_INSET, MAX_CONTENT_WIDTH, SPACING } from '@/constants/theme';
-
-function getDevMenuHint() {
-  if (Platform.OS === 'web') {
-    return <ThemedText type="small">use browser devtools</ThemedText>;
-  }
-  if (Device.isDevice) {
-    return (
-      <ThemedText type="small">
-        shake device or press <ThemedText type="code">m</ThemedText> in terminal
-      </ThemedText>
-    );
-  }
-  const shortcut = Platform.OS === 'android' ? 'cmd+m (or ctrl+m)' : 'cmd+d';
-  return (
-    <ThemedText type="small">
-      press <ThemedText type="code">{shortcut}</ThemedText>
-    </ThemedText>
-  );
-}
+import { Button } from '@/components/ui/button';
+import { ShellHeader } from '@/components/ui/shell-header';
+import { AppText } from '@/components/ui/text';
+import { Tile } from '@/components/ui/tile';
+import { useDockClearance, usePalette } from '@/hooks/use-palette';
 
 export default function HomeScreen() {
+  const palette = usePalette();
+  const dockClearance = useDockClearance();
+
   return (
-    <ThemedView style={styles.container}>
-      <SafeAreaView style={styles.safeArea}>
-        <ThemedView style={styles.heroSection}>
-          <AnimatedIcon />
-          <ThemedText type="title" style={styles.title}>
-            Welcome to&nbsp;Expo
-          </ThemedText>
-        </ThemedView>
-
-        <ThemedText type="code" style={styles.code}>
-          get started
-        </ThemedText>
-
-        <ThemedView type="backgroundElement" style={styles.stepContainer}>
-          <HintRow
-            title="Try editing"
-            hint={<ThemedText type="code">src/app/index.tsx</ThemedText>}
-          />
-          <HintRow title="Dev tools" hint={getDevMenuHint()} />
-          <HintRow
-            title="Fresh start"
-            hint={<ThemedText type="code">npm run reset-project</ThemedText>}
-          />
-        </ThemedView>
-
-        {Platform.OS === 'web' && <WebBadge />}
-      </SafeAreaView>
-    </ThemedView>
+    <View style={[styles.root, { backgroundColor: palette.paper }]}>
+      <ShellHeader eyebrow="RRHH APS" title="Inicio" />
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={[styles.content, { paddingBottom: dockClearance }]}
+      >
+        <Tile>
+          <AppText variant="label">Próximamente</AppText>
+          <AppText variant="bodyStrong">Tu jornada, tus vacaciones y tus solicitudes</AppText>
+          <AppText variant="caption" tone="ink2">
+            Aparecerán aquí cuando inicies sesión con tu cuenta.
+          </AppText>
+        </Tile>
+        <Link href="/empresas" asChild>
+          <Button variant="secondary" title="Ver empresas" />
+        </Link>
+      </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    justifyContent: 'center',
-    flexDirection: 'row',
-  },
-  safeArea: {
-    flex: 1,
-    paddingHorizontal: SPACING.four,
-    alignItems: 'center',
-    gap: SPACING.three,
-    paddingBottom: BOTTOM_TAB_INSET + SPACING.three,
-    maxWidth: MAX_CONTENT_WIDTH,
-  },
-  heroSection: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    flex: 1,
-    paddingHorizontal: SPACING.four,
-    gap: SPACING.four,
-  },
-  title: {
-    textAlign: 'center',
-  },
-  code: {
-    textTransform: 'uppercase',
-  },
-  stepContainer: {
-    gap: SPACING.three,
-    alignSelf: 'stretch',
-    paddingHorizontal: SPACING.three,
-    paddingVertical: SPACING.four,
-    borderRadius: SPACING.four,
-  },
+  root: { flex: 1 },
+  scroll: { flex: 1 },
+  content: { padding: 10, gap: 8 },
 });

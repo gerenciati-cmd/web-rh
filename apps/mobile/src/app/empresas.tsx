@@ -1,56 +1,71 @@
-import { FlatList, Pressable, StyleSheet } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { FlatList, StyleSheet, View } from 'react-native';
 
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { BOTTOM_TAB_INSET, MAX_CONTENT_WIDTH, SPACING } from '@/constants/theme';
+import { Button } from '@/components/ui/button';
+import { Chip } from '@/components/ui/chip';
+import { ShellHeader } from '@/components/ui/shell-header';
+import { AppText } from '@/components/ui/text';
+import { Tile } from '@/components/ui/tile';
 import { useCompanies } from '@/features/organization/hooks/use-companies';
+import { useDockClearance, usePalette } from '@/hooks/use-palette';
 
 export default function CompaniesScreen() {
   const { state, reload } = useCompanies();
+  const palette = usePalette();
+  const dockClearance = useDockClearance();
 
   return (
-    <ThemedView style={styles.container}>
-      <SafeAreaView style={styles.safeArea}>
-        <ThemedText type="title">Empresas</ThemedText>
+    <View style={[styles.root, { backgroundColor: palette.paper }]}>
+      <ShellHeader eyebrow="Holding" title="Empresas" />
 
-        {state.status === 'loading' && <ThemedText>Cargando…</ThemedText>}
+      {state.status === 'loading' && (
+        <AppText variant="caption" tone="ink2" style={styles.padded}>
+          Cargando empresas…
+        </AppText>
+      )}
 
-        {state.status === 'error' && (
-          <Pressable onPress={() => void reload()}>
-            <ThemedText>Error: {state.message}. Toca para reintentar.</ThemedText>
-          </Pressable>
-        )}
+      {state.status === 'error' && (
+        <View style={styles.errorWrap}>
+          <Tile>
+            <AppText tone="danger">No se pudo cargar el listado: {state.message}.</AppText>
+            <Button variant="primary" title="Reintentar" onPress={() => void reload()} />
+          </Tile>
+        </View>
+      )}
 
-        {state.status === 'success' && (
-          <FlatList
-            data={state.companies}
-            keyExtractor={(company) => company.id}
-            ListEmptyComponent={<ThemedText>Aún no hay empresas registradas.</ThemedText>}
-            renderItem={({ item }) => (
-              <ThemedView style={styles.row}>
-                <ThemedText type="subtitle">{item.legalName}</ThemedText>
-                <ThemedText type="small">
-                  {item.taxId} · {item.country} · {item.active ? 'Activa' : 'Inactiva'}
-                </ThemedText>
-              </ThemedView>
-            )}
-          />
-        )}
-      </SafeAreaView>
-    </ThemedView>
+      {state.status === 'success' && (
+        <FlatList
+          data={state.companies}
+          keyExtractor={(company) => company.id}
+          contentContainerStyle={[styles.list, { paddingBottom: dockClearance }]}
+          ListEmptyComponent={
+            <AppText variant="caption" tone="ink2">
+              Aún no hay empresas registradas.
+            </AppText>
+          }
+          renderItem={({ item }) => (
+            <Tile>
+              <AppText variant="bodyStrong">{item.legalName}</AppText>
+              <View style={styles.metaRow}>
+                <AppText variant="label">
+                  {item.taxId} · {item.country}
+                </AppText>
+                <Chip
+                  label={item.active ? 'Activa' : 'Inactiva'}
+                  tone={item.active ? 'success' : 'neutral'}
+                />
+              </View>
+            </Tile>
+          )}
+        />
+      )}
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, alignItems: 'center' },
-  safeArea: {
-    flex: 1,
-    width: '100%',
-    maxWidth: MAX_CONTENT_WIDTH,
-    gap: SPACING.three,
-    paddingHorizontal: SPACING.four,
-    paddingBottom: BOTTOM_TAB_INSET + SPACING.three,
-  },
-  row: { paddingVertical: SPACING.two, gap: SPACING.one },
+  root: { flex: 1 },
+  padded: { padding: 16 },
+  errorWrap: { padding: 10 },
+  list: { padding: 10, gap: 8 },
+  metaRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
 });
