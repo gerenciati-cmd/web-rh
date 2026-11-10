@@ -13,14 +13,15 @@ endpoint is open (`apps/api/src/http/app.ts:43-47` mounts module routers with no
 
 ## Plans
 
-| Plan | Title                                       | Depends on | Purpose                                                                                                                  |
-| ---- | ------------------------------------------- | ---------- | ------------------------------------------------------------------------------------------------------------------------ |
-| 001  | Módulo identity: usuarios, login y sesiones | —          | `User`, argon2id, `identity.sessions`, login/logout/me, request `Actor`, throttle, ADR 0011                              |
-| 002  | Roles, permisos y protección de endpoints   | 001        | Role catalog, `(user, role, scope)` assignments, route access in contracts, row filtering, 403, ADR 0012                 |
-| 003  | Invitación, activación y baja de accesos    | 002        | Invitations (RRHH/Admin), activation links `User.employeeId` + EMPLOYEE role, disable on termination, email queue        |
-| 004  | Login en web y mobile (TBD, deferred)       | 001        | Login screens, cookie handling in Next, `expo-secure-store` token in mobile — not before a UI design exists (decision 9) |
-| 005  | Reseteo de contraseña                       | 003        | "Forgot password" (1 h link), staff-forced reset by email, all sessions closed on reset; fixes hallazgo L3               |
-| 006  | Login en vuelo tras revocación              | 005        | A login verified before a reset/termination can no longer keep a session afterwards (hallazgo from 005 review)           |
+| Plan | Title                                       | Depends on | Purpose                                                                                                                                  |
+| ---- | ------------------------------------------- | ---------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| 001  | Módulo identity: usuarios, login y sesiones | —          | `User`, argon2id, `identity.sessions`, login/logout/me, request `Actor`, throttle, ADR 0011                                              |
+| 002  | Roles, permisos y protección de endpoints   | 001        | Role catalog, `(user, role, scope)` assignments, route access in contracts, row filtering, 403, ADR 0012                                 |
+| 003  | Invitación, activación y baja de accesos    | 002        | Invitations (RRHH/Admin), activation links `User.employeeId` + EMPLOYEE role, disable on termination, email queue                        |
+| 004  | Login en web y mobile (TBD, deferred)       | 001        | Login screens, cookie handling in Next, `expo-secure-store` token in mobile — not before a UI design exists (decision 9)                 |
+| 005  | Reseteo de contraseña                       | 003        | "Forgot password" (1 h link), staff-forced reset by email, all sessions closed on reset; fixes hallazgo L3                               |
+| 006  | Login en vuelo tras revocación              | 005        | A login verified before a reset/termination can no longer keep a session afterwards (hallazgo from 005 review)                           |
+| 007  | Alcance propio del colaborador              | 003        | `Actor.employeeId`; EMPLOYEE grants `attendance.workdays:read-own`; own-data routes resolve the colaborador from the actor (decision 32) |
 
 ## Dependency notes
 
@@ -112,10 +113,17 @@ endpoint is open (`apps/api/src/http/app.ts:43-47` mounts module routers with no
     review) is fixed now, in plan 006 on the same branch as 005. The user asked for it without a
     plan, but it touches authentication, which the fast lane excludes. Approach: lock the user and
     re-check before saving the session.
+32. (2026-11-10) The **own-data (SELF) scope is applied** for the colaborador's "Mi asistencia"
+    (mobile-app-colaborador series). How it works:
+    - The request `Actor` carries `employeeId`.
+    - EMPLOYEE gets atomic own-data permissions, starting with `attendance.workdays:read-own`.
+    - Own-data routes resolve the colaborador **only from the actor**, never from the path.
+
+    Each module adds its own-data permissions when it needs them (plan 007).
 
 ## Delivered
 
-Plans 001–003, 005 and 006 are `done`; 004 (web/mobile login) stays deferred until a UI design
+Plans 001–003 and 005–007 are `done`; 004 (web/mobile login) stays deferred until a UI design
 exists (decision 9).
 
 - **Users, login and sessions** (001): `User` with argon2id, opaque revocable sessions in
@@ -128,6 +136,8 @@ exists (decision 9).
   reset, all sessions closed; invitation issuing serialized with advisory locks (hallazgo L3).
 - **In-flight login after revocation** (006): a login verified before a reset or termination no
   longer keeps a session afterwards.
+- **Own-data scope for the colaborador** (007): the request `Actor` carries `employeeId`; EMPLOYEE
+  grants `attendance.workdays:read-own` on the colaborador's company; staff routes stay 403.
 
 ## Considered and discarded
 
