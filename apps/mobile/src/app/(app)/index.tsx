@@ -1,7 +1,5 @@
-import { Link } from 'expo-router';
 import { ScrollView, StyleSheet, View } from 'react-native';
 
-import { Button } from '@/components/ui/button';
 import { ShellHeader } from '@/components/ui/shell-header';
 import { AppText } from '@/components/ui/text';
 import { Tile } from '@/components/ui/tile';
@@ -22,12 +20,9 @@ export default function HomeScreen() {
           <AppText variant="label">Próximamente</AppText>
           <AppText variant="bodyStrong">Tu jornada, tus vacaciones y tus solicitudes</AppText>
           <AppText variant="caption" tone="ink2">
-            Aparecerán aquí cuando inicies sesión con tu cuenta.
+            Aparecerán aquí muy pronto.
           </AppText>
         </Tile>
-        <Link href="/empresas" asChild>
-          <Button variant="secondary" title="Ver empresas" />
-        </Link>
       </ScrollView>
     </View>
   );
