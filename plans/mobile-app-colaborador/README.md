@@ -59,8 +59,17 @@ The web app adopts the same identity later, in its own series.
    reset flow (request + link screen) is a later plan.
 8. (2026-11-10) Logout and the user's data go in a new **"Yo" tab** in the dock. The
    colaborador profile grows there later.
+9. (2026-11-10) **Night shift in progress on Hoy** (plan 003 review, Low 2): at 02:00 on a
+   22:00–06:00 shift that started yesterday, `/me/attendance/today` does not return that shift's
+   punches. For v1, Hoy's empty-punches copy is neutral and does not claim the person has not
+   punched; exposing the shift in progress from the API is left for later.
 
 ## Delivered
+
+- **"Caribe" theme and base UI** (001): tokens, IBM Plex, base components, dark floating dock.
+- **Login and session** (002): "Recordarme", protected routes, expired-session handling, Yo tab.
+- **Mi asistencia** (003): Hoy (today's shift and punches) and the Asistencia tab (this or last
+  month's jornadas with a summary), in the site's time zone.
 
 ## Considered and discarded
 
