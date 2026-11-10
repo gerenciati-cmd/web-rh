@@ -17,11 +17,11 @@ The web app adopts the same identity later, in its own series.
 
 ## Plans
 
-| Plan | Title                       | Depends on                            | Purpose                                                                                                                                    |
-| ---- | --------------------------- | ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| 001  | "Caribe" theme and base UI  | —                                     | Tokens (light/dark), IBM Plex Sans/Mono, `AppText`/`Tile`/`Chip`/`Button`/`ShellHeader`, dark floating dock, Inicio and Empresas restyled. |
-| 002  | Login (not written)         | 001, identity-acceso/001              | Login screen, Bearer token in `expo-secure-store`, logout. Covers the mobile half of identity-acceso 004.                                  |
-| 003  | My attendance (not written) | 002, attendance-asistencia-diaria/002 | The colaborador's jornada of today and the month (entry, retardo, falta, descanso, horas extra) read from the API.                         |
+| Plan | Title                                             | Depends on                            | Purpose                                                                                                                                                                                                |
+| ---- | ------------------------------------------------- | ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 001  | "Caribe" theme and base UI                        | —                                     | Tokens (light/dark), IBM Plex Sans/Mono, `AppText`/`Tile`/`Chip`/`Button`/`ShellHeader`, dark floating dock, Inicio and Empresas restyled.                                                             |
+| 002  | [Mobile login and session](002-login-y-sesion.md) | 001, identity-acceso/001              | Login screen with "Recordarme", session in `expo-secure-store`, protected routes, expired-session handling, "Yo" tab with logout; Empresas tab removed. Covers the mobile half of identity-acceso 004. |
+| 003  | My attendance (not written)                       | 002, attendance-asistencia-diaria/002 | The colaborador's jornada of today and the month (entry, retardo, falta, descanso, horas extra) read from the API.                                                                                     |
 
 ## Dependency notes
 
@@ -48,6 +48,17 @@ The web app adopts the same identity later, in its own series.
 3. (2026-11-10) Typography: IBM Plex Sans for text, IBM Plex Mono for figures and times.
 4. (2026-11-10) Rejected directions: generic indigo/violet palettes, and a navy+teal proposal
    that looked copied from the current APS mobile app (Manrope, cool grays, very round cards).
+5. (2026-11-10) Session persistence uses a **"Recordarme" checkbox**. Checked: the session is
+   kept on the device until logout or expiry (30 days, identity-acceso decision 5). Unchecked:
+   it lives only while the app process runs.
+6. (2026-11-10) The **Empresas tab is removed** from the mobile app. It was a demo screen, it
+   only works for RRHH/Admin, and `/auth/me` does not return roles. The app focuses on the
+   colaborador; empresas are managed from the web.
+7. (2026-11-10) **"¿Olvidaste tu contraseña?" is not in plan 002.** The API sends the email,
+   but its link needs a screen to set the new password, which exists nowhere yet. The full
+   reset flow (request + link screen) is a later plan.
+8. (2026-11-10) Logout and the user's data go in a new **"Yo" tab** in the dock. The
+   colaborador profile grows there later.
 
 ## Delivered
 
