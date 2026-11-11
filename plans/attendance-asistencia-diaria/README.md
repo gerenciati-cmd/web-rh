@@ -19,7 +19,7 @@ arrives or an assignment changes, so periods can later be closed for payroll.
 | [001](001-catalogo-de-turnos-y-asignacion.md) | Shift catalog and assignment   | —                                   | Company-owned shifts as a cyclic pattern (work/rest days, tolerance, meal break); assign one to a colaborador from a date.                                                        |
 | [002](002-jornada-diaria-guardada.md)         | Stored daily jornada           | 001, employees-fechas-laborales/001 | Calculate and store each day (entry/exit, retardo, falta, horas extra measured, descanso trabajado); recalculate a range on demand; read it.                                      |
 | [003](003-recalculo-automatico.md)            | Automatic recalculation        | 002                                 | Recalculate on new punches and assignment changes; daily close with a scheduled job (ADR). Must serialize recalculations per colaborador (002 review Low-2).                      |
-| 004 (not written)                             | N retardos = 1 falta           | 002                                 | Per-company rule (N and period) that turns accumulated retardos into a falta.                                                                                                     |
+| [004](004-n-retardos-una-falta.md)            | N retardos = 1 falta           | 002, 003, 005                       | Per-company rule history (N; week, fortnight or month; default 3 per fortnight): the day of every N-th retardo becomes `ABSENT_LATENESS`, recounted inside the recalculation.     |
 | [005](005-mis-jornadas-del-colaborador.md)    | The colaborador's own jornadas | 002, 003, identity-acceso/007       | `/me/attendance/workdays?month` (current or previous month) and `/me/attendance/today` (today's shift and punches), resolved from the actor only. For mobile-app-colaborador/003. |
 
 ## Dependency notes
@@ -86,12 +86,32 @@ recalculation of 002 from its triggers; 004 reads the retardos that 002 stores.
     site's time zone. Older months stay with HR (plan 005).
 25. (2026-11-10) The colaborador also sees **today's shift** (expected entry and exit, or rest)
     and today's punches so far. Today has no stored jornada until its window closes (plan 005).
+26. (2026-11-11) The period of the "N retardos = 1 falta" rule is **chosen per company**, together
+    with N: week (Monday to Sunday), fortnight (1–15 and 16 to the end of the month) or calendar
+    month (plan 004).
+27. (2026-11-11) When N retardos add up, **the day of the retardo that completes N becomes a
+    falta** (`ABSENT_LATENESS`), keeping its retardo minutes (plan 004).
+28. (2026-11-11) **One falta per full block of N** in a period: with N=3, 7 retardos give 2 faltas
+    (3rd and 6th); leftover retardos do not carry over to the next period (plan 004).
+29. (2026-11-11) A company with no rule configured uses **N=3 per fortnight** (plan 004).
+30. (2026-11-11) A rule change **has an effective date and keeps history**, like shift
+    assignments; earlier periods keep the rule they had (plan 004).
+31. (2026-11-11) Approved with plan 004, as proposed by the architect:
+    - a rule cannot start in the past, so no stored jornada changes and no company-wide
+      recalculation is needed (decision 22);
+    - a rule change cuts the period, and retardos on both sides do not add up;
+    - the rule reuses the `attendance.shifts:manage` and `attendance.shifts:read` permissions;
+    - mobile counts a falta por retardos both as a falta and as a retardo;
+    - N goes from 1 to 31.
 
 ## Delivered
 
 - **The colaborador's own jornadas** (005): `GET /me/attendance/workdays?month` (current or
   previous month) and `GET /me/attendance/today` (today's shift and punches in the site zone),
   resolved only from the actor; the shift calendar is shared with the recalculation.
+- **N retardos = 1 falta** (004): per-company rule history (`attendance.lateness_rules`, default
+  3 per fortnight) set and listed over HTTP; the recalculation recounts each period and marks
+  every N-th retardo `ABSENT_LATENESS`; mobile shows it as "Falta · Por retardos".
 
 ## Considered and discarded
 
