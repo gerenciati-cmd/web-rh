@@ -3,6 +3,7 @@ import { WORKDAY_STATUSES, type WorkdayStatus } from '@rrhh/domain';
 
 import type { AttendanceWorkday as WorkdayRow } from '@/infrastructure/database/generated/client';
 
+import type { ShiftId } from '../domain/shift';
 import type { Workday } from '../domain/workday';
 
 function isWorkdayStatus(value: string): value is WorkdayStatus {
@@ -17,6 +18,26 @@ function parseStatus(value: string): WorkdayStatus {
 
 /** Traductor entre filas Prisma y dominio/DTOs de jornadas; ningún tipo de Prisma sale de aquí. */
 export const WorkdayMapper = {
+  toDomain(row: WorkdayRow): Workday {
+    return {
+      employeeId: row.employeeId,
+      companyId: row.companyId,
+      date: row.date.toISOString().slice(0, 10),
+      shiftId: row.shiftId as ShiftId,
+      status: parseStatus(row.status),
+      scheduledStartAt: row.scheduledStartAt,
+      scheduledEndAt: row.scheduledEndAt,
+      scheduledMinutes: row.scheduledMinutes,
+      firstPunchAt: row.firstPunchAt,
+      lastPunchAt: row.lastPunchAt,
+      punchCount: row.punchCount,
+      lateMinutes: row.lateMinutes,
+      workedMinutes: row.workedMinutes,
+      overtimeMinutes: row.overtimeMinutes,
+      calculatedAt: row.calculatedAt,
+    };
+  },
+
   toPersistence(workday: Workday) {
     return {
       employeeId: workday.employeeId,

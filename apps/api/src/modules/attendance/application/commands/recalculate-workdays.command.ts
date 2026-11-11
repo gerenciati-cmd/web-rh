@@ -11,6 +11,8 @@ import {
   EmployeeWithoutSiteError,
   SiteNotFoundError,
 } from '../../domain/errors';
+import { applyLatenessRule, latenessSegments } from '../../domain/lateness-rule';
+import type { LatenessRuleRepository } from '../../domain/lateness-rule.repository';
 import { daysBetween } from '../../domain/local-date';
 import type { PunchRepository } from '../../domain/punch.repository';
 import type { ShiftAssignmentRepository } from '../../domain/shift-assignment.repository';
@@ -34,6 +36,7 @@ interface Deps {
   shiftAssignmentRepository: ShiftAssignmentRepository;
   shiftRepository: ShiftRepository;
   punchRepository: PunchRepository;
+  latenessRuleRepository: LatenessRuleRepository;
   workdayRepository: WorkdayRepository;
   transactionRunner: TransactionRunner;
   clock: Clock;
@@ -99,7 +102,37 @@ export class RecalculateWorkdays implements Command<
         employedUntil: employee.terminationDate,
         now: this.deps.clock.now(),
       });
-      await this.deps.workdayRepository.replaceDates(employee.id, closedDates, workdays);
+
+      // Se recuenta el tramo ENTERO de cada regla que toca el rango, no solo los días recalculados
+      // (decisión 27): un retardo que desaparece debe deshacer la falta que había completado, y
+      // los días que se cierran después completan bloques con los retardos ya guardados.
+      const now = this.deps.clock.now();
+      const rules = await this.deps.latenessRuleRepository.listByCompany(employee.companyId);
+      const segments = latenessSegments(rules, input.from, input.to);
+      const firstSegment = segments[0];
+      const lastSegment = segments.at(-1);
+      if (!firstSegment || !lastSegment) throw new Error('Tramos de retardos incompletos');
+      const closed = new Set(closedDates);
+      const stored = (
+        await this.deps.workdayRepository.listBetween(
+          employee.id,
+          firstSegment.start,
+          lastSegment.end,
+        )
+      ).filter((workday) => !closed.has(workday.date));
+      const merged = [...stored, ...workdays];
+      const adjusted = segments.flatMap((segment) =>
+        applyLatenessRule(
+          merged.filter((workday) => workday.date >= segment.start && workday.date <= segment.end),
+          segment.threshold,
+          now,
+        ),
+      );
+      await this.deps.workdayRepository.replaceDates(
+        employee.id,
+        [...closedDates, ...stored.map((workday) => workday.date)],
+        adjusted,
+      );
 
       return ok({
         recalculatedDates: closedDates.length,

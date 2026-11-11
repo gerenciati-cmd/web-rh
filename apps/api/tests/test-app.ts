@@ -14,6 +14,11 @@ import {
   InMemoryPunchRepository,
 } from '@/modules/attendance/infrastructure/in-memory/in-memory-attendance.store';
 import {
+  InMemoryLatenessRuleQueries,
+  InMemoryLatenessRuleRepository,
+  InMemoryLatenessRuleStore,
+} from '@/modules/attendance/infrastructure/in-memory/in-memory-lateness-rule.store';
+import {
   InMemoryShiftAssignmentRepository,
   InMemoryShiftQueries,
   InMemoryShiftRepository,
@@ -75,6 +80,7 @@ export function buildTestContainer(env: Env = testEnv) {
   const attendance = new InMemoryAttendanceStore();
   const shifts = new InMemoryShiftStore();
   const workdays = new InMemoryWorkdayStore();
+  const latenessRules = new InMemoryLatenessRuleStore();
   const employees = new InMemoryEmployeeRepository();
   const users = new InMemoryUserRepository();
   const roleAssignments = new InMemoryRoleAssignmentRepository({ userRepository: users });
@@ -179,6 +185,8 @@ export function buildTestContainer(env: Env = testEnv) {
     shiftRepository: asValue(new InMemoryShiftRepository(shifts)),
     shiftAssignmentRepository: asValue(new InMemoryShiftAssignmentRepository(shifts)),
     shiftQueries: asValue(new InMemoryShiftQueries(shifts)),
+    latenessRuleRepository: asValue(new InMemoryLatenessRuleRepository(latenessRules)),
+    latenessRuleQueries: asValue(new InMemoryLatenessRuleQueries(latenessRules)),
     workdayRepository: asValue(new InMemoryWorkdayRepository(workdays)),
     workdayQueries: asValue(new InMemoryWorkdayQueries(workdays, shifts)),
     userRepository: asValue(users),

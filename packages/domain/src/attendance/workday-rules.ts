@@ -2,12 +2,14 @@
  * Vocabulario y límites de las jornadas diarias de asistencia (README de
  * attendance-asistencia-diaria, decisiones 7 y 14–17): una falta es un día laborable sin
  * marcaciones o con una sola; el descanso trabajado se mide completo como horas extra; las
- * marcaciones se atribuyen a su día con una ventana de margen fijo.
+ * marcaciones se atribuyen a su día con una ventana de margen fijo. `ABSENT_LATENESS` es una
+ * falta hecha de N retardos del periodo (decisión 27): conserva los minutos de retardo del día.
  */
 export const WORKDAY_STATUSES = [
   'ATTENDED',
   'ABSENT_NO_PUNCHES',
   'ABSENT_SINGLE_PUNCH',
+  'ABSENT_LATENESS',
   'REST_WORKED',
 ] as const;
 export type WorkdayStatus = (typeof WORKDAY_STATUSES)[number];

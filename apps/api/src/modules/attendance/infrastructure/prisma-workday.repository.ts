@@ -26,6 +26,17 @@ export class PrismaWorkdayRepository implements WorkdayRepository {
     });
   }
 
+  async listBetween(employeeId: string, from: string, to: string): Promise<Workday[]> {
+    const rows = await this.deps.database.client.attendanceWorkday.findMany({
+      where: {
+        employeeId,
+        date: { gte: new Date(`${from}T00:00:00Z`), lte: new Date(`${to}T00:00:00Z`) },
+      },
+      orderBy: { date: 'asc' },
+    });
+    return rows.map((row) => WorkdayMapper.toDomain(row));
+  }
+
   async lockEmployee(employeeId: string): Promise<void> {
     // Candado consultivo de transacción: se libera solo al commit/rollback. Fuera de una
     // transacción se liberaría de inmediato, así que el llamador debe abrir una. `$executeRaw`

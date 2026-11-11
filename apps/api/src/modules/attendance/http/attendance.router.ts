@@ -1,6 +1,7 @@
 import {
   attendanceDeviceCommandRoutes,
   attendanceDeviceRoutes,
+  attendanceLatenessRuleRoutes,
   attendancePunchRoutes,
   attendanceShiftRoutes,
   attendanceWorkdayRoutes,
@@ -18,12 +19,14 @@ import type { QueueDeviceCommand } from '../application/commands/queue-device-co
 import type { RecalculateWorkdays } from '../application/commands/recalculate-workdays.command';
 import type { RegisterDevice } from '../application/commands/register-device.command';
 import type { SetDeviceNetworks } from '../application/commands/set-device-networks.command';
+import type { SetLatenessRule } from '../application/commands/set-lateness-rule.command';
 import type { SyncDevice } from '../application/commands/sync-device.command';
 import type { GetMyAttendanceToday } from '../application/queries/get-my-attendance-today.query';
 import type { ListDeviceCommands } from '../application/queries/list-device-commands.query';
 import type { ListDevices } from '../application/queries/list-devices.query';
 import type { ListEmployeeShiftAssignments } from '../application/queries/list-employee-shift-assignments.query';
 import type { ListEmployeeWorkdays } from '../application/queries/list-employee-workdays.query';
+import type { ListLatenessRules } from '../application/queries/list-lateness-rules.query';
 import type { ListMyWorkdays } from '../application/queries/list-my-workdays.query';
 import type { ListPunches } from '../application/queries/list-punches.query';
 import type { ListShifts } from '../application/queries/list-shifts.query';
@@ -42,6 +45,8 @@ export function createAttendanceRouter(deps: {
   createShift: CreateShift;
   assignEmployeeShift: AssignEmployeeShift;
   listEmployeeShiftAssignments: ListEmployeeShiftAssignments;
+  setLatenessRule: SetLatenessRule;
+  listLatenessRules: ListLatenessRules;
   recalculateWorkdays: RecalculateWorkdays;
   listEmployeeWorkdays: ListEmployeeWorkdays;
   listMyWorkdays: ListMyWorkdays;
@@ -123,6 +128,23 @@ export function createAttendanceRouter(deps: {
 
   bindRoute(router, attendanceShiftRoutes.listEmployeeShiftAssignments, async ({ params, query }) =>
     unwrap(await deps.listEmployeeShiftAssignments.execute({ ...query, ...params })),
+  );
+
+  bindRoute(router, attendanceLatenessRuleRoutes.setLatenessRule, async ({ params, body }, ctx) => {
+    unwrap(
+      await deps.setLatenessRule.execute({
+        companyId: params.companyId,
+        effectiveFrom: params.effectiveFrom,
+        threshold: body.threshold,
+        period: body.period,
+        setBy: requireActor(ctx).userId,
+      }),
+    );
+    return undefined;
+  });
+
+  bindRoute(router, attendanceLatenessRuleRoutes.listLatenessRules, async ({ params }) =>
+    unwrap(await deps.listLatenessRules.execute({ companyId: params.companyId })),
   );
 
   bindRoute(router, attendanceWorkdayRoutes.recalculateEmployeeWorkdays, async ({ params, body }) =>

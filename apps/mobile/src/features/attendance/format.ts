@@ -76,6 +76,8 @@ export function workdayStatusView(w: WorkdayDto): WorkdayStatusView {
       return { label: 'Falta', tone: 'danger', detail: 'Sin marcaciones' };
     case 'ABSENT_SINGLE_PUNCH':
       return { label: 'Falta', tone: 'danger', detail: 'Una sola marcación' };
+    case 'ABSENT_LATENESS':
+      return { label: 'Falta', tone: 'danger', detail: 'Por retardos' };
     case 'REST_WORKED':
       return { label: 'Descanso trabajado', tone: 'sand', detail: null };
   }
@@ -89,7 +91,10 @@ export interface MonthSummary {
   restWorked: number;
 }
 
-/** Totales del mes; `attended` incluye los retardos. */
+/**
+ * Totales del mes; `attended` incluye los retardos. Una falta por retardos cuenta como falta y
+ * también como retardo, para que el total de retardos coincida con los que la persona tuvo.
+ */
 export function monthSummary(items: WorkdayDto[]): MonthSummary {
   const summary: MonthSummary = {
     attended: 0,
@@ -108,6 +113,10 @@ export function monthSummary(items: WorkdayDto[]): MonthSummary {
       case 'ABSENT_NO_PUNCHES':
       case 'ABSENT_SINGLE_PUNCH':
         summary.absences += 1;
+        break;
+      case 'ABSENT_LATENESS':
+        summary.absences += 1;
+        summary.late += 1;
         break;
       case 'REST_WORKED':
         summary.restWorked += 1;

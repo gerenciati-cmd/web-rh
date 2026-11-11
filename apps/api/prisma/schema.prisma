@@ -353,6 +353,22 @@ model AttendanceShiftAssignment {
   @@schema("attendance")
 }
 
+/// Regla "N retardos = 1 falta" de una empresa desde una fecha; el historial conserva las anteriores.
+model AttendanceLatenessRule {
+  /// referencia por id a organization, sin FK (ADR 0010)
+  companyId     String   @map("company_id") @db.Uuid
+  effectiveFrom DateTime @map("effective_from") @db.Date
+  threshold     Int
+  /// Uno de LATENESS_PERIODS (@rrhh/domain): WEEK, FORTNIGHT o MONTH.
+  period        String   @db.VarChar(10)
+  setAt         DateTime @map("set_at") @db.Timestamptz(3)
+  setBy         String   @map("set_by") @db.Uuid
+
+  @@id([companyId, effectiveFrom])
+  @@map("lateness_rules")
+  @@schema("attendance")
+}
+
 /// Jornada calculada de un colaborador en una fecha; se reemplaza completa al recalcular.
 model AttendanceWorkday {
   /// referencia por id a employees, sin FK (ADR 0010)

@@ -18,6 +18,7 @@ import { RecordDeviceContact } from './application/commands/record-device-contac
 import { RecordDevicePush } from './application/commands/record-device-push.command';
 import { RegisterDevice } from './application/commands/register-device.command';
 import { SetDeviceNetworks } from './application/commands/set-device-networks.command';
+import { SetLatenessRule } from './application/commands/set-lateness-rule.command';
 import { SyncDevice } from './application/commands/sync-device.command';
 import { SyncEmployee } from './application/commands/sync-employee.command';
 import { TakeDeviceCommand } from './application/commands/take-device-command.command';
@@ -35,10 +36,12 @@ import type { SiteRoster } from './application/ports/site-roster';
 import type { WorkdayEmployeeDirectory } from './application/ports/workday-employee-directory';
 import type { AttendanceQueries } from './application/queries/attendance.queries';
 import { GetMyAttendanceToday } from './application/queries/get-my-attendance-today.query';
+import type { LatenessRuleQueries } from './application/queries/lateness-rule.queries';
 import { ListDeviceCommands } from './application/queries/list-device-commands.query';
 import { ListDevices } from './application/queries/list-devices.query';
 import { ListEmployeeShiftAssignments } from './application/queries/list-employee-shift-assignments.query';
 import { ListEmployeeWorkdays } from './application/queries/list-employee-workdays.query';
+import { ListLatenessRules } from './application/queries/list-lateness-rules.query';
 import { ListMyWorkdays } from './application/queries/list-my-workdays.query';
 import { ListPunches } from './application/queries/list-punches.query';
 import { ListShifts } from './application/queries/list-shifts.query';
@@ -48,6 +51,7 @@ import { DEVICE_COMMANDS_ENABLED, DEVICE_SITE_ASSIGNED } from './domain/device';
 import type { DeviceCommandRepository } from './domain/device-command.repository';
 import type { DeviceUserRepository } from './domain/device-user.repository';
 import type { DeviceRepository } from './domain/device.repository';
+import type { LatenessRuleRepository } from './domain/lateness-rule.repository';
 import type { PunchRepository } from './domain/punch.repository';
 import type { ShiftAssignmentRepository } from './domain/shift-assignment.repository';
 import type { ShiftRepository } from './domain/shift.repository';
@@ -65,6 +69,8 @@ import { PrismaAttendanceQueries } from './infrastructure/prisma-attendance.quer
 import { PrismaDeviceCommandRepository } from './infrastructure/prisma-device-command.repository';
 import { PrismaDeviceUserRepository } from './infrastructure/prisma-device-user.repository';
 import { PrismaDeviceRepository } from './infrastructure/prisma-device.repository';
+import { PrismaLatenessRuleQueries } from './infrastructure/prisma-lateness-rule.queries';
+import { PrismaLatenessRuleRepository } from './infrastructure/prisma-lateness-rule.repository';
 import { PrismaPunchRepository } from './infrastructure/prisma-punch.repository';
 import { PrismaShiftAssignmentRepository } from './infrastructure/prisma-shift-assignment.repository';
 import { PrismaShiftQueries } from './infrastructure/prisma-shift.queries';
@@ -104,6 +110,10 @@ export interface AttendanceCradle {
   assignEmployeeShift: AssignEmployeeShift;
   listShifts: ListShifts;
   listEmployeeShiftAssignments: ListEmployeeShiftAssignments;
+  latenessRuleRepository: LatenessRuleRepository;
+  latenessRuleQueries: LatenessRuleQueries;
+  setLatenessRule: SetLatenessRule;
+  listLatenessRules: ListLatenessRules;
   workdayRepository: WorkdayRepository;
   workdayQueries: WorkdayQueries;
   workdayEmployeeDirectory: WorkdayEmployeeDirectory;
@@ -165,6 +175,10 @@ export const attendanceModule: AppModule<AttendanceCradle> = {
     assignEmployeeShift: asClass(AssignEmployeeShift).singleton(),
     listShifts: asClass(ListShifts).singleton(),
     listEmployeeShiftAssignments: asClass(ListEmployeeShiftAssignments).singleton(),
+    latenessRuleRepository: asClass(PrismaLatenessRuleRepository).singleton(),
+    latenessRuleQueries: asClass(PrismaLatenessRuleQueries).singleton(),
+    setLatenessRule: asClass(SetLatenessRule).singleton(),
+    listLatenessRules: asClass(ListLatenessRules).singleton(),
     // Jornadas
     workdayRepository: asClass(PrismaWorkdayRepository).singleton(),
     workdayQueries: asClass(PrismaWorkdayQueries).singleton(),

@@ -13,6 +13,10 @@ import {
   InMemoryPunchRepository,
 } from '../../infrastructure/in-memory/in-memory-attendance.store';
 import {
+  InMemoryLatenessRuleRepository,
+  InMemoryLatenessRuleStore,
+} from '../../infrastructure/in-memory/in-memory-lateness-rule.store';
+import {
   InMemoryShiftAssignmentRepository,
   InMemoryShiftRepository,
   InMemoryShiftStore,
@@ -107,6 +111,7 @@ async function setUp(
       txEvents.push('replace');
       return inner.replaceDates(employeeId, dates, workdays);
     },
+    listBetween: (employeeId, from, to) => inner.listBetween(employeeId, from, to),
     lockEmployee: (employeeId) => {
       txEvents.push(`lock:${employeeId}`);
       return inner.lockEmployee(employeeId);
@@ -140,6 +145,7 @@ async function setUp(
     shiftAssignmentRepository: assignments,
     shiftRepository: countingShifts,
     punchRepository: punches,
+    latenessRuleRepository: new InMemoryLatenessRuleRepository(new InMemoryLatenessRuleStore()),
     workdayRepository,
     transactionRunner: {
       run: async (work) => {
