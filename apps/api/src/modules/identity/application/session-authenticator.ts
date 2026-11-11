@@ -43,6 +43,11 @@ export class SessionAuthenticator implements RequestAuthenticator {
     const grants = grantsFor(
       (await roleAssignmentRepository.findActiveByUser(user.id)).map((a) => a.snapshot),
     );
-    return { userId: user.id, sessionId: session.id, grants };
+    return {
+      userId: user.id,
+      sessionId: session.id,
+      employeeId: user.snapshot.employeeId,
+      grants,
+    };
   }
 }

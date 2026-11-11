@@ -402,6 +402,28 @@ export const API_ERRORS = {
       },
     },
   },
+  ACCOUNT_NOT_LINKED: {
+    status: 422,
+    description:
+      'La cuenta autenticada no está vinculada a un colaborador: no hay "yo" sobre quien consultar.',
+    examples: {
+      default: {
+        code: 'ACCOUNT_NOT_LINKED',
+        message: 'La cuenta no está vinculada a un colaborador',
+      },
+    },
+  },
+  MONTH_NOT_AVAILABLE: {
+    status: 422,
+    description: 'Solo se consulta el mes actual y el anterior (en la zona de la sede).',
+    examples: {
+      default: {
+        code: 'MONTH_NOT_AVAILABLE',
+        message: 'Solo puedes consultar el mes actual y el anterior',
+        details: { month: '2026-01' },
+      },
+    },
+  },
 
   // ── identity: sesión y contraseñas ───────────────────────────────────────
   INVALID_CREDENTIALS: {

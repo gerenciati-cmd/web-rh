@@ -26,3 +26,16 @@ export function localInstant(date: string, time: string, timeZone: string): Date
   if (!result.ok) throw result.error;
   return result.value;
 }
+
+/**
+ * Fecha de pared (`YYYY-MM-DD`) de un instante en la zona `timeZone`. El locale `en-CA` formatea
+ * en ISO; la zona viene de una sede ya validada.
+ */
+export function localDateOf(instant: Date, timeZone: string): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(instant);
+}

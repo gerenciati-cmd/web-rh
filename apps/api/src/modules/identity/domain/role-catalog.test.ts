@@ -39,7 +39,7 @@ describe('ROLE_DEFINITIONS', () => {
     );
   });
 
-  it('DIRECT_MANAGER y EMPLOYEE son inertes: no conceden nada y no se pueden asignar', () => {
+  it('DIRECT_MANAGER es inerte y EMPLOYEE solo concede datos propios; ninguno es asignable', () => {
     expect(ROLE_DEFINITIONS.DIRECT_MANAGER).toEqual({
       scope: 'TEAM',
       permissions: [],
@@ -47,7 +47,7 @@ describe('ROLE_DEFINITIONS', () => {
     });
     expect(ROLE_DEFINITIONS.EMPLOYEE).toEqual({
       scope: 'SELF',
-      permissions: [],
+      permissions: ['attendance.workdays:read-own'],
       assignable: false,
     });
   });
@@ -86,12 +86,26 @@ describe('grantsFor', () => {
     );
   });
 
-  it('roles inertes no aportan concesiones', () => {
-    expect(
-      grantsFor([
-        { role: 'DIRECT_MANAGER', companyId: null },
-        { role: 'EMPLOYEE', companyId: null },
-      ]),
-    ).toEqual([]);
+  it('DIRECT_MANAGER no aporta concesiones', () => {
+    expect(grantsFor([{ role: 'DIRECT_MANAGER', companyId: null }])).toEqual([]);
+  });
+
+  it('HOLDING_ADMIN incluye read-own, con companyId null', () => {
+    expect(grantsFor([{ role: 'HOLDING_ADMIN', companyId: null }])).toContainEqual({
+      permission: 'attendance.workdays:read-own',
+      companyId: null,
+    });
+  });
+
+  it('HR no recibe read-own', () => {
+    const permissions = grantsFor([{ role: 'HR', companyId: 'c1' }]).map((g) => g.permission);
+
+    expect(permissions).not.toContain('attendance.workdays:read-own');
+  });
+
+  it('EMPLOYEE concede read-own atado a la empresa de la asignación', () => {
+    expect(grantsFor([{ role: 'EMPLOYEE', companyId: 'c1' }])).toEqual([
+      { permission: 'attendance.workdays:read-own', companyId: 'c1' },
+    ]);
   });
 });

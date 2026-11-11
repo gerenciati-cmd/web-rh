@@ -18,7 +18,7 @@ const DEVICE_A = '00000000-0000-4000-8000-0000000000a1' as DeviceId;
 const DEVICE_B = '00000000-0000-4000-8000-0000000000b2' as DeviceId;
 
 function actorWith(...grants: Grant[]): Actor {
-  return { userId: 'user-1', sessionId: 'session-1', grants };
+  return { userId: 'user-1', sessionId: 'session-1', employeeId: null, grants };
 }
 
 function device(id: DeviceId, serialNumber: string, name: string): Device {

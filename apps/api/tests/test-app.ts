@@ -26,6 +26,7 @@ import {
 } from '@/modules/attendance/infrastructure/in-memory/in-memory-workday.store';
 import type { EmployeeQueries } from '@/modules/employees/application/queries/employee.queries';
 import { InMemoryEmployeeRepository } from '@/modules/employees/infrastructure/in-memory/in-memory-employee.repository';
+import { SEND_INVITATION_EMAIL } from '@/modules/identity/application/jobs/send-invitation-email.job';
 import type { CompanyDirectory } from '@/modules/identity/application/ports/company-directory';
 import type { EmployeeDirectory } from '@/modules/identity/application/ports/employee-directory';
 import { FakePasswordHasher } from '@/modules/identity/infrastructure/in-memory/fake-password-hasher';
@@ -249,6 +250,49 @@ export async function signInAs(
 
   const session = await logIn.execute({
     email,
+    password: SIGN_IN_PASSWORD,
+    client: 'mobile',
+    ip: null,
+    userAgent: null,
+  });
+  if (!session.ok) throw session.error;
+  return session.value.token;
+}
+
+/**
+ * Abre sesión móvil como un colaborador con cuenta vinculada, por el flujo real: invitación,
+ * activación con el token del correo encolado (único lugar donde viaja en claro) y login. El
+ * colaborador debe existir ya en el repositorio de `container`. La cuenta queda con el rol
+ * EMPLOYEE de su empresa (`RoleAssignment.grantSelf`) y `employeeId` vinculado.
+ */
+export async function signInAsEmployee(
+  container: ReturnType<typeof buildTestContainer>,
+  options: { companyId: string; employeeId: string },
+): Promise<string> {
+  const { inviteEmployee, activateAccount, logIn, employeeDirectory, jobQueue } = container.cradle;
+
+  const invited = await inviteEmployee.execute({
+    companyId: options.companyId,
+    employeeId: options.employeeId,
+    invitedBy: 'test-invitador',
+  });
+  if (!invited.ok) throw invited.error;
+
+  const job = (jobQueue as RecordingJobQueue).jobs
+    .filter((candidate) => candidate.name === SEND_INVITATION_EMAIL)
+    .at(-1);
+  const link = (job?.data as { link?: string } | undefined)?.link;
+  if (!link) throw new Error('no se encoló ningún correo de invitación');
+  const token = new URL(link).searchParams.get('token');
+  if (!token) throw new Error('el enlace de invitación no trae token');
+
+  const activated = await activateAccount.execute({ token, password: SIGN_IN_PASSWORD });
+  if (!activated.ok) throw activated.error;
+
+  const employee = await employeeDirectory.find(options.employeeId);
+  if (!employee) throw new Error('colaborador inexistente');
+  const session = await logIn.execute({
+    email: employee.email,
     password: SIGN_IN_PASSWORD,
     client: 'mobile',
     ip: null,

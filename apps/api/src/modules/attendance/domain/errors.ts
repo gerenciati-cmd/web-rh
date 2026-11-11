@@ -111,3 +111,19 @@ export class DeviceWithoutSiteError extends BusinessRuleViolationError {
     super('El checador no tiene sede asignada', { deviceId });
   }
 }
+
+export class AccountNotLinkedError extends BusinessRuleViolationError {
+  override readonly code = 'ACCOUNT_NOT_LINKED';
+
+  constructor() {
+    super('La cuenta no está vinculada a un colaborador');
+  }
+}
+
+export class MonthNotAvailableError extends BusinessRuleViolationError {
+  override readonly code = 'MONTH_NOT_AVAILABLE';
+
+  constructor(month: string) {
+    super('Solo puedes consultar el mes actual y el anterior', { month });
+  }
+}

@@ -29,6 +29,7 @@ const {
 const seedActor: Actor = {
   userId: 'seed',
   sessionId: 'seed',
+  employeeId: null,
   grants: [{ permission: 'organization.companies:read', companyId: null }],
 };
 

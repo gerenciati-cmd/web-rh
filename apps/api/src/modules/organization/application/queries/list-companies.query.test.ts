@@ -22,7 +22,7 @@ function company(id: string, legalName: string, rfc: string): Company {
 }
 
 function actorWith(...grants: Grant[]): Actor {
-  return { userId: 'user-1', sessionId: 'session-1', grants };
+  return { userId: 'user-1', sessionId: 'session-1', employeeId: null, grants };
 }
 
 describe('ListCompanies', () => {
