@@ -5,6 +5,7 @@ export * from './email';
 export * from './entity';
 export * from './employees/employee-status';
 export * from './employees/termination-reason';
+export * from './attendance/lateness-rules';
 export * from './attendance/shift-rules';
 export * from './attendance/workday-rules';
 export * from './errors';

@@ -120,6 +120,14 @@ export class AccountNotLinkedError extends BusinessRuleViolationError {
   }
 }
 
+export class LatenessRuleInPastError extends BusinessRuleViolationError {
+  override readonly code = 'LATENESS_RULE_IN_PAST';
+
+  constructor(effectiveFrom: string, today: string) {
+    super('La regla de retardos no puede empezar en una fecha pasada', { effectiveFrom, today });
+  }
+}
+
 export class MonthNotAvailableError extends BusinessRuleViolationError {
   override readonly code = 'MONTH_NOT_AVAILABLE';
 

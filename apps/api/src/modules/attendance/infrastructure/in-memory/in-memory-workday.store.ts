@@ -40,6 +40,17 @@ export class InMemoryWorkdayRepository implements WorkdayRepository {
     return Promise.resolve();
   }
 
+  listBetween(employeeId: string, from: string, to: string): Promise<Workday[]> {
+    const workdays = [...this.store.workdays.values()]
+      .filter(
+        (workday) =>
+          workday.employeeId === employeeId && workday.date >= from && workday.date <= to,
+      )
+      .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0))
+      .map((workday) => ({ ...workday }));
+    return Promise.resolve(workdays);
+  }
+
   /** Los tests corren en un solo hilo y `replaceDates` es síncrono: no hay nada que serializar. */
   lockEmployee(_employeeId: string): Promise<void> {
     return Promise.resolve();

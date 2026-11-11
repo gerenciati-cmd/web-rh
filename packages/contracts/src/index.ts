@@ -1,5 +1,6 @@
 export * from './attendance/device-command.contract';
 export * from './attendance/device.contract';
+export * from './attendance/lateness-rule.contract';
 export * from './attendance/my-attendance.contract';
 export * from './attendance/punch.contract';
 export * from './attendance/shift.contract';
@@ -18,6 +19,7 @@ export * from './openapi';
 
 import { attendanceDeviceCommandRoutes } from './attendance/device-command.contract';
 import { attendanceDeviceRoutes } from './attendance/device.contract';
+import { attendanceLatenessRuleRoutes } from './attendance/lateness-rule.contract';
 import { myAttendanceRoutes } from './attendance/my-attendance.contract';
 import { attendancePunchRoutes } from './attendance/punch.contract';
 import { attendanceShiftRoutes } from './attendance/shift.contract';
@@ -43,6 +45,7 @@ export const apiRoutes = {
   attendanceDeviceCommands: attendanceDeviceCommandRoutes,
   attendancePunches: attendancePunchRoutes,
   attendanceShifts: attendanceShiftRoutes,
+  attendanceLatenessRules: attendanceLatenessRuleRoutes,
   attendanceWorkdays: attendanceWorkdayRoutes,
   myAttendance: myAttendanceRoutes,
 } as const;

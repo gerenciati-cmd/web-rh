@@ -7,6 +7,7 @@ import { Punch, type PunchId } from '@/modules/attendance/domain/punch';
 import { Shift, type ShiftId } from '@/modules/attendance/domain/shift';
 import type { Workday } from '@/modules/attendance/domain/workday';
 import { PrismaDeviceRepository } from '@/modules/attendance/infrastructure/prisma-device.repository';
+import { PrismaLatenessRuleRepository } from '@/modules/attendance/infrastructure/prisma-lateness-rule.repository';
 import { PrismaPunchRepository } from '@/modules/attendance/infrastructure/prisma-punch.repository';
 import { PrismaShiftAssignmentRepository } from '@/modules/attendance/infrastructure/prisma-shift-assignment.repository';
 import { PrismaShiftRepository } from '@/modules/attendance/infrastructure/prisma-shift.repository';
@@ -325,6 +326,7 @@ describe('RecalculateWorkdays concurrente contra Postgres', () => {
       shiftAssignmentRepository: assignments,
       shiftRepository: shifts,
       punchRepository: punches,
+      latenessRuleRepository: new PrismaLatenessRuleRepository({ database }),
       workdayRepository: workdays,
       transactionRunner,
       clock: new FixedClock(NOW),

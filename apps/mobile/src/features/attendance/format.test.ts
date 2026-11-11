@@ -125,6 +125,14 @@ describe('workdayStatusView', () => {
     });
   });
 
+  it('ABSENT_LATENESS: Falta con motivo "Por retardos", sin mostrar los minutos del retardo', () => {
+    expect(workdayStatusView(workday({ status: 'ABSENT_LATENESS', lateMinutes: 30 }))).toEqual({
+      label: 'Falta',
+      tone: 'danger',
+      detail: 'Por retardos',
+    });
+  });
+
   it('REST_WORKED: Descanso trabajado en sand', () => {
     expect(workdayStatusView(workday({ status: 'REST_WORKED' }))).toEqual({
       label: 'Descanso trabajado',
@@ -161,6 +169,29 @@ describe('monthSummary', () => {
       overtimeMinutes: 0,
       restWorked: 1,
     });
+  });
+
+  it('una falta por retardos cuenta como falta y también como retardo, pero no como asistencia', () => {
+    const items = [
+      workday({ lateMinutes: 10 }),
+      workday({ lateMinutes: 12 }),
+      workday({ status: 'ABSENT_LATENESS', lateMinutes: 15 }),
+    ];
+
+    // Los 3 retardos de la persona siguen sumando 3 en la ficha de Retardos.
+    expect(monthSummary(items)).toEqual({
+      attended: 2,
+      late: 3,
+      absences: 1,
+      overtimeMinutes: 0,
+      restWorked: 0,
+    });
+  });
+
+  it('una falta por retardos suma sus horas extra como cualquier jornada', () => {
+    const items = [workday({ status: 'ABSENT_LATENESS', lateMinutes: 15, overtimeMinutes: 20 })];
+
+    expect(monthSummary(items).overtimeMinutes).toBe(20);
   });
 
   it('suma las horas extra de todas las jornadas, descansos trabajados incluidos', () => {

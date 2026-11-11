@@ -46,6 +46,7 @@ export const WorkdaySchema = z
           '`ATTENDED` = día laborable con entrada y salida;',
           '`ABSENT_NO_PUNCHES` = falta, día laborable sin marcaciones;',
           '`ABSENT_SINGLE_PUNCH` = falta, día laborable con una sola marcación;',
+          '`ABSENT_LATENESS` = falta por acumular N retardos en el periodo (conserva sus minutos de retardo);',
           '`REST_WORKED` = descanso trabajado, marcaciones en un día de descanso.',
         ].join(' '),
       ),
